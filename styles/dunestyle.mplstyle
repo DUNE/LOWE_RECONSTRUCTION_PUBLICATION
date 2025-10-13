@@ -1,0 +1,62 @@
+# DUNE matplotlib style configuration
+# Based on common scientific publication standards
+
+# Figure properties
+figure.figsize: 8, 6
+figure.dpi: 100
+savefig.dpi: 300
+savefig.bbox: tight
+savefig.pad_inches: 0.1
+
+# Font properties
+font.size: 12
+font.family: sans-serif
+font.sans-serif: DejaVu Sans, Arial, Helvetica, sans-serif
+
+# Axes properties
+axes.labelsize: 14
+axes.titlesize: 16
+axes.linewidth: 1.5
+axes.grid: True
+axes.axisbelow: True
+
+# Grid properties
+grid.alpha: 0.3
+grid.linestyle: --
+grid.linewidth: 0.8
+
+# Tick properties
+xtick.labelsize: 12
+ytick.labelsize: 12
+xtick.major.size: 6
+ytick.major.size: 6
+xtick.major.width: 1.5
+ytick.major.width: 1.5
+xtick.minor.size: 3
+ytick.minor.size: 3
+xtick.minor.width: 1.0
+ytick.minor.width: 1.0
+xtick.direction: in
+ytick.direction: in
+xtick.top: True
+ytick.right: True
+
+# Legend properties
+legend.frameon: True
+legend.framealpha: 0.8
+legend.fancybox: False
+legend.fontsize: 11
+legend.loc: best
+
+# Line properties
+lines.linewidth: 2.0
+lines.markersize: 8
+
+# Errorbar properties
+errorbar.capsize: 3
+
+# Histogram properties
+hist.bins: auto
+
+# Color cycle (DUNE colors)
+axes.prop_cycle: cycler('color', ['1f77b4', 'ff7f0e', '2ca02c', 'd62728', '9467bd', '8c564b', 'e377c2', '7f7f7f', 'bcbd22', '17becf'])
