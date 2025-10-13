@@ -15,5 +15,6 @@ export DUNE_PLOT_STYLE_LATEST_TAG=${DUNE_PLOT_STYLE_LATEST_TAG#v}
 cd dune_plot_style-${DUNE_PLOT_STYLE_LATEST_TAG}
 
 python3 -m pip install .
-pip install examples/matplotlib/plotting_helpers.py
 cd ../../
+
+pip install -r requirements.txt
