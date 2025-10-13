@@ -18,7 +18,7 @@ cd matplotlib_dunestyle_examles
 
 #### Using venv:
 ```bash
-python -m venv venv
+python3 -m venv .venv
 source venv/bin/activate  # On Windows: venv\Scripts\activate
 ```
 
