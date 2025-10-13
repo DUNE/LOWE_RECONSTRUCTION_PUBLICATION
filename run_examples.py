@@ -54,7 +54,7 @@ def main():
     
     print(f"\n{'='*60}")
     print("All examples completed!")
-    print(f"Check the '{script_path.rsplit('/', 1)[0]}/images' directory for output files")
+    print(f"Check the '{script_path.rsplit('/', 2)[0]}/images' directory for output files")
     print(f"{'='*60}")
 
 if __name__ == '__main__':
