@@ -92,15 +92,17 @@ parser.add_argument(
     '--logy',
     action='store_true',
     help='Set y-axis to logarithmic scale',
-    default=True,
+    default=False,
 )
-
 
 parser.add_argument(
     '--debug', "-d",
     action='store_true',
     help='Enable debug mode',
 )
+
+
+
 args = parser.parse_args()
 
 
@@ -132,7 +134,7 @@ def main():
         for value in sorted(unique_values):
             subset = df_config[df_config[iterable] == value]
             subset = subset.explode(column=[args.x, args.y])
-            plt.hist(subset[args.x], bins=len(subset[args.x].unique()), weights=subset[args.y], histtype='step', label=f"{iterable}={value}")
+            plt.hist(subset[args.x], bins=len(subset[args.x].unique()), weights=subset[args.y], histtype='step', label=f"{value}")
         
         plt.xlabel(f"Cluster {variable} (%)")
         plt.ylabel(args.labely)
@@ -141,8 +143,8 @@ def main():
         if args.logx:
             plt.xscale('log')
         
-        plt.legend()
-        plt.title(f"Cluster {variable} Distribution - {config}", fontsize=18)
+        plt.legend(title=iterable, title_fontsize=14, fontsize=12)
+        plt.title(f"Cluster Distribution - {config}", fontsize=18)
         # dunestyle.WIP()
         
         output_dir = os.path.join(os.path.dirname(__file__), '..', 'plots')
