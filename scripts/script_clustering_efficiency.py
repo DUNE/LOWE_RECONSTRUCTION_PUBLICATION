@@ -41,7 +41,7 @@ parser.add_argument(
 parser.add_argument(
     '--datafile',
     type=str,
-    default="Cluster_Purity",
+    default="Clustering_Efficiency",
     help='Path to the input data file (pkl format)',
 )
 
@@ -54,11 +54,25 @@ parser.add_argument(
 )
 
 parser.add_argument(
-    '-x',
+    '--variables', '-v',
     type=str,
-    default="Purity",
+    default=["Purity", "Completeness"],
     help='Column name for x-axis values',
 )
+
+parser.add_argument(
+    '--logx',
+    action='store_true',
+    help='Set x-axis to logarithmic scale',
+    default=False,
+)
+
+parser.add_argument(
+    '-x',
+    type=str,
+    default="Values",
+    help='Column name for x-axis values',
+),
 
 parser.add_argument(
     '-y',
@@ -68,19 +82,22 @@ parser.add_argument(
 ),
 
 parser.add_argument(
+    '--labely',
+    type=str,
+    default="Density",
+    help='Label for y-axis on plot',
+)
+
+parser.add_argument(
     '--logy',
     action='store_true',
     help='Set y-axis to logarithmic scale',
+    default=True,
 )
 
-parser.add_argument(
-    '--logx',
-    action='store_true',
-    help='Set x-axis to logarithmic scale',
-)
 
 parser.add_argument(
-    '--debug',
+    '--debug', "-d",
     action='store_true',
     help='Enable debug mode',
 )
@@ -108,26 +125,29 @@ def main():
         print(df)
 
     # Select the entries in the dataframe with with name matching args.name and nake a plot for each iterable
-    for config, iterable in product(args.configs, args.iterables):
+    for config, variable, iterable in product(args.configs, args.variables, args.iterables):
+        df_config = df[(df['Config'] == config) & (df["Variable"] == variable)]
         plt.figure()
-        unique_values = df[iterable].unique()
+        unique_values = df_config[iterable].unique()
         for value in sorted(unique_values):
-            subset = df[df[iterable] == value]
+            subset = df_config[df_config[iterable] == value]
+            subset = subset.explode(column=[args.x, args.y])
             plt.hist(subset[args.x], bins=len(subset[args.x].unique()), weights=subset[args.y], histtype='step', label=f"{iterable}={value}")
         
-        plt.xlabel(args.x.replace('_', ' ').title())
-        plt.ylabel(args.y.replace('_', ' ').title())
+        plt.xlabel(f"Cluster {variable} (%)")
+        plt.ylabel(args.labely)
         if args.logy:
             plt.yscale('log')
         if args.logx:
             plt.xscale('log')
         
         plt.legend()
-        dunestyle.WIP()
+        plt.title(f"Cluster {variable} Distribution - {config}", fontsize=18)
+        # dunestyle.WIP()
         
         output_dir = os.path.join(os.path.dirname(__file__), '..', 'plots')
         os.makedirs(output_dir, exist_ok=True)
-        output_file = os.path.join(output_dir, f"{config}_{args.name}_{args.datafile}.png")
+        output_file = os.path.join(output_dir, f"{config.lower()}_{args.name.lower()}_{variable.lower()}.png")
         plt.savefig(output_file)
         
         print(f"Plot saved to {output_file}")
