@@ -27,51 +27,32 @@ pip install -r requirements.txt
 
 ### Running Examples
 
-Run all examples at once:
+After having installed the dune_plot_style repo. Run all examples at once:
 ```bash
 python run_examples.py
 ```
 
 Or run individual examples:
 ```bash
-python examples/example_lineplot.py
-python examples/example_histogram.py
-python examples/example_errorbar.py
-python examples/example_2dplot.py
-python examples/example_multipanel.py
+python styles/dune_plot_style*/examples/example_lineplot.py
+python styles/dune_plot_style*/examples/example_histogram.py
+python styles/dune_plot_style*/examples/example_errorbar.py
+python styles/dune_plot_style*/examples/example_2dplot.py
+python styles/dune_plot_style*/examples/example_multipanel.py
 ```
 
 Output plots will be saved in the `plots/` directory.
-
-## Repository Structure
-
-```
-matplotlib_dunestyle_examles/
-├── examples/           # Example plotting scripts
-│   ├── example_lineplot.py      # Basic line plots
-│   ├── example_histogram.py     # Histograms for distributions
-│   ├── example_errorbar.py      # Data with uncertainties
-│   ├── example_2dplot.py        # 2D heatmaps and contours
-│   └── example_multipanel.py    # Multi-panel figures
-├── styles/            # Matplotlib style configurations
-│   └── dunestyle.mplstyle      # DUNE plot style
-├── data/              # Place your data files here
-├── plots/             # Output directory for generated plots
-├── requirements.txt   # Python dependencies
-└── run_examples.py    # Script to run all examples
-```
 
 ## Using DUNE Style in Your Plots
 
 To use the DUNE style in your own scripts:
 
 ```python
-import matplotlib.pyplot as plt
 import os
+import matplotlib.pyplot as plt
 
-# Load DUNE style
-style_path = 'styles/dunestyle.mplstyle'
-plt.style.use(style_path)
+# Use DUNE style
+import dunestyle.matplotlib as dunestyle
 
 # Create your plot
 fig, ax = plt.subplots()
@@ -83,23 +64,6 @@ ax.set_title('My DUNE Plot')
 # Save with high resolution
 plt.savefig('plots/my_plot.png', dpi=300, bbox_inches='tight')
 ```
-
-## Examples Included
-
-### 1. Line Plot (`example_lineplot.py`)
-Demonstrates basic line plotting with multiple series, legends, and labels.
-
-### 2. Histogram (`example_histogram.py`)
-Shows how to create histograms for distributions, typical in physics analyses.
-
-### 3. Error Bars (`example_errorbar.py`)
-Illustrates plotting data points with uncertainties in both x and y directions.
-
-### 4. 2D Plots (`example_2dplot.py`)
-Creates heatmaps and contour plots for 2D data visualization.
-
-### 5. Multi-Panel Plots (`example_multipanel.py`)
-Demonstrates creating complex figures with multiple subplots.
 
 ## DUNE Style Features
 
