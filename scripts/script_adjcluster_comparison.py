@@ -3,8 +3,8 @@
 
 
 """
-Example 1: Simple Line Plot with DUNE Style
-Demonstrates basic line plotting with custom styling
+Script 6: Combined Line Plot with DUNE Style
+Demonstrates combined data plotting with custom styling
 """
 # Import config from __init__.py
 from lib import *

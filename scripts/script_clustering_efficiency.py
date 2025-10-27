@@ -3,8 +3,8 @@
 
 
 """
-Example 1: Simple Line Plot with DUNE Style
-Demonstrates basic line plotting with custom styling
+Script 5: Simple Line Plot with DUNE Style
+Demonstrates basic df column plotting with custom styling
 """
 
 from lib import *

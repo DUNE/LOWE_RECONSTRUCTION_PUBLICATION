@@ -3,7 +3,7 @@
 
 
 """
-Example 1: Simple Line Plot with DUNE Style
+Script 1: Simple Line Plot with DUNE Style
 Demonstrates basic line plotting with custom styling
 """
 

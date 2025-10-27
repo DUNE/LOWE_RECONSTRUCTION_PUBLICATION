@@ -3,8 +3,8 @@
 
 
 """
-Example 1: Simple Line Plot with DUNE Style
-Demonstrates basic line plotting with custom styling
+Script 2: Simple Line Plot with DUNE Style in Efficiency Context
+Demonstrates basic line plotting and range selection with custom styling
 """
 
 from lib import *
