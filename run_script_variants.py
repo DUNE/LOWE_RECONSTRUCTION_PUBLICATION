@@ -24,6 +24,7 @@ def run_script(script_name):
 
 if __name__ == "__main__":
     scripts = [
+        "scripts/script_nhit_scan.py",
         "scripts/script_preselection_efficiency.py",
         "scripts/script_clustering_efficiency.py --logy",
         "scripts/script_adjcluster_comparison.py --logx --logy",
