@@ -6,18 +6,8 @@
 Example 1: Simple Line Plot with DUNE Style
 Demonstrates basic line plotting with custom styling
 """
-
-import os
-import pickle
-import argparse
-import matplotlib.pyplot as plt
-import pandas as pd
-import numpy as np
-
-from itertools import product
-
-# Use DUNE style
-import dunestyle.matplotlib as dunestyle
+# Import config from __init__.py
+from lib import *
 
 # Import with args parser
 parser = argparse.ArgumentParser(

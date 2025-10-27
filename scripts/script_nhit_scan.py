@@ -17,7 +17,7 @@ parser.add_argument(
     '--configs',
     nargs='+',
     type=str,
-    default=["hd_1x2x6", "vd_1x8x14_3view_30deg"],
+    default=["hd_1x2x6_centralAPA"],
     help='DUNE detector configuration(s) to include in the plot (e.g. hd_1x2x6_centralAPA, hd_1x2x6, etc.)',
 )
 
@@ -31,7 +31,7 @@ parser.add_argument(
 parser.add_argument(
     '--datafile',
     type=str,
-    default="Preselection_Efficiency",
+    default="NHit_Distributions",
     help='Path to the input data file (pkl format)',
 )
 
@@ -67,14 +67,14 @@ parser.add_argument(
 parser.add_argument(
     '-y',
     type=str,
-    default="Efficiency",
+    default="Density",
     help='Column name for y-axis values',
 ),
 
 parser.add_argument(
     '--labely',
     type=str,
-    default="Efficiecy (%)",
+    default="Density",
     help='Label for y-axis on plot',
 )
 
@@ -134,7 +134,7 @@ def main():
             plt.xscale('log')
         
         plt.legend(title=iterable, title_fontsize=14, fontsize=12)
-        plt.title(f"Cluster Preselection - {config}", fontsize=18)
+        plt.title(f"NHit Scan - {config}", fontsize=18)
         # dunestyle.WIP()
         
         output_dir = os.path.join(os.path.dirname(__file__), '..', 'plots')
