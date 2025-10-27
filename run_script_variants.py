@@ -28,6 +28,10 @@ if __name__ == "__main__":
         "scripts/script_preselection_efficiency.py",
         "scripts/script_clustering_efficiency.py --logy",
         "scripts/script_adjcluster_comparison.py --logx --logy",
+        "scripts/script_compare_hist1d.py -x ChargePerEnergy --labely 'Density' --labelx 'TPC Conversion Factor (ADC x tick / MeV)'",
+        "scripts/script_compare_hist2d.py --logz",
+        "scripts/script_compare_hist1d.py --datafile PrimaryEnergy_Electron_Calibration -c Calibrated -i '#Hits' -s 1 2 3 -x TrueEnergy -y RawEnergy --labely 'Density' --labelx 'True - Reco Energy (MeV)' --percentile 1 90",
+        "scripts/script_compare_hist2d.py --datafile PrimaryEnergy_Electron_Calibration -c Calibrated -i '#Hits' -s 1 2 3 -x TrueEnergy -y RawEnergy --labelx 'True Electron Energy (MeV)' --labely 'Raw Electron Energy (MeV)' --diagonal --logz",
     ]
 
     all_results = []
