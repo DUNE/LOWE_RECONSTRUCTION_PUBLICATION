@@ -32,8 +32,9 @@ parser.add_argument(
 parser.add_argument(
     '--datafile',
     type=str,
-    default="Charge_Lifetime_Correction",
+    default=None,
     help='Path to the input data file (pkl format)',
+    required=True,
 )
 
 parser.add_argument(
@@ -62,22 +63,28 @@ parser.add_argument(
     '--iterables', '-i',
     nargs='+',
     type=str,
-    default=[],
+    default=None,
     help='List of iterable parameters to produce plots',
 )
 
 parser.add_argument(
     '--save_values', '-s',
     nargs='+',
-    type=int,
-    default=[3],
+    default=None,
     help='If iterable value is provided, save plots for which iterable equals this value',
 )
 
 parser.add_argument(
     '--comparable', '-c',
     type=str,
-    default='Corrected',
+    default=None,
+    help='Column name for comparable data',
+)
+
+parser.add_argument(
+    '--bins', '-b',
+    type=int,
+    default=nbins,
     help='Column name for comparable data',
 )
 
@@ -103,6 +110,27 @@ parser.add_argument(
 )
 
 parser.add_argument(
+    '--zoom',
+    action='store_true',
+    help='Zoom into overlapping percentile ranges',
+    default=False,
+)
+
+parser.add_argument(
+    '--matchx',
+    action='store_true',
+    help='Match x-axis ranges across subplots',
+    default=False,
+)
+
+parser.add_argument(
+    '--matchy',
+    action='store_true',
+    help='Match y-axis ranges across subplots',
+    default=False,
+)
+
+parser.add_argument(
     '--diagonal',
     action='store_true',
     help='Draw diagonal line',
@@ -120,6 +148,9 @@ args = parser.parse_args()
 
 
 def main():
+    if args.datafile is None:
+        print("Error: --datafile argument is required.")
+        return
     # For each configuration provided combine the data files and plot the results
     df = pd.DataFrame()
     for config, name in product(args.configs, args.names):
@@ -132,6 +163,7 @@ def main():
             data = pickle.load(f)
         # Append to df
         df = pd.concat([df, pd.DataFrame(data)], ignore_index=True)
+    
     if df.empty:
         print("No data to plot. Exiting.")
         return
@@ -141,21 +173,42 @@ def main():
 
     # Select the entries in the dataframe with name matching args.name and make a plot for each iterable
     if args.iterables is None or len(args.iterables) == 0:
-        args.iterables = [""]
-        df [""] = None  # Dummy iterable column
+        args.iterables = ["Iterable"]
+        df["Iterable"] = None  # Dummy iterable column
+    if args.comparable is None:
+        args.comparable = "Comparable"
+        df["Comparable"] = None  # Dummy iterable column
     
     for config, name, iterable in product(args.configs, args.names, args.iterables):
         for jdx, value in enumerate(df[iterable].unique()):
-            if len(args.iterables) > 0 and value not in args.save_values and iterable != "":
+            if args.save_values is None and value is not None and ~np.isnan(float(value)):
+                print(f"Skipping value {value} ({type(value)}) for iterable {iterable} since --save_values not provided")
                 continue
+            elif args.save_values is not None and str(value) not in args.save_values and iterable != "Iterable":
+                print(f"Skipping value {value} ({type(value)}) for iterable {iterable} since not in --save_values {args.save_values}")
+                continue
+            else:
+                pass
             
             ranges = []
-            fig, ax = plt.subplots(nrows=1, ncols=len(df[args.comparable].unique()), figsize=(6 * len(df[args.comparable].unique()), 5), constrained_layout=True)
+            ncols = len(df[args.comparable].unique())
+            fig, ax = plt.subplots(nrows=1, ncols=ncols, figsize=(7 + 4*(len(df[args.comparable].unique())-1), 5), constrained_layout=True)
             for idx, compare in enumerate(df[args.comparable].unique()):
-                df_iter = df[(df[args.comparable] == compare) & (df['Config'] == config) & (df['Name'] == name)]
-                if iterable != "":
-                    df_iter = df_iter[df_iter[iterable] == value]
+                df_iter = df[(df['Config'] == config) & (df['Name'] == name)]
+                # Convert df_iter[iterable] to string for comparison
+                if iterable != "Iterable":
+                    if args.save_values is None:
+                        df_iter = df_iter[df_iter[iterable].isna()]
+                    else:
+                        df_iter[iterable] = df_iter[iterable].astype(str)
+                        if args.debug:
+                            print(f"Filtering for {iterable} == {value}")
+                        df_iter = df_iter[df_iter[iterable] == str(value)]
+                if args.comparable != "Comparable":
+                    df_iter = df_iter[df_iter[args.comparable] == compare]
 
+                if args.debug:
+                    print(f"Plotting for {iterable}={value}, {args.comparable}={compare}, config={config}, name={name}, entries={len(df_iter)}")
                 x = np.array(df_iter[args.x].values[0])  # Convert to NumPy array
                 y = np.array(df_iter[args.y].values[0])  # Convert to NumPy array
                 
@@ -163,7 +216,8 @@ def main():
                 y_range = [np.percentile(y, args.percentile[0]), np.percentile(y, args.percentile[1])]
                 if idx == 0:
                     ranges = [x_range, y_range]
-                else:
+                
+                elif args.zoom:
                     if x_range[0] > ranges[0][0]:
                         ranges[0][0] = x_range[0]
                     if x_range[1] < ranges[0][1]:
@@ -173,33 +227,46 @@ def main():
                     if y_range[1] < ranges[1][1]:
                         ranges[1][1] = y_range[1]
                 
-                hist2d = ax[idx].hist2d(
+                if ncols == 1:
+                    ax_current = ax
+                else:
+                    ax_current = ax[idx]
+
+
+                hist2d = ax_current.hist2d(
                     x, y,
-                    bins=100,
+                    bins=args.bins,
                     range=(x_range, y_range),
                     norm=LogNorm() if args.logz else None,
                     density=True,
                 )
                 if args.diagonal:
-                    ax[idx].plot(ranges[1], ranges[1], color='k' if args.logz else 'white', linestyle='--')
+                    ax_current.plot(ranges[1], ranges[1], color='k' if args.logz else 'white', linestyle='--')
 
             cbar = fig.colorbar(hist2d[3], ax=ax)
             cbar.set_label('Density' if not args.logz else 'Density (log scale)')
             cbar.ax.yaxis.set_label_position('right')  # Move label to the left
+            
             for idx, compare in enumerate(df[args.comparable].unique()):
-                ax[idx].set_xlabel(args.labelx)
-                ax[idx].set_ylabel(args.labely) if idx == 0 else None
-                ax[idx].set_title(f"{args.comparable}: {compare}", fontsize=14)
-                ax[idx].set_xlim(ranges[0])
-                ax[idx].set_ylim(ranges[1])
+                if ncols == 1:
+                    ax_current = ax
+                else:
+                    ax_current = ax[idx]
+                ax_current.set_title(f"{args.comparable}: {compare}" if compare is not None else None, fontsize=14)
+                ax_current.set_xlabel(args.labelx)
+                ax_current.set_ylabel(args.labely) if idx == 0 else None
+                if args.matchx:
+                    ax_current.set_xlim(ranges[0])
+                if args.matchy:
+                    ax_current.set_ylim(ranges[1])
 
             # Set title
-            fig.suptitle(f"Charge Lifetime Correction - {config}", fontsize=18)
+            fig.suptitle(f"{iterable}: {value} - {config}", fontsize=18)
             # dunestyle.WIP()
             
             output_dir = os.path.join(os.path.dirname(__file__), '..', 'plots')
             os.makedirs(output_dir, exist_ok=True)
-            output_file = os.path.join(output_dir, f"{config.lower()}_{name.lower()}_{args.datafile.lower()}_{iterable.lower()}{value}_hist2d.png")
+            output_file = os.path.join(output_dir, f"{config.lower()}_{name.lower()}_{args.datafile.lower()}_{iterable.lower().replace('#','n')}{value}_hist2d.png")
             plt.savefig(output_file)
             
             print(f"Plot saved to {output_file}")

@@ -32,8 +32,9 @@ parser.add_argument(
 parser.add_argument(
     '--datafile',
     type=str,
-    default="Charge_Lifetime_Correction",
+    default=None,
     help='Path to the input data file (pkl format)',
+    required=True,
 )
 
 parser.add_argument(
@@ -69,7 +70,7 @@ parser.add_argument(
     '--iterables', '-i',
     nargs='+',
     type=str,
-    default=[],
+    default=None,
     help='List of iterable parameters to produce plots',
 )
 
@@ -77,14 +78,21 @@ parser.add_argument(
     '--save_values', '-s',
     nargs='+',
     type=int,
-    default=[3],
+    default=None,
     help='If iterable value is provided, save plots for which iterable equals this value',
 )
 
 parser.add_argument(
     '--comparable', '-c',
     type=str,
-    default='Corrected',
+    default=None,
+    help='Column name for comparable data',
+)
+
+parser.add_argument(
+    '--bins', '-b',
+    type=int,
+    default=nbins,
     help='Column name for comparable data',
 )
 
@@ -128,6 +136,9 @@ args = parser.parse_args()
 
 
 def main():
+    if args.datafile is None:
+        print("Error: --datafile argument is required.")
+        return
     # For each configuration provided combine the data files and plot the results
     df = pd.DataFrame()
     for config, name in product(args.configs, args.names):
@@ -149,23 +160,42 @@ def main():
 
     # Select the entries in the dataframe with name matching args.name and make a plot for each iterable
     if args.iterables is None or len(args.iterables) == 0:
-        args.iterables = [""]
-        df [""] = None  # Dummy iterable column
+        args.iterables = ["Iterable"]
+        df["Iterable"] = None  # Dummy iterable column
+    if args.comparable is None:
+        args.comparable = "Comparable"
+        df["Comparable"] = None  # Dummy iterable column
     
     for config, name, iterable in product(args.configs, args.names, args.iterables):
         for jdx, value in enumerate(df[iterable].unique()):
-            if len(args.iterables) > 0 and value not in args.save_values and iterable != "":
-                continue
-
+            if args.iterables == ["Iterable"]:
+                pass
+            else:
+                if args.save_values is None and ~np.isnan(value):
+                    continue
+                elif args.save_values is not None and value not in args.save_values:
+                    continue
+                else:
+                    pass
+            
             plt.figure()
             ax = plt.axes()
             hist_range = []
             for idx, compare in enumerate(df[args.comparable].unique()):
                 df_iter = df[(df[args.comparable] == compare) & (df['Config'] == config) & (df['Name'] == name)]
-                if iterable != "":
-                    df_iter = df_iter[df_iter[iterable] == value]
-
+                if iterable != "Iterable":
+                    if args.save_values is None:
+                        df_iter = df_iter[df_iter[iterable].isna()]
+                    else:
+                        df_iter = df_iter[df_iter[iterable] == value]
+                else:
+                    pass
+                
+                if len(df_iter) == 0:
+                    print(f"No data for {compare} in {config} {name} {iterable}={value}, skipping.")
+                    continue
                 x = np.array(df_iter[args.x].values[0])  # Convert to NumPy array
+                
                 if args.y is None:
                     data = x
                 else:
@@ -182,7 +212,7 @@ def main():
                 if hist_range == []:
                     hist_range = [np.percentile(data, args.percentile[0]), np.percentile(data, args.percentile[1])]
                 
-                plt.hist(data, histtype='step', label=f"{compare}", bins=100, range=hist_range, density=(args.labely == "Density"))
+                plt.hist(data, histtype='step', label=f"{compare}" if args.comparable != "Comparable" else f"{iterable}" if args.comparable != "Iterable" else None, bins=args.bins, range=hist_range, density=(args.labely == "Density"))
 
             if args.logx:
                 ax.set_xscale('log')
@@ -196,12 +226,12 @@ def main():
             plt.xlabel(args.labelx)
             plt.ylabel(args.labely)
             # Set title
-            plt.title(f"Distribution - {config}", fontsize=18)
+            plt.title(f"{iterable}: {value} - {config}" if args.iterables != ["Iterable"] else f"{args.comparable} Distribution - {config}", fontsize=18)
             # dunestyle.WIP()
             
             output_dir = os.path.join(os.path.dirname(__file__), '..', 'plots')
             os.makedirs(output_dir, exist_ok=True)
-            output_file = os.path.join(output_dir, f"{config.lower()}_{name.lower()}_{args.datafile.lower()}_{iterable.lower()}{value}_hist1d.png")
+            output_file = os.path.join(output_dir, f"{config.lower()}_{name.lower()}_{args.datafile.lower()}_{iterable.lower().replace('#','n')}{value}_hist1d.png")
             plt.savefig(output_file)
             
             print(f"Plot saved to {output_file}")
