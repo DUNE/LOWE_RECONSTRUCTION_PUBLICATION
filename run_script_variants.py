@@ -26,7 +26,7 @@ if __name__ == "__main__":
     scripts = [
         "scripts/script_iterable_scan.py --datafile NHit_Distributions --name marley_official -v SignalParticleK",
         "scripts/script_iterable_scan.py --datafile Background -y Counts -x Energy --iterables PDG Particle --labely 'Counts per Energy 1/(kT·years·MeV)' --logy",
-        "scripts/script_iterable_scan.py --name marley_official --datafile Cumulative_Vertex_Error -y Error -x Values --iterables Energy -v X Y Z --labelx 'Vertex Error (cm)' --labely 'Sample Size (%)' --logx",
+        "scripts/script_iterable_scan.py --name marley_official --datafile Cumulative_Vertex_Error -y Sample -x Values --iterables Energy -v X Y Z --labelx 'Vertex Error (cm)' --labely 'Sample Size (%)' --logx",
         "scripts/script_preselection_efficiency.py",
         "scripts/script_clustering_efficiency.py --logy",
         "scripts/script_adjcluster_comparison.py --logx --logy",
@@ -36,9 +36,13 @@ if __name__ == "__main__":
         "scripts/script_compare_hist2d.py --datafile Charge_Lifetime_Correction -x Time -y ChargePerEnergy -c Corrected -i '#Hits' --logz  --zoom",
         "scripts/script_compare_hist1d.py --datafile PrimaryEnergy_Electron_Calibration -c Calibrated -i '#Hits' -s 2 -x TrueEnergy -y RawEnergy --labely 'Density' --labelx 'True - Reco Energy (MeV)' --percentile 1 90",
         "scripts/script_compare_hist2d.py --datafile PrimaryEnergy_Electron_Calibration -c Calibrated -i '#Hits' -s 2 -x TrueEnergy -y RawEnergy --labelx 'True Electron Energy (MeV)' --labely 'Raw Electron Energy (MeV)' --diagonal --logz --zoom",
+        "scripts/script_compare_hist2d.py --datafile CheatedEnergy_Electron_Calibration -i '#Hits' -s 3 -e 1 -x TrueEnergy -y RawEnergy --labelx 'True Electron Energy (MeV)' --labely 'Reconstructed Electron Energy (MeV)' --diagonal --logz",
+        "scripts/script_compare_hist1d.py --datafile Vertex_Smearing -c 'Coordinate' -x TrueCoordinate -y RecoCoordinate -o subtract --labelx 'True - Reco (cm)' --labely 'Density' --logy",
         "scripts/script_compare_hist2d.py --datafile Vertex_Smearing -c 'Coordinate' -x TrueCoordinate -y RecoCoordinate --labelx 'True Coordinate (cm)' --labely 'Reconstructed Coordinate (cm)' --diagonal --logz",
         "scripts/script_compare_hist2d.py --datafile Vertex_Smearing -i 'Coordinate' -s X Y Z -x TrueCoordinate -y RecoCoordinate --labelx 'True Coordinate (cm)' --labely 'Reconstructed Coordinate (cm)' --diagonal --logz",
         "scripts/script_compare_hist2d.py --datafile AdjCl_Selection -x AdjClR -y AdjClCharge -c Signal --labelx 'Vertex Distance (cm)' --labely 'Adjacent Cluster Charge (ADC x tick)' --logz",
+        "scripts/script_line_fit.py --datafile Electron_Energy_Resolution --name marley_official -x Values -y RMS --labelx 'True Electron Energy (MeV)' --labely 'RMS (True - Reco) / True' -i Clustering Drift '#Hits' -s Ideal True 3"
+        "scripts/script_line_fit.py --datafile Purity_Match_Resolution --name marley_official -x Values -y Density --labelx 'True - Reco (cm)' --labely 'Density' -i Coordinate -s X",
     ]
 
     all_results = []
