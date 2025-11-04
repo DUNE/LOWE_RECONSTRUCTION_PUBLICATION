@@ -60,7 +60,7 @@ parser.add_argument(
 )
 
 parser.add_argument(
-    '--operation',
+    '--operation', '-o',
     type=str,
     default="subtract",
     help='Operation to perform on data (e.g. mean, sum, etc.)',
@@ -77,7 +77,6 @@ parser.add_argument(
 parser.add_argument(
     '--save_values', '-s',
     nargs='+',
-    type=int,
     default=None,
     help='If iterable value is provided, save plots for which iterable equals this value',
 )
@@ -171,9 +170,11 @@ def main():
             if args.iterables == ["Iterable"]:
                 pass
             else:
-                if args.save_values is None and ~np.isnan(value):
+                if args.save_values is None and value is not None and ~np.isnan(float(value)):
+                    print(f"Skipping value {value} ({type(value)}) for iterable {iterable} since --save_values not provided")
                     continue
-                elif args.save_values is not None and value not in args.save_values:
+                elif args.save_values is not None and str(value) not in args.save_values:
+                    print(f"Skipping value {value} ({type(value)}) for iterable {iterable} since not in --save_values {args.save_values}")
                     continue
                 else:
                     pass
@@ -182,14 +183,20 @@ def main():
             ax = plt.axes()
             hist_range = []
             for idx, compare in enumerate(df[args.comparable].unique()):
-                df_iter = df[(df[args.comparable] == compare) & (df['Config'] == config) & (df['Name'] == name)]
+                df_iter = df[(df['Config'] == config) & (df['Name'] == name)]
                 if iterable != "Iterable":
                     if args.save_values is None:
                         df_iter = df_iter[df_iter[iterable].isna()]
                     else:
-                        df_iter = df_iter[df_iter[iterable] == value]
-                else:
-                    pass
+                        df_iter[iterable] = df_iter[iterable].astype(str)
+                        if args.debug:
+                            print(f"Filtering for {iterable} == {value}")
+                        df_iter = df_iter[df_iter[iterable] == str(value)]
+                if args.comparable != "Comparable":
+                    df_iter[args.comparable] = df_iter[args.comparable].astype(str)
+                    if args.debug:
+                        print(f"Filtering for {args.comparable} == {compare}")
+                    df_iter = df_iter[df_iter[args.comparable] == str(compare)]
                 
                 if len(df_iter) == 0:
                     print(f"No data for {compare} in {config} {name} {iterable}={value}, skipping.")

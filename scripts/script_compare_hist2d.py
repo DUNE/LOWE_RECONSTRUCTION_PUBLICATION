@@ -82,6 +82,13 @@ parser.add_argument(
 )
 
 parser.add_argument(
+    '--entry', '-e',
+    type=int,
+    default=None,
+    help='Entry in df to plot in case multiple entries exist',
+)
+
+parser.add_argument(
     '--bins', '-b',
     type=int,
     default=nbins,
@@ -181,14 +188,17 @@ def main():
     
     for config, name, iterable in product(args.configs, args.names, args.iterables):
         for jdx, value in enumerate(df[iterable].unique()):
-            if args.save_values is None and value is not None and ~np.isnan(float(value)):
-                print(f"Skipping value {value} ({type(value)}) for iterable {iterable} since --save_values not provided")
-                continue
-            elif args.save_values is not None and str(value) not in args.save_values and iterable != "Iterable":
-                print(f"Skipping value {value} ({type(value)}) for iterable {iterable} since not in --save_values {args.save_values}")
-                continue
-            else:
+            if args.iterables == ["Iterable"]:
                 pass
+            else:
+                if args.save_values is None and value is not None and ~np.isnan(float(value)):
+                    print(f"Skipping value {value} ({type(value)}) for iterable {iterable} since --save_values not provided")
+                    continue
+                elif args.save_values is not None and str(value) not in args.save_values:
+                    print(f"Skipping value {value} ({type(value)}) for iterable {iterable} since not in --save_values {args.save_values}")
+                    continue
+                else:
+                    pass
             
             ranges = []
             ncols = len(df[args.comparable].unique())
@@ -204,13 +214,23 @@ def main():
                         if args.debug:
                             print(f"Filtering for {iterable} == {value}")
                         df_iter = df_iter[df_iter[iterable] == str(value)]
+                
                 if args.comparable != "Comparable":
                     df_iter = df_iter[df_iter[args.comparable] == compare]
 
                 if args.debug:
                     print(f"Plotting for {iterable}={value}, {args.comparable}={compare}, config={config}, name={name}, entries={len(df_iter)}")
-                x = np.array(df_iter[args.x].values[0])  # Convert to NumPy array
-                y = np.array(df_iter[args.y].values[0])  # Convert to NumPy array
+                
+                if len(df_iter[args.x].values) > 1 and args.entry is None:
+                    print(f"Warning: Multiple entries found for {iterable}={value}, {args.comparable}={compare}. Using the first entry.")                
+                    x = np.array(df_iter[args.x].values[0])  # Convert to NumPy array
+                    y = np.array(df_iter[args.y].values[0])  # Convert to NumPy array
+                elif args.entry is not None:
+                    x = np.array(df_iter[args.x].values[args.entry])
+                    y = np.array(df_iter[args.y].values[args.entry])
+                else:
+                    x = np.array(df_iter[args.x].values[0])
+                    y = np.array(df_iter[args.y].values[0])
                 
                 x_range = [np.percentile(x, args.percentile[0]), np.percentile(x, args.percentile[1])]
                 y_range = [np.percentile(y, args.percentile[0]), np.percentile(y, args.percentile[1])]

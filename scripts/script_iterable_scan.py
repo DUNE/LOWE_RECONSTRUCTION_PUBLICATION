@@ -156,8 +156,12 @@ def main():
                 subset = subset[(subset["Variable"] == variable)]
             subset = subset.explode(column=[args.x, args.y])
             x = subset[args.x].astype(float)
+            x_error = subset[f"Error"].astype(float) if f"Error" in subset.columns else None
             y = subset[args.y].astype(float)
-            ax_current.hist(x, bins=len(x), weights=y, histtype='step', label=f"{value}" if idx == ncols -1 else None)
+            if x_error is not None:
+                ax_current.errorbar(x, y, yerr=x_error, fmt='o', label=f"{value} Error" if idx == ncols -1 else None)
+            else:
+                ax_current.hist(x, bins=len(x), weights=y, histtype='step', label=f"{value}" if idx == ncols -1 else None)
         
         for idx, variable in enumerate(args.variables):
             if ncols == 1:
