@@ -39,7 +39,7 @@ parser.add_argument(
     '--iterables',
     nargs='+',
     type=str,
-    default=['#Hits'],
+    default=None,
     help='List of iterable parameters to produce plots',
 )
 
@@ -64,6 +64,13 @@ parser.add_argument(
     default="Density",
     help='Column name for y-axis values',
 ),
+
+parser.add_argument(
+    '--stacked',
+    action='store_true',
+    help='Create stacked histograms',
+    default=False,
+)
 
 parser.add_argument(
     '--labelx',
@@ -129,21 +136,32 @@ def main():
         print(df)
 
 
-    if args.iterables is None or len(args.iterables) == 0:
+    if args.iterables is None:
         args.iterables = ["Iterable"]
         df["Iterable"] = None  # Dummy iterable column
     
     if args.variables is None:
         args.variables = [None]
-        df["Variable"] = None  # Dummy iterable column
+        if "Variable" not in df.columns:
+            df["Variable"] = None  # Dummy iterable column
+    
     # Select the entries in the dataframe with with name matching args.name and nake a plot for each iterable
-    ncols = len(df["Variable"].unique())
+    if args.variables == [None]:
+        ncols = 1
+    else:
+        ncols = len(df["Variable"].unique())
+    
+    print(f"Number of unique variables for plotting: {ncols}")
     for config, iterable in product(args.configs, args.iterables):
-        fig, ax = plt.subplots(nrows=1, ncols=ncols, figsize=(8 + 5*(len(df["Variable"].unique())-1), 6), constrained_layout=ncols > 1)
-        df_config = df[(df['Config'] == config)]
+        print(f"Plotting for Config: {config}, Iterable: {iterable}")
 
+        fig, ax = plt.subplots(nrows=1, ncols=ncols, figsize=(8 + 5*(ncols-1), 6), constrained_layout=ncols > 1)
+        df_config = df[(df['Config'] == config)]
+        print(f"Dataframe entries for this config and iterable: {len(df_config)}, Unique iterable values: {df_config[iterable].unique()}")
+        bottom = None
         for (idx, variable), value in product(enumerate(args.variables), df_config[iterable].unique()):
             if value is None:
+                print("Skipping None iterable value")
                 continue
             
             if ncols == 1:
@@ -154,20 +172,42 @@ def main():
             subset = df_config[df_config[iterable] == value]
             if variable is not None:
                 subset = subset[(subset["Variable"] == variable)]
-            subset = subset.explode(column=[args.x, args.y])
+            
+
+            subset = subset.explode(column=[args.x, args.y, "Error"] if "Error" in subset.columns else [args.x, args.y])
             x = subset[args.x].astype(float)
             x_error = subset[f"Error"].astype(float) if f"Error" in subset.columns else None
             y = subset[args.y].astype(float)
+            if bottom is None:
+                bottom = np.zeros(len(x)) if args.stacked else None
+            
+            if "PDG" in iterable:
+                print(f"Mapping PDG codes to particle names for iterable {iterable}")
+                if isinstance(value, int):
+                    value_str = particle_dict.get(int(value), str(value))
+                    value = value_str
             if x_error is not None:
-                ax_current.errorbar(x, y, yerr=x_error, fmt='o', label=f"{value} Error" if idx == ncols -1 else None)
+                print(f"Plotting {len(x)} points with error bars for {iterable}={value}, Variable={variable}")
+                if args.stacked:
+                    ax_current.bar(x, y, yerr=x_error, label=f"{value} Error" if idx == ncols -1 else None, bottom=bottom)
+                    bottom += y.values
+                else:
+                    ax_current.errorbar(x, y, yerr=x_error, fmt='o', label=f"{value} Error" if idx == ncols -1 else None)
             else:
-                ax_current.hist(x, bins=len(x), weights=y, histtype='step', label=f"{value}" if idx == ncols -1 else None)
+                print(f"Plotting {len(x)} points for {iterable}={value}, Variable={variable}")
+                if args.stacked:
+                    # ax_current.hist(x, bins=len(x), weights=y, histtype='stepfilled', stacked=True, label=f"{value}" if idx == ncols -1 else None)
+                    ax_current.bar(x, y, label=f"{value}" if idx == ncols -1 else None, bottom=bottom)
+                    bottom += y.values
+                else:
+                    ax_current.hist(x, bins=len(x), weights=y, histtype='step', label=f"{value}" if idx == ncols -1 else None)
         
         for idx, variable in enumerate(args.variables):
             if ncols == 1:
                 ax_current = ax
             else:
                 ax_current = ax[idx]
+            
             ax_current.set_title(f"Variable: {variable}" if variable is not None else None, fontsize=14)
             ax_current.set_xlabel(args.labelx if args.labelx is not None else f"{args.x}")
             ax_current.set_ylabel(args.labely if args.labely is not None else f"{args.y}") if idx == 0 else None
@@ -175,10 +215,14 @@ def main():
                 ax_current.semilogy()
             if args.logx:
                 ax_current.semilogx()
-            ax_current.legend(title=iterable, title_fontsize=14, fontsize=12) if idx == ncols - 1 else None
+            if args.stacked:
+                if idx == ncols - 1:
+                    ax_current.legend(title=iterable, title_fontsize=14, fontsize=12, loc='upper left', bbox_to_anchor=(0, 1))
+            else:
+                ax_current.legend(title=iterable, title_fontsize=14, fontsize=12) if idx == ncols - 1 else None
 
 
-        fig.suptitle(f"{iterable} Scan - {config}", fontsize=18)
+        fig.suptitle(f'{args.datafile.replace("_", " ")} {iterable} Scan - {config}', fontsize=18)
         # dunestyle.WIP()
         
         output_dir = os.path.join(os.path.dirname(__file__), '..', 'plots')
