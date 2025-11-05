@@ -24,12 +24,14 @@ def run_script(script_name):
 
 if __name__ == "__main__":
     scripts = [
+        "scripts/script_preselection_efficiency.py",
+        "scripts/script_clustering_efficiency.py --logy",
+        "scripts/script_configuration_comparison.py --datafile Adjacent_Cluster_Distributions --configs hd_1x2x6_lateralAPA vd_1x8x14_3view_30deg_nominal -v AdjClMainE AdjClEnergy -y Count --iterable Signal --labelx 'True Particle Energy (MeV)' 'Reconstructed Cluster Energy (MeV)' --labely 'Counts per Event' --logx --logy",
+        "scripts/script_configuration_comparison.py --datafile Vertex_Reconstruction_Efficiency -y Efficiency --variables X Y Z -e Energy Sigma --labelx 'True Drift Distance (cm)' 'True Y Coordinate (cm)' 'True Z Coordinate (cm)' --labely 'Reconstruction Efficiency (%)'",
+        "scripts/script_configuration_comparison.py --datafile Fiducial_Efficiency -y Efficiency --variables X Y Z -e Energy Sigma --labelx 'Fiducial Cut (cm)' --labely 'Reconstruction Efficiency (%)'",
         "scripts/script_iterable_scan.py --datafile NHit_Distributions --name marley_official -v SignalParticleK",
         "scripts/script_iterable_scan.py --datafile Background -y Counts -x Energy --iterables PDG Particle --labely 'Counts per Energy 1/(kT·years·MeV)' --logy",
         "scripts/script_iterable_scan.py --name marley_official --datafile Cumulative_Vertex_Error -y Sample -x Values --iterables Energy -v X Y Z --labelx 'Vertex Error (cm)' --labely 'Sample Size (%)' --logx",
-        "scripts/script_preselection_efficiency.py",
-        "scripts/script_clustering_efficiency.py --logy",
-        "scripts/script_adjcluster_comparison.py --logx --logy",
         "scripts/script_compare_hist1d.py --datafile Charge_Lifetime_Correction -x ChargePerEnergy -c Corrected -i '#Hits' --labely 'Density' --labelx 'TPC Conversion Factor (ADC x tick / MeV)'",
         "scripts/script_compare_hist1d.py --datafile Charge_Lifetime_Correction -x ChargePerEnergy -c Corrected -i '#Hits' --labely 'Density' --labelx 'TPC Conversion Factor (ADC x tick / MeV)' -s 1 2 3",
         "scripts/script_compare_hist1d.py --datafile Charge_Lifetime_Correction -x ChargePerEnergy -c '#Hits' --percentile 1 90 --labely 'Density' --labelx 'TPC Conversion Factor (ADC x tick / MeV)'",
