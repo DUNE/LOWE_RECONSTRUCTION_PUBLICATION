@@ -202,7 +202,7 @@ def main():
             
             ranges = []
             ncols = len(df[args.comparable].unique())
-            fig, ax = plt.subplots(nrows=1, ncols=ncols, figsize=(7 + 4*(len(df[args.comparable].unique())-1), 5), constrained_layout=True)
+            fig, ax = plt.subplots(nrows=1, ncols=ncols, figsize=(8 + 5*(ncols-1), 6), constrained_layout=ncols > 1)
             for idx, compare in enumerate(df[args.comparable].unique()):
                 df_iter = df[(df['Config'] == config) & (df['Name'] == name)]
                 # Convert df_iter[iterable] to string for comparison
@@ -261,7 +261,7 @@ def main():
                     density=True,
                 )
                 if args.diagonal:
-                    ax_current.plot(ranges[1], ranges[1], color='k' if args.logz else 'white', linestyle='--')
+                    ax_current.plot(x_range, x_range, color='k' if args.logz else 'white', linestyle='--')
 
             cbar = fig.colorbar(hist2d[3], ax=ax)
             cbar.set_label('Density' if not args.logz else 'Density (log scale)')

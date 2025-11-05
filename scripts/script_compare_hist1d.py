@@ -179,7 +179,7 @@ def main():
                 else:
                     pass
             
-            plt.figure()
+            plt.figure(figsize=(8, 6))
             ax = plt.axes()
             hist_range = []
             for idx, compare in enumerate(df[args.comparable].unique()):

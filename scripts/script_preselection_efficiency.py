@@ -119,7 +119,7 @@ def main():
     # Select the entries in the dataframe with with name matching args.name and nake a plot for each iterable
     for config, variable, iterable in product(args.configs, args.variables, args.iterables):
         df_config = df[(df['Config'] == config) & (df["Variable"] == variable)]
-        plt.figure()
+        plt.figure(figsize=(8, 6))
         unique_values = df_config[iterable].unique()
         for value in sorted(unique_values):
             subset = df_config[df_config[iterable] == value]

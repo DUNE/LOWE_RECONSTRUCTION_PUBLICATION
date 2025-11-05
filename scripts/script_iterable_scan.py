@@ -139,7 +139,7 @@ def main():
     # Select the entries in the dataframe with with name matching args.name and nake a plot for each iterable
     ncols = len(df["Variable"].unique())
     for config, iterable in product(args.configs, args.iterables):
-        fig, ax = plt.subplots(nrows=1, ncols=ncols, figsize=(7 + 4*(len(df["Variable"].unique())-1), 5), constrained_layout=True)
+        fig, ax = plt.subplots(nrows=1, ncols=ncols, figsize=(8 + 5*(len(df["Variable"].unique())-1), 6), constrained_layout=ncols > 1)
         df_config = df[(df['Config'] == config)]
 
         for (idx, variable), value in product(enumerate(args.variables), df_config[iterable].unique()):
