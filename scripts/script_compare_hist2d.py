@@ -98,7 +98,7 @@ parser.add_argument(
 parser.add_argument(
     '--labelx',
     type=str,
-    default=r"Time ($\mu$s)",
+    default=None,
     help='Label for x-axis on plot',
 )
 
@@ -135,6 +135,13 @@ parser.add_argument(
     action='store_true',
     help='Match y-axis ranges across subplots',
     default=False,
+)
+
+parser.add_argument(
+    '--horizontal',
+    type=float,
+    default=None,
+    help='Draw horizontal line at specified y value',
 )
 
 parser.add_argument(
@@ -191,14 +198,24 @@ def main():
             if args.iterables == ["Iterable"]:
                 pass
             else:
-                if args.save_values is None and value is not None and ~np.isnan(float(value)):
-                    print(f"Skipping value {value} ({type(value)}) for iterable {iterable} since --save_values not provided")
-                    continue
-                elif args.save_values is not None and str(value) not in args.save_values:
-                    print(f"Skipping value {value} ({type(value)}) for iterable {iterable} since not in --save_values {args.save_values}")
-                    continue
-                else:
-                    pass
+                if isinstance(value, float):
+                    if args.save_values is None and value != None and ~np.isnan(float(value)):
+                        print(f"Skipping value {value} ({type(value)}) for iterable {iterable} since --save_values not provided")
+                        continue
+                    elif args.save_values != None and str(value) not in args.save_values:
+                        print(f"Skipping value {value} ({type(value)}) for iterable {iterable} since not in --save_values {args.save_values}")
+                        continue
+                    else:
+                        pass
+                if isinstance(value, str):
+                    if args.save_values is None and value != None and value.lower() != "nan":
+                        print(f"Skipping value {value} ({type(value)}) for iterable {iterable} since --save_values not provided")
+                        continue
+                    elif args.save_values != None and str(value) not in args.save_values:
+                        print(f"Skipping value {value} ({type(value)}) for iterable {iterable} since not in --save_values {args.save_values}")
+                        continue
+                    else:
+                        pass
             
             ranges = []
             ncols = len(df[args.comparable].unique())
@@ -225,7 +242,7 @@ def main():
                     print(f"Warning: Multiple entries found for {iterable}={value}, {args.comparable}={compare}. Using the first entry.")                
                     x = np.array(df_iter[args.x].values[0])  # Convert to NumPy array
                     y = np.array(df_iter[args.y].values[0])  # Convert to NumPy array
-                elif args.entry is not None:
+                elif args.entry != None:
                     x = np.array(df_iter[args.x].values[args.entry])
                     y = np.array(df_iter[args.y].values[args.entry])
                 else:
@@ -262,6 +279,8 @@ def main():
                 )
                 if args.diagonal:
                     ax_current.plot(x_range, x_range, color='k' if args.logz else 'white', linestyle='--')
+                if args.horizontal != None:
+                    ax_current.axhline(args.horizontal, color='k' if args.logz else 'white', linestyle='--')
 
             cbar = fig.colorbar(hist2d[3], ax=ax)
             cbar.set_label('Density' if not args.logz else 'Density (log scale)')
@@ -272,8 +291,8 @@ def main():
                     ax_current = ax
                 else:
                     ax_current = ax[idx]
-                ax_current.set_title(f"{args.comparable}: {compare}" if compare is not None else None, fontsize=14)
-                ax_current.set_xlabel(args.labelx)
+                ax_current.set_title(f"{args.comparable}: {compare}" if compare != None else None, fontsize=14)
+                ax_current.set_xlabel(args.labelx if args.labelx != None else f"{args.x}" if args.x != "Time" else r"Time ($\mu$s)")
                 ax_current.set_ylabel(args.labely) if idx == 0 else None
                 if args.matchx:
                     ax_current.set_xlim(ranges[0])
@@ -281,7 +300,7 @@ def main():
                     ax_current.set_ylim(ranges[1])
 
             # Set title
-            fig.suptitle(f"{iterable}: {value} - {config}", fontsize=18)
+            fig.suptitle(f'{args.datafile.replace("_", " ")} ' + (f"{iterable}: {value} " if value != None else "") + f"- {config}", fontsize=18)
             # dunestyle.WIP()
             
             output_dir = os.path.join(os.path.dirname(__file__), '..', 'plots')
