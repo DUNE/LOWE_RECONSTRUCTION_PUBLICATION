@@ -38,9 +38,24 @@ parser.add_argument(
 
 parser.add_argument(
     '--iterable', '-i',
+    nargs='+',
+    type=str,
+    default=None,
+    help='List of iterable parameters to produce plots',
+)
+
+parser.add_argument(
+    '--save_values', '-s',
+    nargs='+',
+    default=None,
+    help='If iterable value is provided, save plots for which iterable equals this value',
+)
+
+parser.add_argument(
+    '--comparable', '-c',
     type=str,
     default='Config',
-    help='List of iterable parameters to produce plots',
+    help='List of comparable parameter to produce plots',
 )
 
 parser.add_argument(
@@ -49,14 +64,6 @@ parser.add_argument(
     type=str,
     default=None,
     help='Row filter variable name',
-)
-
-parser.add_argument(
-    '--exclusive', '-e',
-    nargs='+',
-    type=str,
-    default=None,
-    help='Column name for exclusive filtering',
 )
 
 parser.add_argument(
@@ -135,17 +142,19 @@ def main():
         args.variables = [""]
         df["Variable"] = ""
     
-    # Prepare the df filtering. The argument 'exclusive' allows to filter the dataframe to only include rows with unique values in the specified columns
+    # Prepare the df filtering. The argument 'iterable' allows to filter the dataframe to only include rows with unique values in the specified columns
     unique_values = {}
-    for col in args.exclusive or []:
+    for col in args.iterable or []:
         if col not in df.columns:
-            print(f"Exclusive filter column '{col}' not found in data columns.")
+            print(f"Iterable filter column '{col}' not found in data columns.")
             return
         unique_values[col] = df[col].unique()
         if len(unique_values[col]) > 1:
             print(f"Column '{col}' has multiple unique values: {unique_values[col]}.")
 
     # Filter the dataframe to include rows with unique value combinations in the specified columns
+    if args.iterable != None and args.save_values != None:
+        print(f"Applying save_values filter: {args.save_values} for iterables: {args.iterable}")
     unique_combinations = list(product(*unique_values.values()))
     for combination in unique_combinations:
         this_df = df.copy()
@@ -155,7 +164,28 @@ def main():
             else:
                 this_df = this_df[this_df[col] == val]
         if this_df.empty:
-            continue              
+            print(f"No data for combination: {', '.join([f'{col}={val}' for col, val in zip(unique_values.keys(), combination)])}. Skipping.")
+            continue
+        
+        if args.save_values is not None:
+        
+            if len(args.iterable) == len(args.save_values):
+                for i, col in enumerate(args.iterable):
+                    if col in this_df.columns:
+                        if args.save_values[i] == "None":
+                            this_df = this_df[this_df[args.iterable[i]].isna()]
+                        else:
+                            if pd.api.types.is_numeric_dtype(this_df[args.iterable[i]]):
+                                if not this_df.empty:
+                                    try:
+                                        save_value_converted = type(this_df[args.iterable[i]].iloc[0])(args.save_values[i])
+                                        this_df = this_df[this_df[args.iterable[i]] == save_value_converted]
+                                    except ValueError:
+                                        print(f"Warning: Could not convert '{args.save_values[i]}' to type {type(this_df[args.iterable[i]].iloc[0])}. Skipping filter.")
+                            else:
+                                this_df = this_df[this_df[args.iterable[i]] == args.save_values[i]]
+                if this_df.empty:
+                    continue
     
         ncols = len(args.variables)
         fig, ax = plt.subplots(nrows=1, ncols=ncols, figsize=(8 + 5*(ncols-1), 6), constrained_layout=ncols > 1)
@@ -175,12 +205,12 @@ def main():
                 # print(f"Processing Geometry: {geom}")
                 df_geom = df_var[df_var['Geometry'] == geom]
                 
-                for config, (kdx, value) in product(df_geom["Config"].unique(), enumerate(df_geom[args.iterable].unique())):
-                    # print(f"Config: {config}, {args.iterable}: {value}")
-                    df_config = df_geom[(df_geom[args.iterable] == value) & (df_geom['Config'] == config)]
+                for config, (kdx, value) in product(df_geom["Config"].unique(), enumerate(df_geom[args.comparable].unique())):
+                    # print(f"Config: {config}, {args.comparable}: {value}")
+                    df_config = df_geom[(df_geom[args.comparable] == value) & (df_geom['Config'] == config)]
 
                     if len(df_config) > 1:
-                        print(f"Warning: Multiple entries found for Config: {config}, {args.iterable}: {value}. Using the first entry.")
+                        print(f"Warning: Multiple entries found for Config: {config}, {args.comparable}: {value}. Using the first entry.")
                         # Print the df_config for debugging
                         if args.debug:
                             print(df_config)
@@ -239,14 +269,16 @@ def main():
             if jdx == len(args.variables) -1:
                 ax_current.legend()
             
-        
-        fig.suptitle(f'{args.datafile.replace("_", " ")} ({", ".join([f"{col}={val}" for col, val in zip(unique_values.keys(), combination)])})', fontsize=16)
+        figure_title = f"{args.datafile.replace('_', ' ')}"
+        if args.iterable is not None:
+            figure_title += f" ({', '.join([f'{col}={val}' for col, val in zip(unique_values.keys(), combination)])})"
+        fig.suptitle(figure_title, fontsize=titlefontsize)
         # dunestyle.WIP()
             
         output_dir = os.path.join(os.path.dirname(__file__), '..', 'plots')
         os.makedirs(output_dir, exist_ok=True)
         output_filename = f"{args.name.lower()}_{args.datafile.lower()}"
-        if args.exclusive is not None:
+        if args.iterable is not None:
             output_filename += '_' + '_'.join([f"{str(col).lower()}{str(combination[idx]).lower()}" for idx, col in enumerate(unique_values.keys())])
         # Add variables to filename
         if args.variables != [""]:

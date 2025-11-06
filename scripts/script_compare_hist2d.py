@@ -75,6 +75,14 @@ parser.add_argument(
 )
 
 parser.add_argument(
+    '--variables', '-v',
+    nargs='+',
+    type=str,
+    default=None,
+    help='List of variable parameters to filter data (e.g. SignalParticleK, BackgroundType, etc.)',
+)
+
+parser.add_argument(
     '--comparable', '-c',
     type=str,
     default=None,
@@ -189,11 +197,18 @@ def main():
     if args.iterables is None or len(args.iterables) == 0:
         args.iterables = ["Iterable"]
         df["Iterable"] = None  # Dummy iterable column
+
+    if args.variables is None:
+        args.variables = [None]
+        if "Variable" not in df.columns:
+            df["Variable"] = None  # Dummy iterable column
+    
     if args.comparable is None:
         args.comparable = "Comparable"
         df["Comparable"] = None  # Dummy iterable column
     
-    for config, name, iterable in product(args.configs, args.names, args.iterables):
+    
+    for config, name, iterable, variable in product(args.configs, args.names, args.iterables, args.variables):
         for jdx, value in enumerate(df[iterable].unique()):
             if args.iterables == ["Iterable"]:
                 pass
@@ -234,6 +249,9 @@ def main():
                 
                 if args.comparable != "Comparable":
                     df_iter = df_iter[df_iter[args.comparable] == compare]
+
+                if variable is not None:
+                    df_iter = df_iter[(df_iter["Variable"] == variable)]
 
                 if args.debug:
                     print(f"Plotting for {iterable}={value}, {args.comparable}={compare}, config={config}, name={name}, entries={len(df_iter)}")
@@ -300,15 +318,28 @@ def main():
                     ax_current.set_ylim(ranges[1])
 
             # Set title
-            fig.suptitle(f'{args.datafile.replace("_", " ")} ' + (f"{iterable}: {value} " if value != None else "") + f"- {config}", fontsize=18)
+            fig.suptitle(f'{args.datafile.replace("_", " ")} ' + (f"{iterable}: {value} " if value != None else "") + f"- {config}", fontsize=titlefontsize)
             # dunestyle.WIP()
             
             output_dir = os.path.join(os.path.dirname(__file__), '..', 'plots')
             os.makedirs(output_dir, exist_ok=True)
-            output_file = os.path.join(output_dir, f"{config.lower()}_{name.lower()}_{args.datafile.lower()}_{iterable.lower().replace('#','n')}{value}_hist2d.png")
-            plt.savefig(output_file)
+            output_file = ""
+            if config is not None:
+                output_file += f"{config.lower()}"
+            if name is not None:
+                output_file += f"_{name.lower()}"
+            output_file += f"_{args.datafile.lower()}"
+            if variable is not None:
+                output_file += f"_{variable.lower()}"
+            if args.comparable != "Comparable":
+                output_file += f"_{args.comparable.lower()}"
+            if iterable != "Iterable":
+                output_file += f"_{iterable.lower()}{str(value).lower()}"
+            output_file += "_hist2d.png"
+
+            plt.savefig(os.path.join(output_dir, output_file.replace('#','n')))            
             
-            print(f"Plot saved to {output_file}")
+            print(f"Plot saved to {os.path.join(output_dir, output_file.replace('#','n'))}")
             plt.close()
 
 if __name__ == '__main__':

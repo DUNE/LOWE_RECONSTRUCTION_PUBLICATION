@@ -44,6 +44,13 @@ parser.add_argument(
 )
 
 parser.add_argument(
+    '--save_values', '-s',
+    nargs='+',
+    default=None,
+    help='If iterable value is provided, save plots for which iterable equals this value',
+)
+
+parser.add_argument(
     '--variables', '-v',
     nargs='+',
     type=str,
@@ -172,7 +179,6 @@ def main():
             subset = df_config[df_config[iterable] == value]
             if variable is not None:
                 subset = subset[(subset["Variable"] == variable)]
-            
 
             subset = subset.explode(column=[args.x, args.y, "Error"] if "Error" in subset.columns else [args.x, args.y])
             x = subset[args.x].astype(float)
@@ -235,7 +241,8 @@ def main():
         if variable is not None:
             output_file += f"_{variable.lower()}"
         if iterable != "Iterable":
-            output_file += f"_{iterable.lower().replace('#','n')}_scan.png"
+            output_file += f"_{iterable.lower().replace('#','n')}"
+        output_file += "_scan.png"
 
         plt.savefig(os.path.join(output_dir, output_file))
         
