@@ -156,7 +156,7 @@ def main():
     if args.variables == [None]:
         ncols = 1
     else:
-        ncols = len(df["Variable"].unique())
+        ncols = len(args.variables)
     
     print(f"Number of unique variables for plotting: {ncols}")
     for config, iterable in product(args.configs, args.iterables):
@@ -214,21 +214,25 @@ def main():
             else:
                 ax_current = ax[idx]
             
-            ax_current.set_title(f"Variable: {variable}" if variable is not None else None, fontsize=14)
+            if ncols > 1:
+                ax_current.set_title(f"Variable: {variable}" if variable is not None else None, fontsize=subtitlefontsize)
             ax_current.set_xlabel(args.labelx if args.labelx is not None else f"{args.x}")
             ax_current.set_ylabel(args.labely if args.labely is not None else f"{args.y}") if idx == 0 else None
+            if args.y == "Efficiency" or args.labely == "Efficiency (%)":
+                ax_current.set_ylim(0, 105)
+                # Draw horizontal line at 100%
+                ax_current.axhline(100, color='gray', linestyle='--', linewidth=1)
             if args.logy:
                 ax_current.semilogy()
             if args.logx:
                 ax_current.semilogx()
             if args.stacked:
                 if idx == ncols - 1:
-                    ax_current.legend(title=iterable, title_fontsize=14, fontsize=12, loc='upper left', bbox_to_anchor=(0, 1))
+                    ax_current.legend(title=iterable, title_fontsize=legendtitlefontsize, fontsize=legendfontsize, loc='upper left', bbox_to_anchor=(0, 1))
             else:
-                ax_current.legend(title=iterable, title_fontsize=14, fontsize=12) if idx == ncols - 1 else None
+                ax_current.legend(title=iterable, title_fontsize=legendtitlefontsize, fontsize=legendfontsize) if idx == ncols - 1 else None
 
-
-        fig.suptitle(f'{args.datafile.replace("_", " ")} {iterable} Scan - {config}', fontsize=18)
+        fig.suptitle(f'{args.datafile.replace("_", " ")} {iterable} Scan - {config}', fontsize=titlefontsize)
         # dunestyle.WIP()
         
         output_dir = os.path.join(os.path.dirname(__file__), '..', 'plots')
