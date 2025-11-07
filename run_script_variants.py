@@ -24,8 +24,9 @@ def run_script(script_name):
 
 if __name__ == "__main__":
     scripts = [
-        "scripts/script_preselection_efficiency.py",
         "scripts/script_clustering_efficiency.py --logy",
+        "scripts/script_iterable_scan.py --datafile Preselection_Efficiency --config hd_1x2x6 vd_1x8x14_3view_30deg --name marley_official -v SignalParticleK --iterables '#Hits' -y Efficiency --labely 'Efficiency (%)'",
+        "scripts/script_iterable_scan.py --datafile Preselection_Efficiency --config hd_1x2x6 vd_1x8x14_3view_30deg --name marley_official -v SignalParticleX SignalParticleY SignalParticleZ --iterables '#Hits' -y Efficiency --labely 'Efficiency (%)'",
         "scripts/script_iterable_scan.py --datafile Neutrino_CC_Fraction --config hd_1x2x6 --name marley_official -y TSignalSumK -x 'SignalParticleK' --iterables PDG --labelx 'True Neutrino Energy (MeV)' --labely 'Neutrino Kinetic Energy Fraction' --stacked",
         "scripts/script_iterable_scan.py --datafile Cheated_Calibration_Fit --config hd_1x2x6 --name marley_official -y FitValue -x '#Hits' --iterables Variable --labelx 'Number of Hits'",
         "scripts/script_iterable_scan.py --datafile Primary_Calibration_Fit --config hd_1x2x6 --name marley_official -y FitValue -x '#Hits' --iterables Variable --labelx 'Number of Hits'",
