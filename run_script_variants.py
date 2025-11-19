@@ -46,6 +46,7 @@ if __name__ == "__main__":
         "scripts/script_compare_hist2d.py --datafile Vertex_Smearing -c 'Coordinate' -x TrueCoordinate -y RecoCoordinate --labelx 'True Coordinate (cm)' --labely 'Reconstructed Coordinate (cm)' --diagonal --logz",
         "scripts/script_compare_hist2d.py --datafile Vertex_Smearing -i 'Coordinate' -s X Y Z -x TrueCoordinate -y RecoCoordinate --labelx 'True Coordinate (cm)' --labely 'Reconstructed Coordinate (cm)' --diagonal --logz",
         "scripts/script_compare_hist2d.py --datafile AdjCl_Selection -x AdjClR -y AdjClCharge -c Signal --labelx 'Vertex Distance (cm)' --labely 'Adjacent Cluster Charge (ADC x tick)' --logz",
+        "scripts/script_compare_hist2d.py --datafile Neutrino_Energy -x TrueEnergy -y RecoEnergy -c Variable --labelx 'True Neutrino Energy (MeV)' --labely 'Reconstructed Neutrino Energy (MeV)' --matchx --matchy --diagonal --logz",
         "scripts/script_compare_hist2d.py --datafile Neutrino_Energy -x TrueEnergy -y RecoEnergy -c Calibrated -s SelectedEnergy --labelx 'True Neutrino Energy (MeV)' --labely 'Reconstructed Neutrino Energy (MeV)' --diagonal --logz",
         "scripts/script_line_fit.py --datafile Electron_Energy_Resolution --name marley_official -x Values -y RMS --labelx 'True Electron Energy (MeV)' --labely 'RMS (True - Reco) / True' -i Clustering Drift '#Hits' -s Ideal True 3"
         "scripts/script_line_fit.py --datafile Purity_Match_Resolution --name marley_official -x Values -y Density --labelx 'True - Reco (cm)' --labely 'Density' -i Coordinate -s X",
@@ -61,7 +62,7 @@ if __name__ == "__main__":
         "scripts/script_configuration_comparison.py --datafile Electron_Energy_Resolution -y RMS -i Clustering Drift '#Hits' -s ideal none 3 --labelx 'True Electron Energy (MeV)' --labely 'RMS (True - Reco) / True'",
         "scripts/script_configuration_comparison.py --datafile Electron_Energy_Resolution -y RMS -i Clustering Drift '#Hits' -s ideal true 1 --labelx 'True Electron Energy (MeV)' --labely 'RMS (True - Reco) / True'",
         "scripts/script_configuration_comparison.py --datafile Electron_Energy_Resolution -y RMS -i Clustering Drift '#Hits' -s reco reco 1 --labelx 'True Electron Energy (MeV)' --labely 'RMS (True - Reco) / True'",
-        "scripts/script_configuration_comparison.py --datafile Neutrino_Energy_Resolution -y RMS -v TotalEnergy SelectedEnergy -i Drift '#Hits' -s reco 3 --labelx 'True Neutrino Energy (MeV)' --labely 'RMS (True - Reco) / True'",
+        "scripts/script_configuration_comparison.py --datafile Neutrino_Energy_Resolution -y RMS -v TotalEnergy SelectedEnergy -i Drift '#Hits' -s Reco 3 --labelx 'True Neutrino Energy (MeV)' --labely 'RMS (True - Reco) / True'",
     ]
 
     all_results = []
