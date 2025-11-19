@@ -163,6 +163,7 @@ def main():
                 this_df = this_df[this_df[col].isna()]
             else:
                 this_df = this_df[this_df[col] == val]
+            # print(f"Filtering {col}={val}, resulting entries: {len(this_df)}")
         if this_df.empty:
             print(f"No data for combination: {', '.join([f'{col}={val}' for col, val in zip(unique_values.keys(), combination)])}. Skipping.")
             continue
@@ -178,12 +179,34 @@ def main():
                             if pd.api.types.is_numeric_dtype(this_df[args.iterable[i]]):
                                 if not this_df.empty:
                                     try:
+                                        # print(f"Applying save_value filter: {args.save_values[i]} of type {type(args.save_values[i])} for column: {col} of type {this_df[args.iterable[i]].dtype}, resulting entries before filter: {len(this_df)}")
                                         save_value_converted = type(this_df[args.iterable[i]].iloc[0])(args.save_values[i])
-                                        this_df = this_df[this_df[args.iterable[i]] == save_value_converted]
+                                        # print(f"Converted save_value: {save_value_converted} to type {type(this_df[args.iterable[i]].iloc[0])}")
+                                        this_df = this_df[this_df[args.iterable[i]] == save_value_converted]  # Ensure comparison is done as strings
+
                                     except ValueError:
                                         print(f"Warning: Could not convert '{args.save_values[i]}' to type {type(this_df[args.iterable[i]].iloc[0])}. Skipping filter.")
+                            
+                            elif this_df[args.iterable[i]].dtype == 'object':
+                                # Check if the column contains the value as is
+                                if args.save_values[i] in this_df[args.iterable[i]].values:
+                                    # print(f"Value '{args.save_values[i]}' found in column '{col}' as is. Applying filter.")
+                                    this_df = this_df[this_df[args.iterable[i]] == args.save_values[i]]
+                                else:
+                                    # Convert both to string for comparison
+                                    # print(f"Value '{args.save_values[i]}' not found in column '{col}' as is (choose from {this_df[args.iterable[i]].unique()}). Trying string comparison.")
+                                    this_df[args.iterable[i]] = this_df[args.iterable[i]].astype(str)
+                                    this_df = this_df[this_df[args.iterable[i]].astype(str) == str(args.save_values[i])]
+                                    # print(f"Applying save_value filter: {args.save_values[i]} of type {type(args.save_values[i])} for column: {col} of type {this_df[args.iterable[i]].dtype}, resulting entries after filter: {len(this_df)}")
+
+                            
                             else:
-                                this_df = this_df[this_df[args.iterable[i]] == args.save_values[i]]
+                                this_df[args.iterable[i]] = this_df[args.iterable[i]].astype(str)
+                                this_df = this_df[this_df[args.iterable[i]].astype(str) == str(args.save_values[i])]
+                                # print(f"Applying save_value filter: {args.save_values[i]} of type {type(args.save_values[i])} for column: {col} of type {this_df[args.iterable[i]].dtype}, resulting entries after filter: {len(this_df)}")
+                
+                    # print(f"Resulting entries after filter: {len(this_df)}")
+                
                 if this_df.empty:
                     continue
     
