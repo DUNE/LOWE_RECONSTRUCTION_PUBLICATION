@@ -95,7 +95,29 @@ parser.add_argument(
 )
 
 parser.add_argument(
+    '--chi2',
+    action='store_true',
+    help='Display chi2 on the plot',
+    default=False,
+)
+
+parser.add_argument(
+    '--errory',
+    action='store_true',
+    help='Set y-axis to show error bars',
+    default=False,
+)
+
+parser.add_argument(
     '--rangex',
+    nargs=2,
+    type=int,
+    default=None,
+    help='Font size for legend',
+)
+
+parser.add_argument(
+    '--rangey',
     nargs=2,
     type=int,
     default=None,
@@ -158,14 +180,14 @@ def main():
         for idx in range(len(subset))[::-1]:
             if np.sum(subset[args.y].values[idx]) < 1:
                 continue
+
             x = subset[args.x].values[idx]
             y = subset[args.y].values[idx]
-            # if f"{args.y}Error" in subset.columns:
-            y_error = subset[f"{args.y}Error"].values[idx]
-            # else:
-            #     print("No y error found in df")
-            #     y_error = None
-            
+            if args.errory == True:
+                y_error = subset[f"{args.y}Error"].values[idx]
+            else:
+                y_error = None
+
             params = subset["Params"].iloc[idx]
             params_format = subset["ParamsFormat"].iloc[idx]
             params_labels = subset["ParamsLabels"].iloc[idx]
@@ -179,10 +201,10 @@ def main():
             jdx = np.where((~np.isnan(residuals)) & (np.isfinite(residuals)) & (np.abs(residuals) < 1e2))[0]
             chi2 = (diff[jdx]**2 / fit[jdx]).sum()
 
-            # if y_error is None:
-            #     axs[0].plot(x, y, marker='o', linestyle='None', label="Data" if len(subset) == 1 else subset["Label"].iloc[idx])
-            # else:
-            axs[0].errorbar(x, y, yerr=y_error, fmt='o', label="Data" if len(subset) == 1 else subset["Label"].iloc[idx])
+            if y_error is None:
+                axs[0].plot(x, y, marker='o', linestyle='None', label="Data" if len(subset) == 1 else subset["Label"].iloc[idx])
+            else:
+                axs[0].errorbar(x, y, yerr=y_error, fmt='o', label="Data" if len(subset) == 1 else subset["Label"].iloc[idx])
 
             if idx == len(subset)-1:
                 # Draw the fit line
@@ -190,25 +212,33 @@ def main():
                 axs[0].set_ylabel(args.labely if args.labely is not None else f"{args.y}", fontsize=14)
                 if args.rangex is not None:
                     axs[0].set_xlim(args.rangex)
+                if args.rangey is not None:
+                    axs[0].set_ylim(args.rangey)
                 if args.logy:
                     axs[0].set_yscale('log')
                 if args.logx:
                     axs[0].set_xscale('log')
 
                 axs[0].set_title(f"{args.datafile.replace('_',' ')} Fit - {config}", fontsize=18)
-                axs[0].text(0.68, 0.60, 'Fit Parameters:',
+                axs[0].text(0.64, 0.90, 'Fit Parameters:',
                     fontdict={'size': 14, 'weight': 'bold'},
                     transform=axs[0].transAxes)
+                
                 for idx, (param_label, param_format, param, param_error) in enumerate(zip(params_labels, params_format, params, params_error)):
-                    axs[0].text(0.68, 0.52 - 0.06*idx, r'{0} = {1:{2}} $\pm$ {3:{2}}'.format(param_label, param, param_format, param_error),
+                    axs[0].text(0.64, 0.82 - 0.06*idx, r'{0} = {1:{2}} $\pm$ {3:{2}}'.format(param_label, param, param_format, param_error),
                         fontdict={"size": 14},
                         transform=axs[0].transAxes)
-                axs[0].text(0.68, 0.52 - 0.06*(idx+1), r'$\chi^2$/ndof = {0:0.2f}/{1:d}'.format(chi2, len(params)),
-                    fontdict={"size": 14},
-                    transform=axs[0].transAxes)
+                if args.chi2:
+                    axs[0].text(0.64, 0.82 - 0.06*(idx+1), r'$\chi^2$/ndof = {0:0.2f}/{1:d}'.format(chi2, len(params)),
+                        fontdict={"size": 14},
+                        transform=axs[0].transAxes)
 
                 # Bottom plot: residuals
-                axs[1].errorbar(x[jdx], residuals[jdx], yerr=y_error[jdx], fmt='o', color='black')
+                if y_error is None:
+                    axs[1].plot(x[jdx], residuals[jdx], marker='o', linestyle='None', color='black')
+                else:
+                    axs[1].errorbar(x[jdx], residuals[jdx], yerr=y_error[jdx], fmt='o', color='black')
+                
                 axs[1].axhline(y=0, color="r", zorder=-1)
                 axs[1].set_xlabel(args.labelx if args.labelx is not None else f"{args.x}", fontsize=xlabelfontsize)
                 axs[1].set_ylabel("(Data - Fit)/Fit", fontsize=ylabelfontsize)

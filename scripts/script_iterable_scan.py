@@ -108,6 +108,13 @@ parser.add_argument(
 )
 
 parser.add_argument(
+    '--connect',
+    action='store_true',
+    help='Connect data points with lines',
+    default=False,
+)
+
+parser.add_argument(
     '--debug', "-d",
     action='store_true',
     help='Enable debug mode',
@@ -166,7 +173,7 @@ def main():
         df_config = df[(df['Config'] == config)]
         print(f"Dataframe entries for this config and iterable: {len(df_config)}, Unique iterable values: {df_config[iterable].unique()}")
         bottom = None
-        for (idx, variable), value in product(enumerate(args.variables), df_config[iterable].unique()):
+        for (idx, variable), (jdx, value) in product(enumerate(args.variables), enumerate(df_config[iterable].unique())):
             if value is None:
                 print("Skipping None iterable value")
                 continue
@@ -181,6 +188,10 @@ def main():
                 subset = subset[(subset["Variable"] == variable)]
 
             subset = subset.explode(column=[args.x, args.y, "Error"] if "Error" in subset.columns else [args.x, args.y])
+            if subset.empty:
+                print(f"No data for iterable {iterable}={value}, Variable={variable}. Skipping.")
+                continue
+                
             x = subset[args.x].astype(float)
             x_error = subset[f"Error"].astype(float) if f"Error" in subset.columns else None
             y = subset[args.y].astype(float)
@@ -189,16 +200,23 @@ def main():
             
             if "PDG" in iterable:
                 print(f"Mapping PDG codes to particle names for iterable {iterable}")
-                if isinstance(value, int):
-                    value_str = particle_dict.get(int(value), str(value))
+                try:
+                    value_int = int(value)
+                    value_str = particle_dict.get(value_int, str(value))
                     value = value_str
+                except (ValueError, TypeError):
+                    pass  # value cannot be converted to int
+            
             if x_error is not None:
                 print(f"Plotting {len(x)} points with error bars for {iterable}={value}, Variable={variable}")
                 if args.stacked:
-                    ax_current.bar(x, y, yerr=x_error, label=f"{value} Error" if idx == ncols -1 else None, bottom=bottom)
+                    ax_current.bar(x, y, yerr=x_error, label=f"{value}" if idx == ncols -1 else None, bottom=bottom)
                     bottom += y.values
                 else:
-                    ax_current.errorbar(x, y, yerr=x_error, fmt='o', label=f"{value} Error" if idx == ncols -1 else None)
+                    ax_current.errorbar(x, y, yerr=x_error, fmt='o', label=f"{value}" if idx == ncols -1 else None, color=f"C{jdx}")
+                    if args.connect:
+                        ax_current.plot(x, y, linestyle='-', color=f"C{jdx}", label=None)
+            
             else:
                 print(f"Plotting {len(x)} points for {iterable}={value}, Variable={variable}")
                 if args.stacked:
@@ -242,8 +260,8 @@ def main():
             output_file += f"{config.lower()}"
         if args.name is not None:
             output_file += f"_{args.name.lower()}"
-        if variable is not None:
-            output_file += f"_{variable.lower()}"
+        if args.variables is not [None]:
+            output_file += f"_{str(args.variables[0]).lower()}" if len(args.variables) == 1 else "_variable"
         if iterable != "Iterable":
             output_file += f"_{iterable.lower().replace('#','n')}"
         output_file += "_scan.png"

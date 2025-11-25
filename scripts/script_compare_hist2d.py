@@ -211,9 +211,21 @@ def main():
     for config, name, iterable, variable in product(args.configs, args.names, args.iterables, args.variables):
         for jdx, value in enumerate(df[iterable].unique()):
             if args.iterables == ["Iterable"]:
+                print("Skipping dummy iterable column")
                 pass
+            
             else:
-                if isinstance(value, float):
+                if isinstance(value, int) or isinstance(value, np.integer):
+                    if args.save_values is None and value != None and value != -1:
+                        print(f"Skipping value {value} ({type(value)}) for iterable {iterable} since --save_values not provided")
+                        continue
+                    elif args.save_values != None and str(value) not in args.save_values:
+                        print(f"Skipping value {value} ({type(value)}) for iterable {iterable} since not in --save_values {args.save_values}")
+                        continue
+                    else:
+                        pass
+                
+                elif isinstance(value, float):
                     if args.save_values is None and value != None and ~np.isnan(float(value)):
                         print(f"Skipping value {value} ({type(value)}) for iterable {iterable} since --save_values not provided")
                         continue
@@ -222,7 +234,8 @@ def main():
                         continue
                     else:
                         pass
-                if isinstance(value, str):
+
+                elif isinstance(value, str):
                     if args.save_values is None and value != None and value.lower() != "nan":
                         print(f"Skipping value {value} ({type(value)}) for iterable {iterable} since --save_values not provided")
                         continue
@@ -231,6 +244,10 @@ def main():
                         continue
                     else:
                         pass
+                
+                else:
+                    print(f"Unknown type {type(value)} for iterable {iterable}. Proceeding without filtering.")
+                    pass
             
             ranges = []
             ncols = len(df[args.comparable].unique())

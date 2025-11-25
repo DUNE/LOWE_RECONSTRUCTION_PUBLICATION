@@ -116,7 +116,6 @@ parser.add_argument(
 )
 args = parser.parse_args()
 
-
 def main():
     # For each configuration provided combine the data files and plot the results
     df = pd.DataFrame()
@@ -150,11 +149,12 @@ def main():
             return
         unique_values[col] = df[col].unique()
         if len(unique_values[col]) > 1:
-            print(f"Column '{col}' has multiple unique values: {unique_values[col]}.")
+            print(f"Column '{col}' has multiple unique values: {unique_values[col]}. of type {type(unique_values[col][0])}")
 
     # Filter the dataframe to include rows with unique value combinations in the specified columns
     if args.iterable != None and args.save_values != None:
         print(f"Applying save_values filter: {args.save_values} for iterables: {args.iterable}")
+    
     unique_combinations = list(product(*unique_values.values()))
     for combination in unique_combinations:
         this_df = df.copy()
@@ -173,10 +173,24 @@ def main():
             if len(args.iterable) == len(args.save_values):
                 for i, col in enumerate(args.iterable):
                     if col in this_df.columns:
-                        if args.save_values[i] == "None":
+                        if args.save_values[i] == "nan":
                             this_df = this_df[this_df[args.iterable[i]].isna()]
+                        
                         else:
-                            if pd.api.types.is_numeric_dtype(this_df[args.iterable[i]]):
+                            # Check for boolean dtype
+                            if pd.api.types.is_bool_dtype(this_df[args.iterable[i]]):
+                                # print(f"Applying boolean save_value filter: {args.save_values[i]} for column: {col}")
+                                if str(args.save_values[i]).lower() in ['true', '1']:
+                                    bool_value = True
+                                elif str(args.save_values[i]).lower() in ['false', '0']:
+                                    bool_value = False
+                                else:
+                                    print(f"Warning: Could not convert '{args.save_values[i]}' to boolean. Skipping filter.")
+                                    continue
+                                this_df = this_df[this_df[args.iterable[i]] == bool_value]
+
+                            elif pd.api.types.is_numeric_dtype(this_df[args.iterable[i]]):
+                                # print(f"Applying numeric save_value filter: {args.save_values[i]} for column: {col}")
                                 if not this_df.empty:
                                     try:
                                         # print(f"Applying save_value filter: {args.save_values[i]} of type {type(args.save_values[i])} for column: {col} of type {this_df[args.iterable[i]].dtype}, resulting entries before filter: {len(this_df)}")
