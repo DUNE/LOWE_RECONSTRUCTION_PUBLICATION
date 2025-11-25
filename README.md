@@ -14,13 +14,15 @@ This repository provides examples and templates for creating consistent, publica
 
 ### Installation
 
-1. Clone this repository:
+1 Clone this repository:
+
 ```bash
 git clone https://github.com/DUNE/matplotlib_dunestyle_examles.git
 cd matplotlib_dunestyle_examles
 ```
 
-2. Install required dependencies:
+2 Installation of required dependencies:
+
 ```bash
 pip install -r requirements.txt
 ```
@@ -28,11 +30,13 @@ pip install -r requirements.txt
 ### Running Examples
 
 After having installed the dune_plot_style repo. Run all examples at once:
+
 ```bash
 python run_examples.py
 ```
 
 Or run individual examples:
+
 ```bash
 python styles/dune_plot_style*/examples/example_lineplot.py
 python styles/dune_plot_style*/examples/example_histogram.py
@@ -64,6 +68,55 @@ ax.set_title('My DUNE Plot')
 # Save with high resolution
 plt.savefig('plots/my_plot.png', dpi=300, bbox_inches='tight')
 ```
+
+## Data Directory
+
+Place your data files here. Supported formats:
+
+- CSV (.csv)
+- NumPy arrays (.npy, .npz)
+- JSON (.json)
+- HDF5 (.h5, .hdf5)
+- ROOT files (.root)
+
+### Example Data Structure
+
+```code
+data/
+├── raw/           # Raw experimental data
+├── processed/     # Processed data ready for plotting
+└── simulated/     # Simulated/MC data
+```
+
+### Loading Data in Your Scripts
+
+```python
+import numpy as np
+import pandas as pd
+
+# Load CSV data
+data = pd.read_csv('data/mydata.csv')
+
+# Load numpy array
+data = np.load('data/mydata.npy')
+```
+
+## Plots Output Directory
+
+Generated plots will be saved here automatically when you run the example scripts.
+
+All plots are saved with:
+
+- High resolution (300 DPI) for publication quality
+- PNG format with tight bounding boxes
+- Consistent DUNE styling
+
+You can also save plots in other formats by changing the extension:
+
+- `.pdf` - Vector format, ideal for publications
+- `.svg` - Scalable vector graphics
+- `.eps` - Encapsulated PostScript
+- `.jpg` - Compressed raster format
 
 ## DUNE Style Features
 
