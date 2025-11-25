@@ -3,7 +3,7 @@
 
 
 """
-Script 7: Fit representation of a Line Plot with DUNE Style
+Script 4: Fit representation of a Line Plot with DUNE Style
 Demonstrates basic line plotting with custom styling and fit representation
 """
 

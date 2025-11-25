@@ -3,7 +3,7 @@
 
 
 """
-Script 3: Simple Histogram Plot with DUNE Style
+Script 2: Simple Histogram Plot with DUNE Style
 Demonstrates basic plotting with custom styling
 """
 

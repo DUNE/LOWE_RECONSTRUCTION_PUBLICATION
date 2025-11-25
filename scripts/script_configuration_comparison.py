@@ -3,7 +3,7 @@
 
 
 """
-Script 6: Combined Line Plot with DUNE Style
+Script 5: Combined Line Plot with DUNE Style
 Demonstrates combined data plotting with custom styling
 """
 # Import config from __init__.py

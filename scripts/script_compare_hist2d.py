@@ -3,7 +3,7 @@
 
 
 """
-Script 4: Simple Heatmap Plot with DUNE Style
+Script 3: Simple Heatmap Plot with DUNE Style
 Demonstrates basic heatmap plotting with custom styling
 """
 
