@@ -17,7 +17,7 @@ parser.add_argument(
     '--configs',
     nargs='+',
     type=str,
-    default=["hd_1x2x6_centralAPA"],
+    default=None,
     help='DUNE detector configuration(s) to include in the plot (e.g. hd_1x2x6_centralAPA, hd_1x2x6, etc.)',
 )
 
@@ -94,6 +94,13 @@ parser.add_argument(
 )
 
 parser.add_argument(
+    '--labelz',
+    type=str,
+    default=None,
+    help='Label for iterable on plot',
+)
+
+parser.add_argument(
     '--logx',
     action='store_true',
     help='Set x-axis to logarithmic scale',
@@ -126,21 +133,28 @@ args = parser.parse_args()
 def main():
     # For each configuration provided combine the data files and plot the results
     df = pd.DataFrame()
-    for config in args.configs:
-        # Import data from pkl datafile
-        if args.name is None:
-            datafile = os.path.join(os.path.dirname(__file__), '..', 'data', f"{config}_{args.datafile}.pkl")
-        else:
-            datafile = os.path.join(os.path.dirname(__file__), '..', 'data', f"{config}_{args.name}_{args.datafile}.pkl")
-        
-        if not os.path.exists(datafile):
-            print(f"Data file not found: {datafile}")
-            continue
-        
+    if args.configs is None:
+        datafile = os.path.join(os.path.dirname(__file__), '..', 'data', f"{args.datafile}.pkl")
         with open(datafile, 'rb') as f:
             data = pickle.load(f)
-        # Append to df
-        df = pd.concat([df, pd.DataFrame(data)], ignore_index=True)
+        df = pd.DataFrame(data)
+    
+    else:
+        for config in args.configs:
+            # Import data from pkl datafile
+            if args.name is None:
+                datafile = os.path.join(os.path.dirname(__file__), '..', 'data', f"{config}_{args.datafile}.pkl")
+            else:
+                datafile = os.path.join(os.path.dirname(__file__), '..', 'data', f"{config}_{args.name}_{args.datafile}.pkl")
+            
+            if not os.path.exists(datafile):
+                print(f"Data file not found: {datafile}")
+                continue
+            
+            with open(datafile, 'rb') as f:
+                data = pickle.load(f)
+            # Append to df
+            df = pd.concat([df, pd.DataFrame(data)], ignore_index=True)
     
     if df.empty:
         print("No data to plot. Exiting.")
@@ -149,6 +163,8 @@ def main():
     if args.debug:
         print(df)
 
+    if args.configs is None:
+        args.configs = [None]
 
     if args.iterables is None:
         args.iterables = ["Iterable"]
@@ -166,11 +182,16 @@ def main():
         ncols = len(args.variables)
     
     print(f"Number of unique variables for plotting: {ncols}")
+    
     for config, iterable in product(args.configs, args.iterables):
         print(f"Plotting for Config: {config}, Iterable: {iterable}")
 
         fig, ax = plt.subplots(nrows=1, ncols=ncols, figsize=(8 + 5*(ncols-1), 6), constrained_layout=ncols > 1)
-        df_config = df[(df['Config'] == config)]
+        if config is None:
+            df_config = df
+        else:
+            df_config = df[(df['Config'] == config)]
+        
         print(f"Dataframe entries for this config and iterable: {len(df_config)}, Unique iterable values: {df_config[iterable].unique()}")
         bottom = None
         for (idx, variable), (jdx, value) in product(enumerate(args.variables), enumerate(df_config[iterable].unique())):
@@ -229,42 +250,64 @@ def main():
         for idx, variable in enumerate(args.variables):
             if ncols == 1:
                 ax_current = ax
+            
             else:
                 ax_current = ax[idx]
             
+            
             if ncols > 1:
                 ax_current.set_title(f"Variable: {variable}" if variable is not None else None, fontsize=subtitlefontsize)
+            
             ax_current.set_xlabel(args.labelx if args.labelx is not None else f"{args.x}")
             ax_current.set_ylabel(args.labely if args.labely is not None else f"{args.y}") if idx == 0 else None
+            
             if args.y == "Efficiency" or args.labely == "Efficiency (%)":
                 ax_current.set_ylim(0, 105)
                 # Draw horizontal line at 100%
                 ax_current.axhline(100, color='gray', linestyle='--', linewidth=1)
+            
             if args.logy:
                 ax_current.semilogy()
+            
             if args.logx:
                 ax_current.semilogx()
+            
             if args.stacked:
                 if idx == ncols - 1:
                     ax_current.legend(title=iterable, title_fontsize=legendtitlefontsize, fontsize=legendfontsize, loc='upper left', bbox_to_anchor=(0, 1))
             else:
                 ax_current.legend(title=iterable, title_fontsize=legendtitlefontsize, fontsize=legendfontsize) if idx == ncols - 1 else None
+            if args.labelz is not None:
+                # Update legend title
+                legend = ax_current.get_legend()
+                if legend is not None:
+                    legend.set_title(args.labelz)
 
-        fig.suptitle(f'{args.datafile.replace("_", " ")} {iterable} Scan - {config}', fontsize=titlefontsize)
+        if config is None:
+            fig.suptitle(f'{args.datafile.replace("_", " ")} {iterable} Scan', fontsize=titlefontsize)
+        else:
+            fig.suptitle(f'{args.datafile.replace("_", " ")} {iterable} Scan - {config}', fontsize=titlefontsize)
         # dunestyle.WIP()
         
         output_dir = os.path.join(os.path.dirname(__file__), '..', 'plots')
         os.makedirs(output_dir, exist_ok=True)
         output_file = ""
+        
         if config is not None:
-            output_file += f"{config.lower()}"
+            output_file += f"{config.lower()}_"
+        
         if args.name is not None:
-            output_file += f"_{args.name.lower()}"
+            output_file += f"{args.name.lower()}_"
+        
+        output_file += f"{args.datafile.lower()}_"
+        
         if args.variables is not [None]:
-            output_file += f"_{str(args.variables[0]).lower()}" if len(args.variables) == 1 else "_variable"
+            output_file += f"{str(args.variables[0]).lower()}_" if len(args.variables) == 1 else "variable_"
+        
         if iterable != "Iterable":
-            output_file += f"_{iterable.lower().replace('#','n')}"
-        output_file += "_scan.png"
+            output_file += f"{iterable.lower().replace('#','n')}_"
+        
+        output_file += "scan.png"
 
         plt.savefig(os.path.join(output_dir, output_file))
         

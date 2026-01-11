@@ -8,7 +8,7 @@ Demonstrates basic line plotting with custom styling and fit representation
 """
 
 from lib import *
-from lib.functions import resolution, gaussian
+from lib.functions import resolution, gaussian, correction_func
 
 # Import with args parser
 parser = argparse.ArgumentParser(
@@ -99,6 +99,13 @@ parser.add_argument(
     action='store_true',
     help='Display chi2 on the plot',
     default=False,
+)
+
+parser.add_argument(
+    '--fitlegendposition',
+    type=tuple,
+    help='Position of the fit legend on the plot as (x,y) coordinates in axes fraction',
+    default=(0.60, 0.90),
 )
 
 parser.add_argument(
@@ -198,6 +205,8 @@ def main():
             diff =  y - fit
             # Find vlaues for which diff is sensible (i.e. not NaN or inf or bigger than 1e6)
             residuals = diff / fit
+            if y_error is not None:
+                residuals_error = y_error / fit
             jdx = np.where((~np.isnan(residuals)) & (np.isfinite(residuals)) & (np.abs(residuals) < 1e2))[0]
             chi2 = (diff[jdx]**2 / fit[jdx]).sum()
 
@@ -220,33 +229,35 @@ def main():
                     axs[0].set_xscale('log')
 
                 axs[0].set_title(f"{args.datafile.replace('_',' ')} Fit - {config}", fontsize=18)
-                axs[0].text(0.64, 0.90, 'Fit Parameters:',
-                    fontdict={'size': 14, 'weight': 'bold'},
+                axs[0].text(args.fitlegendposition[0], args.fitlegendposition[1], 'Fit Parameters:',
+                    fontdict={'size': legendfontsize, 'weight': 'bold'},
                     transform=axs[0].transAxes)
                 
                 for idx, (param_label, param_format, param, param_error) in enumerate(zip(params_labels, params_format, params, params_error)):
-                    axs[0].text(0.64, 0.82 - 0.06*idx, r'{0} = {1:{2}} $\pm$ {3:{2}}'.format(param_label, param, param_format, param_error),
-                        fontdict={"size": 14},
+                    axs[0].text(args.fitlegendposition[0], args.fitlegendposition[1] - 0.08 - 0.06*idx, r'{0} = {1:{2}} $\pm$ {3:{2}}'.format(param_label, param, param_format, param_error),
+                        fontdict={"size": legendfontsize},
                         transform=axs[0].transAxes)
                 if args.chi2:
-                    axs[0].text(0.64, 0.82 - 0.06*(idx+1), r'$\chi^2$/ndof = {0:0.2f}/{1:d}'.format(chi2, len(params)),
-                        fontdict={"size": 14},
+                    axs[0].text(args.fitlegendposition[0], args.fitlegendposition[1] - 0.08 - 0.06*(idx+1), r'$\chi^2$/ndof = {0:0.2f}/{1:d}'.format(chi2, len(params)),
+                        fontdict={"size": legendfontsize},
                         transform=axs[0].transAxes)
 
                 # Bottom plot: residuals
                 if y_error is None:
                     axs[1].plot(x[jdx], residuals[jdx], marker='o', linestyle='None', color='black')
                 else:
-                    axs[1].errorbar(x[jdx], residuals[jdx], yerr=y_error[jdx], fmt='o', color='black')
+                    axs[1].errorbar(x[jdx], residuals[jdx], yerr=residuals_error[jdx], fmt='o', color='black')
                 
                 axs[1].axhline(y=0, color="r", zorder=-1)
                 axs[1].set_xlabel(args.labelx if args.labelx is not None else f"{args.x}", fontsize=xlabelfontsize)
                 axs[1].set_ylabel("(Data - Fit)/Fit", fontsize=ylabelfontsize)
+                
                 if args.rangex is not None:
                     axs[1].set_xlim(args.rangex)
 
                 if np.max(np.abs(residuals[jdx])) < 0.99:
                     axs[1].set_ylim(-0.99,0.99)
+                
                 else:
                     axs[1].set_ylim(0.1, np.max(residuals[jdx]))
                     axs[1].set_yscale('log')

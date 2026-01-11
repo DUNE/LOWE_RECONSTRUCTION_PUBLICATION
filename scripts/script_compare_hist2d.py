@@ -335,7 +335,8 @@ def main():
                     ax_current.set_ylim(ranges[1])
 
             # Set title
-            fig.suptitle(f'{args.datafile.replace("_", " ")} ' + (f"{iterable}: {value} " if value != None else "") + f"- {config}", fontsize=titlefontsize)
+            fig.suptitle(f'{args.datafile.replace("_", " ")} ' + (f"{iterable}: {value} " if isinstance(value, (int, float)) and not np.isnan(value) else "") + f"- {config}", fontsize=titlefontsize)
+            print(value, type(value))
             # dunestyle.WIP()
             
             output_dir = os.path.join(os.path.dirname(__file__), '..', 'plots')

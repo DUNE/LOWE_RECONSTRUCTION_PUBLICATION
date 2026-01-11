@@ -1,6 +1,4 @@
-
 #!/usr/bin/env python3
-
 
 """
 Script 5: Combined Line Plot with DUNE Style
@@ -9,6 +7,8 @@ Demonstrates combined data plotting with custom styling
 # Import config from __init__.py
 from lib import *
 from lib.functions import resolution, gaussian
+from lib.selection import prepare_selection, filter_dataframe
+from lib.imports import import_data
 
 # Import with args parser
 parser = argparse.ArgumentParser(
@@ -18,14 +18,15 @@ parser.add_argument(
     '--configs',
     nargs='+',
     type=str,
-    default=["hd_1x2x6", "hd_1x2x6_centralAPA", "hd_1x2x6_lateralAPA", "vd_1x8x14_3view_30deg", "vd_1x8x14_3view_30deg_nominal"],
+    default=["hd_1x2x6", "hd_1x2x6_lateralAPA", "hd_1x2x6_centralAPA", "vd_1x8x14_3view_30deg", "vd_1x8x14_3view_30deg_nominal"],
     help='DUNE detector configuration(s) to include in the plot (e.g. hd_1x2x6_centralAPA, hd_1x2x6, etc.)',
 )
 
 parser.add_argument(
-    '--name',
+    '--names',
+    nargs='+',
     type=str,
-    default='marley_official',
+    default=['marley_official'],
     help='Name of the simulation configuration (e.g. marley_official, marley, etc.)',
 )
 
@@ -74,6 +75,14 @@ parser.add_argument(
 )
 
 parser.add_argument(
+    '--rangex',
+    nargs=2,
+    type=float,
+    default=None,
+    help='Range for x-axis values',
+)
+
+parser.add_argument(
     '-y',
     type=str,
     default=None,
@@ -110,6 +119,13 @@ parser.add_argument(
 )
 
 parser.add_argument(
+    '--align',
+    type=str,
+    default="mid",
+    help='Alignment of histogram bars (e.g. mid, left, right)',
+)
+
+parser.add_argument(
     '--debug',
     action='store_true',
     help='Enable debug mode',
@@ -117,207 +133,128 @@ parser.add_argument(
 args = parser.parse_args()
 
 def main():
-    # For each configuration provided combine the data files and plot the results
-    df = pd.DataFrame()
-    for config in args.configs:
-        # Import data from pkl datafile
-        datafile = os.path.join(os.path.dirname(__file__), '..', 'data', f"{config}_{args.name}_{args.datafile}.pkl")
-        if not os.path.exists(datafile):
-            print(f"Data file not found: {datafile}")
-            continue
-        with open(datafile, 'rb') as f:
-            data = pickle.load(f)
-        # Append to df
-        df = pd.concat([df, pd.DataFrame(data)], ignore_index=True)
+    """
+    Main function to process simulation configurations, load data files,
+    and generate plots based on the provided arguments.
+    """
+    df = import_data(args)
+
+    # Check if the DataFrame is empty
     if df.empty:
         print("No data to plot. Exiting.")
         return
 
-    if args.debug:
-        print(df)
-
-    # Select the entries in the dataframe with with name matching args.name and nake a plot for each iterable
+    # Set default variable if none are provided
     if args.variables is None:
         args.variables = [""]
         df["Variable"] = ""
     
-    # Prepare the df filtering. The argument 'iterable' allows to filter the dataframe to only include rows with unique values in the specified columns
-    unique_values = {}
-    for col in args.iterable or []:
-        if col not in df.columns:
-            print(f"Iterable filter column '{col}' not found in data columns.")
-            return
-        unique_values[col] = df[col].unique()
-        if len(unique_values[col]) > 1:
-            print(f"Column '{col}' has multiple unique values: {unique_values[col]}. of type {type(unique_values[col][0])}")
-
-    # Filter the dataframe to include rows with unique value combinations in the specified columns
-    if args.iterable != None and args.save_values != None:
-        print(f"Applying save_values filter: {args.save_values} for iterables: {args.iterable}")
+    # Prepare unique combinations and values for plotting
+    unique_combinations, unique_values = prepare_selection(df, args)
     
-    unique_combinations = list(product(*unique_values.values()))
+    # Loop through each unique combination for plotting
     for combination in unique_combinations:
-        this_df = df.copy()
-        for col, val in zip(unique_values.keys(), combination):
-            if val is np.nan or (isinstance(val, float) and np.isnan(val)):
-                this_df = this_df[this_df[col].isna()]
-            else:
-                this_df = this_df[this_df[col] == val]
-            # print(f"Filtering {col}={val}, resulting entries: {len(this_df)}")
+        this_df = filter_dataframe(df, args, unique_values, combination)
+                
+        # Skip if the filtered DataFrame is empty
         if this_df.empty:
-            print(f"No data for combination: {', '.join([f'{col}={val}' for col, val in zip(unique_values.keys(), combination)])}. Skipping.")
             continue
-        
-        if args.save_values is not None:
-        
-            if len(args.iterable) == len(args.save_values):
-                for i, col in enumerate(args.iterable):
-                    if col in this_df.columns:
-                        if args.save_values[i] == "nan":
-                            this_df = this_df[this_df[args.iterable[i]].isna()]
-                        
-                        else:
-                            # Check for boolean dtype
-                            if pd.api.types.is_bool_dtype(this_df[args.iterable[i]]):
-                                # print(f"Applying boolean save_value filter: {args.save_values[i]} for column: {col}")
-                                if str(args.save_values[i]).lower() in ['true', '1']:
-                                    bool_value = True
-                                elif str(args.save_values[i]).lower() in ['false', '0']:
-                                    bool_value = False
-                                else:
-                                    print(f"Warning: Could not convert '{args.save_values[i]}' to boolean. Skipping filter.")
-                                    continue
-                                this_df = this_df[this_df[args.iterable[i]] == bool_value]
-
-                            elif pd.api.types.is_numeric_dtype(this_df[args.iterable[i]]):
-                                # print(f"Applying numeric save_value filter: {args.save_values[i]} for column: {col}")
-                                if not this_df.empty:
-                                    try:
-                                        # print(f"Applying save_value filter: {args.save_values[i]} of type {type(args.save_values[i])} for column: {col} of type {this_df[args.iterable[i]].dtype}, resulting entries before filter: {len(this_df)}")
-                                        save_value_converted = type(this_df[args.iterable[i]].iloc[0])(args.save_values[i])
-                                        # print(f"Converted save_value: {save_value_converted} to type {type(this_df[args.iterable[i]].iloc[0])}")
-                                        this_df = this_df[this_df[args.iterable[i]] == save_value_converted]  # Ensure comparison is done as strings
-
-                                    except ValueError:
-                                        print(f"Warning: Could not convert '{args.save_values[i]}' to type {type(this_df[args.iterable[i]].iloc[0])}. Skipping filter.")
-                            
-                            elif this_df[args.iterable[i]].dtype == 'object':
-                                # Check if the column contains the value as is
-                                if args.save_values[i] in this_df[args.iterable[i]].values:
-                                    # print(f"Value '{args.save_values[i]}' found in column '{col}' as is. Applying filter.")
-                                    this_df = this_df[this_df[args.iterable[i]] == args.save_values[i]]
-                                else:
-                                    # Convert both to string for comparison
-                                    # print(f"Value '{args.save_values[i]}' not found in column '{col}' as is (choose from {this_df[args.iterable[i]].unique()}). Trying string comparison.")
-                                    this_df[args.iterable[i]] = this_df[args.iterable[i]].astype(str)
-                                    this_df = this_df[this_df[args.iterable[i]].astype(str) == str(args.save_values[i])]
-                                    # print(f"Applying save_value filter: {args.save_values[i]} of type {type(args.save_values[i])} for column: {col} of type {this_df[args.iterable[i]].dtype}, resulting entries after filter: {len(this_df)}")
-
-                            
-                            else:
-                                this_df[args.iterable[i]] = this_df[args.iterable[i]].astype(str)
-                                this_df = this_df[this_df[args.iterable[i]].astype(str) == str(args.save_values[i])]
-                                # print(f"Applying save_value filter: {args.save_values[i]} of type {type(args.save_values[i])} for column: {col} of type {this_df[args.iterable[i]].dtype}, resulting entries after filter: {len(this_df)}")
-                
-                    # print(f"Resulting entries after filter: {len(this_df)}")
-                
-                if this_df.empty:
-                    continue
     
         ncols = len(args.variables)
         fig, ax = plt.subplots(nrows=1, ncols=ncols, figsize=(8 + 5*(ncols-1), 6), constrained_layout=ncols > 1)
+        
+        # Loop through each variable for plotting
         for jdx, variable in enumerate(args.variables):
-            if ncols == 1:
-                ax_current = ax
-            else:
-                ax_current = ax[jdx]
+            ax_current = ax if ncols == 1 else ax[jdx]
             
-            if variable != "":
-                df_var = this_df[this_df["Variable"] == variable] 
-            
-            else:
-                df_var = this_df.copy()
-            # plt.figure()
+            # Filter DataFrame based on the current variable
+            df_var = this_df[this_df["Variable"] == variable] if variable != "" else this_df.copy()
+           
+            # Loop through unique geometries for plotting
             for idx, geom in enumerate(sorted(df_var['Geometry'].unique())):
-                # print(f"Processing Geometry: {geom}")
                 df_geom = df_var[df_var['Geometry'] == geom]
                 
+                # Loop through configurations and comparable values
                 for config, (kdx, value) in product(df_geom["Config"].unique(), enumerate(df_geom[args.comparable].unique())):
-                    # print(f"Config: {config}, {args.comparable}: {value}")
                     df_config = df_geom[(df_geom[args.comparable] == value) & (df_geom['Config'] == config)]
 
+                    # Handle multiple entries for the same configuration
                     if len(df_config) > 1:
-                        print(f"Warning: Multiple entries found for Config: {config}, {args.comparable}: {value}. Using the first entry.")
-                        # Print the df_config for debugging
-                        if args.debug:
-                            print(df_config)
-                        df_config = df_config.iloc[[0]]
-                    df_config = df_config.explode(column=[args.x, args.y])
-                    # If entries in args.x or args.y are nan, remove them
+                        print(f"Info: Multiple entries found for Config: {config}, {args.comparable}: {value}. Skipping explode.")
+                    else:
+                        df_config = df_config.explode(column=[args.x, args.y])
+                    
                     df_config = df_config.dropna(subset=[args.x, args.y])
-
+                    if args.rangex is not None:
+                        df_config = df_config[(df_config[args.x] >= args.rangex[0]) & (df_config[args.x] <= args.rangex[1])]
+                    
                     label = config_dict[value] if value in config_dict else str(value)
+                    
+                    # Plot the histogram for the current configuration
                     if not df_config.empty:
-                        ax_current.hist(df_config[args.x], 
-                                    bins=len(df_config[args.x].unique()),
-                                    weights=df_config[args.y],
-                                    histtype='step',
-                                    label=f"{geom.upper()}, {label}" if jdx == len(args.variables) -1 else None,
-                                    color=f'C{idx}',
-                                    ls='-' if kdx == 0 else '--' if kdx == 1 else ':' if kdx == 2 else '-.'
-                                )
+                        x = np.asarray(df_config[args.x].unique().tolist())
+                        x_bin = x[1] - x[0] if len(x) > 1 else 1
+                        x_edges = np.linspace(x[0] - x_bin/2, x[-1] + x_bin/2, len(x) + 1)
+
+                        try:
+                            ax_current.hist(x, 
+                                bins=x_edges,
+                                weights=df_config[args.y],
+                                histtype='step',
+                                align=args.align,
+                                label=f"{geom.upper()}, {label}" if jdx == len(args.variables) -1 else None,
+                                color=f'C{idx}',
+                                ls='-' if kdx == 0 else '--' if kdx == 1 else ':' if kdx == 2 else '-.'
+                            )
+
+                        except ValueError:
+                            ax_current.hist(x[::-1], 
+                                bins=x_edges[::-1],
+                                weights=df_config[args.y][::-1],
+                                histtype='step',
+                                align=args.align,
+                                label=f"{geom.upper()}, {label}" if jdx == len(args.variables) -1 else None,
+                                color=f'C{idx}',
+                                ls='-' if kdx == 0 else '--' if kdx == 1 else ':' if kdx == 2 else '-.'
+                            )
             
-            if ncols == 1:
-                ax_current = ax
-            else:
-                ax_current = ax[jdx]
-            
+            # Set titles and labels for the axes
             if variable != "":
                 ax_current.set_title(f"Variable: {variable}", fontsize=14)
             
-            if args.labelx is not None:
-                if len(args.labelx) == len(args.variables):
-                    ax_current.set_xlabel(args.labelx[jdx])
-                elif len(args.labelx) == 1:
-                    ax_current.set_xlabel(args.labelx[0])
-                else:
-                    ax_current.set_xlabel(args.x)
-            else:
-                ax_current.set_xlabel(args.x)
-            
+            ax_current.set_xlabel(args.labelx[jdx] if args.labelx and len(args.labelx) == len(args.variables) else args.labelx[0] if args.labelx else args.x)
             if jdx == 0:
-                if args.labely is not None:
-                    ax_current.set_ylabel(args.labely)
-                else:
-                    ax_current.set_ylabel(args.y)
+                ax_current.set_ylabel(args.labely if args.labely else args.y)
 
+            # Set y-axis limits based on the y variable
             if args.y == "Efficiency":
                 ax_current.set_ylim(0, 110)
-                # Draw horizontal line at 100%
                 ax_current.axhline(100, color='gray', linestyle='--', linewidth=1)
             elif args.y == "RMS":
                 ax_current.set_ylim(0, 0.5)
 
+            # Set logarithmic scale if specified
             if args.logy:
                 ax_current.set_yscale('log')
             if args.logx:
                 ax_current.set_xscale('log')
             
+            # Add legend for the last variable
             if jdx == len(args.variables) -1:
                 ax_current.legend()
             
+        # Set the figure title
         figure_title = f"{args.datafile.replace('_', ' ')}"
         if args.iterable is not None:
             figure_title += f" ({', '.join([f'{col}={val}' for col, val in zip(unique_values.keys(), combination)])})"
         fig.suptitle(figure_title, fontsize=titlefontsize)
-        # dunestyle.WIP()
-            
+        
+        # Create output directory and save the plot
         output_dir = os.path.join(os.path.dirname(__file__), '..', 'plots')
         os.makedirs(output_dir, exist_ok=True)
-        output_filename = f"{args.name.lower()}_{args.datafile.lower()}"
+        output_filename = f"comparison_{args.datafile.lower()}"
         if args.iterable is not None:
             output_filename += '_' + '_'.join([f"{str(col).lower()}{str(combination[idx]).lower()}" for idx, col in enumerate(unique_values.keys())])
-        # Add variables to filename
         if args.variables != [""]:
             output_filename += '_' + '_'.join(args.variables).lower()
         
