@@ -213,3 +213,9 @@ plots/*.svg
 plots/*.eps
 plots/*.jpg
 !plots/README.md
+
+# Generated tables (keep directory structure)
+tables/*.csv
+tables/*.tsv
+tables/*.xlsx
+tables/*.tex
