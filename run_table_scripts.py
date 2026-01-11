@@ -24,11 +24,13 @@ def run_script(script_name):
 
 if __name__ == "__main__":
     scripts = [
-        "scripts/script_mean_table.py --datafile Adjacent_Cluster_Counts -y AdjClNum --variables Signal 'Intrinsic' 'External' -i Distance -s 20 -t Source --emph 0",
-        "scripts/script_mean_table.py --datafile Adjacent_Cluster_Counts -y AdjClNum --variables Signal 'Intrinsic' 'External' -i Distance -s 100 -t Source --emph 0",
-        "scripts/script_mean_table.py --datafile Fiducial_Efficiency -y Efficiency --variables X Y Z -t Coordinate -i Energy Inverse Reference -s 10 'False' Reco --emph 0",
-        "scripts/script_mean_table.py --datafile Vertex_Reconstruction_Efficiency -y Efficiency --variables X Y Z -t Coordinate -i Energy Sigma Tolerance -s 10 True 3 --emph 0",
-        "scripts/script_mean_table.py --datafile Neutrino_Energy_Resolution -y RMS --variables TotalEnergy SelectedEnergy -t Algorithm -i Drift '#Hits' -s Reco 3 --emph 0",
+        "scripts/script_mean_table.py --datafile Adjacent_Cluster_Counts --name marley_official -y AdjClNum --variables Signal 'Intrinsic' 'External' -i Distance -s 20 -t Source --emph 0",
+        "scripts/script_mean_table.py --datafile Adjacent_Cluster_Counts --name marley_official -y AdjClNum --variables Signal 'Intrinsic' 'External' -i Distance -s 100 -t Source --emph 0",
+        "scripts/script_mean_table.py --datafile Resolution --name marley_official -y Sigma --variables X Y Z -n Coordinate -t Vertex --emph 0",
+        "scripts/script_mean_table.py --datafile Purity_Match_Resolution --name marley_official -y Percentage --variables 'High-Purity' 'Low-Purity' 'Background' 'No-Match' -n Label -t Sample --emph 0",
+        "scripts/script_mean_table.py --datafile Fiducial_Efficiency --name marley_official -y Efficiency --variables X Y Z -t Coordinate -i Energy Inverse Reference -s 10 'False' Reco --emph 0",
+        "scripts/script_mean_table.py --datafile Vertex_Reconstruction_Efficiency --name marley_official -y Efficiency --variables X Y Z -t Coordinate -i Energy Sigma Tolerance -s 10 True 3 --emph 0",
+        "scripts/script_mean_table.py --datafile Neutrino_Energy_Resolution --name marley_official -y RMS --variables TotalEnergy SelectedEnergy -t Algorithm -i Drift '#Hits' -s Reco 3 --emph 0",
         # "scripts/script_mean_table.py --datafile Neutrino_Energy_Resolution -y RMS --variables '#Hits' -t Algorithm -i Drift Variable -s Reco SelectedEnergy --emph 0",
     ]
 
@@ -39,7 +41,7 @@ if __name__ == "__main__":
         elif args.plot:
             this_result = run_script(script + " -p")
         elif args.debug:
-            this_result = run_script(script + " -d")
+            this_result = run_script(script + " --debug")
         else:
             this_result = run_script(script)
         
