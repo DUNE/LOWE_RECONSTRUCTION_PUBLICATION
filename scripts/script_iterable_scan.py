@@ -44,6 +44,13 @@ parser.add_argument(
 )
 
 parser.add_argument(
+    '--save_keys',
+    nargs='+',
+    default=None,
+    help='If provided, use as key to apply save_values filtering (e.g. SignalParticleK, BackgroundType, etc.)',
+)
+
+parser.add_argument(
     '--save_values', '-s',
     nargs='+',
     default=None,
@@ -66,6 +73,13 @@ parser.add_argument(
 ),
 
 parser.add_argument(
+    '--errorx',
+    action='store_true',
+    help='Include error bars on x-axis',
+    default=False,
+)
+
+parser.add_argument(
     '-y',
     type=str,
     default="Density",
@@ -76,6 +90,13 @@ parser.add_argument(
     '--stacked',
     action='store_true',
     help='Create stacked histograms',
+    default=False,
+)
+
+parser.add_argument(
+    '--reduce',
+    action='store_true',
+    help='Reduce number of lines plotted for clarity',
     default=False,
 )
 
@@ -195,6 +216,11 @@ def main():
         print(f"Dataframe entries for this config and iterable: {len(df_config)}, Unique iterable values: {df_config[iterable].unique()}")
         bottom = None
         for (idx, variable), (jdx, value) in product(enumerate(args.variables), enumerate(df_config[iterable].unique())):
+            if df_config[iterable].unique().size > 8 and args.reduce:
+                if jdx % 2 == 1:
+                    print(f"Skipping plotting for {iterable}={value} to avoid overcrowding")
+                    continue
+            
             if value is None:
                 print("Skipping None iterable value")
                 continue
@@ -207,6 +233,46 @@ def main():
             subset = df_config[df_config[iterable] == value]
             if variable is not None:
                 subset = subset[(subset["Variable"] == variable)]
+
+            # Filter by save_keys and save_values if provided
+            if args.save_keys is not None and args.save_values is not None:
+                if args.debug:
+                    print(subset)
+                for save_key, save_value in zip(args.save_keys, args.save_values):
+                    print(f"Applying save_keys filtering on {save_key}={save_value}")
+                    # Check that the save_key exists in the dataframe and their entries match the type of save_value
+                    if save_key not in subset.columns:
+                        print(f"Save key {save_key} not found in dataframe columns. Skipping.")
+                        continue
+                    if type(subset[save_key].iloc[0]) != type(save_value):
+                        print(f"Type mismatch for save_key {save_key}: dataframe has type {type(subset[save_key].iloc[0])}, but save_value has type {type(save_value)}.")
+                        print(f"Trying to convert save_value to type {type(subset[save_key].iloc[0])}.")
+                        try:
+                            if isinstance(subset[save_key].iloc[0], int):
+                                save_value_converted = int(save_value)
+                            elif isinstance(subset[save_key].iloc[0], float):
+                                save_value_converted = float(save_value)
+                            else:
+                                save_value_converted = str(save_value)
+                            save_value = save_value_converted
+                            print(f"Converted save_value: {save_value}")
+                        except ValueError:
+                            print(f"Could not convert save_value {save_value} to type {type(subset[save_key].iloc[0])}. Skipping.")
+                            continue
+                    subset = subset[subset[save_key] == save_value]
+                
+                if subset.empty:
+                    print(f"No data for saving with {save_key}={save_value}. Skipping.")
+                    continue
+
+            elif args.save_values is not None:
+                if args.debug:
+                    print(f"Applying save_values filtering on {iterable}={args.save_values}")
+                    print(subset)
+                subset = subset[subset[iterable] == value]
+                if subset.empty:
+                    print(f"No data for saving with {iterable}={value}. Skipping.")
+                    continue
 
             subset = subset.explode(column=[args.x, args.y, "Error"] if "Error" in subset.columns else [args.x, args.y])
             if subset.empty:
@@ -228,15 +294,15 @@ def main():
                 except (ValueError, TypeError):
                     pass  # value cannot be converted to int
             
-            if x_error is not None:
+            if x_error is not None and args.errorx:
                 print(f"Plotting {len(x)} points with error bars for {iterable}={value}, Variable={variable}")
                 if args.stacked:
                     ax_current.bar(x, y, yerr=x_error, label=f"{value}" if idx == ncols -1 else None, bottom=bottom)
                     bottom += y.values
                 else:
-                    ax_current.errorbar(x, y, yerr=x_error, fmt='o', label=f"{value}" if idx == ncols -1 else None, color=f"C{jdx}")
+                    ax_current.errorbar(x, y, yerr=x_error, fmt='o', label=f"{value}" if idx == ncols -1 else None)
                     if args.connect:
-                        ax_current.plot(x, y, linestyle='-', color=f"C{jdx}", label=None)
+                        ax_current.plot(x, y, linestyle='-', label=None)
             
             else:
                 print(f"Plotting {len(x)} points for {iterable}={value}, Variable={variable}")
@@ -283,10 +349,18 @@ def main():
                 if legend is not None:
                     legend.set_title(args.labelz)
 
-        if config is None:
-            fig.suptitle(f'{args.datafile.replace("_", " ")} {iterable} Scan', fontsize=titlefontsize)
-        else:
-            fig.suptitle(f'{args.datafile.replace("_", " ")} {iterable} Scan - {config}', fontsize=titlefontsize)
+        plot_title = f"{args.datafile.replace('_', ' ')}"
+        if config is not None:
+            plot_title += f" - {config}"
+        
+        if args.save_values is not None:
+            if args.save_keys is None:
+                plot_title += f" ({iterable}={', '.join(map(str, args.save_values))})"
+            else:
+                plot_title += f" ({', '.join([f'{k}={v}' for k,v in zip(args.save_keys, args.save_values)])})"
+
+
+        fig.suptitle(plot_title, fontsize=titlefontsize)
         # dunestyle.WIP()
         
         output_dir = os.path.join(os.path.dirname(__file__), '..', 'plots')
