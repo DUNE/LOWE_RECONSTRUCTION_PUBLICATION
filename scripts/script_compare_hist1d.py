@@ -67,6 +67,13 @@ parser.add_argument(
 )
 
 parser.add_argument(
+    '--reduce',
+    action='store_true',
+    help='Reduce number of lines plotted for clarity',
+    default=False,
+)
+
+parser.add_argument(
     '--iterables', '-i',
     nargs='+',
     type=str,
@@ -183,6 +190,11 @@ def main():
             ax = plt.axes()
             hist_range = []
             for idx, compare in enumerate(df[args.comparable].unique()):
+                if len(df[args.comparable].unique()) > 8 and args.reduce:
+                    if idx % 2 == 1:
+                        print(f"Skipping plotting for {args.comparable}={compare} to avoid overcrowding")
+                        continue
+
                 df_iter = df[(df['Config'] == config) & (df['Name'] == name)]
                 if iterable != "Iterable":
                     if args.save_values is None:
