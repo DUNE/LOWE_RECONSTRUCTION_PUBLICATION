@@ -25,12 +25,19 @@ def run_script(script_name):
 if __name__ == "__main__":
     scripts = [
         "scripts/script_mean_table.py --datafile Adjacent_Cluster_Counts --name marley_official -y AdjClNum --variables Signal 'Intrinsic' 'External' -i Distance -s 20 -t Source --emph 0",
+        "scripts/script_mean_table.py --datafile Adjacent_Cluster_Counts --configs hd_1x2x6_centralAPA vd_1x8x14_3view_30deg_nominal --name marley_official -y AdjClNum --variables Signal 'Intrinsic' 'External' -i Distance -s 20 -t Source --emph 0",
         "scripts/script_mean_table.py --datafile Adjacent_Cluster_Counts --name marley_official -y AdjClNum --variables Signal 'Intrinsic' 'External' -i Distance -s 100 -t Source --emph 0",
+        "scripts/script_mean_table.py --datafile Adjacent_Cluster_Counts --configs hd_1x2x6_centralAPA vd_1x8x14_3view_30deg_nominal --name marley_official -y AdjClNum --variables Signal 'Intrinsic' 'External' -i Distance -s 100 -t Source --emph 0",
         "scripts/script_mean_table.py --datafile Resolution --name marley_official -y Sigma --variables X Y Z -n Coordinate -t Vertex --emph 0",
+        "scripts/script_mean_table.py --datafile Resolution --configs hd_1x2x6_centralAPA vd_1x8x14_3view_30deg_nominal --name marley_official -y Sigma --variables X Y Z -n Coordinate -t Vertex --emph 0",
         "scripts/script_mean_table.py --datafile Purity_Match_Resolution --name marley_official -y Percentage --variables 'High-Purity' 'Low-Purity' 'Background' 'No-Match' -n Label -t Sample --emph 0",
+        "scripts/script_mean_table.py --datafile Purity_Match_Resolution --configs hd_1x2x6_centralAPA vd_1x8x14_3view_30deg_nominal --name marley_official -y Percentage --variables 'High-Purity' 'Low-Purity' 'Background' 'No-Match' -n Label -t Sample --emph 0",
         "scripts/script_mean_table.py --datafile Fiducial_Efficiency --name marley_official -y Efficiency --variables X Y Z -t Coordinate -i Energy Inverse Reference -s 10 'False' Reco --emph 0",
+        "scripts/script_mean_table.py --datafile Fiducial_Efficiency --configs hd_1x2x6_centralAPA vd_1x8x14_3view_30deg_nominal --name marley_official -y Efficiency --variables X Y Z -t Coordinate -i Energy Inverse Reference -s 10 'False' Reco --emph 0",
         "scripts/script_mean_table.py --datafile Vertex_Reconstruction_Efficiency --name marley_official -y Efficiency --variables X Y Z -t Coordinate -i Energy Sigma Tolerance -s 10 True 3 --emph 0",
+        "scripts/script_mean_table.py --datafile Vertex_Reconstruction_Efficiency --configs hd_1x2x6_centralAPA vd_1x8x14_3view_30deg_nominal --name marley_official -y Efficiency --variables X Y Z -t Coordinate -i Energy Sigma Tolerance -s 10 True 3 --emph 0",
         "scripts/script_mean_table.py --datafile Neutrino_Energy_Resolution --name marley_official -y RMS --variables TotalEnergy SelectedEnergy -t Algorithm -i Drift '#Hits' -s Reco 3 --emph 0",
+        "scripts/script_mean_table.py --datafile Neutrino_Energy_Resolution --configs hd_1x2x6_centralAPA vd_1x8x14_3view_30deg_nominal --name marley_official -y RMS --variables TotalEnergy SelectedEnergy -t Algorithm -i Drift '#Hits' -s Reco 3 --emph 0",
         # "scripts/script_mean_table.py --datafile Neutrino_Energy_Resolution -y RMS --variables '#Hits' -t Algorithm -i Drift Variable -s Reco SelectedEnergy --emph 0",
     ]
 
