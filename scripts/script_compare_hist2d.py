@@ -55,7 +55,7 @@ parser.add_argument(
     '--percentile', '-p',
     nargs='+',
     type=float,
-    default=[1, 99],
+    default=[0, 100],
     help='Percentile range for axis limits (e.g. 1 99)',
 )
 
@@ -121,6 +121,13 @@ parser.add_argument(
     '--logz',
     action='store_true',
     help='Set z-axis to logarithmic scale',
+    default=False,
+)
+
+parser.add_argument(
+    '--density',
+    action='store_true',
+    help='Normalize histogram to density',
     default=False,
 )
 
@@ -310,15 +317,23 @@ def main():
                     bins=args.bins,
                     range=(x_range, y_range),
                     norm=LogNorm() if args.logz else None,
-                    density=True,
+                    density=args.density,
                 )
                 if args.diagonal:
                     ax_current.plot(x_range, x_range, color='k' if args.logz else 'white', linestyle='--')
+                    ax_current.set_xlim(ranges[0])  # Set x limits to match the heatmap range
+                    ax_current.set_ylim(ranges[0])  # Set y limits to match the heatmap range
                 if args.horizontal != None:
                     ax_current.axhline(args.horizontal, color='k' if args.logz else 'white', linestyle='--')
 
             cbar = fig.colorbar(hist2d[3], ax=ax)
-            cbar.set_label('Density' if not args.logz else 'Density (log scale)')
+            if not args.logz:
+                hist2d[3].set_array(np.ma.masked_where(hist2d[3].get_array() == 0, hist2d[3].get_array()))  # Mask zero values
+                hist2d[3].set_clim(0, hist2d[3].get_array().max())  # Set color limits
+            if args.density:
+                cbar.set_label('Density' if not args.logz else 'Density (log scale)')
+            else:
+                cbar.set_label('Counts' if not args.logz else 'Counts (log scale)')
             cbar.ax.yaxis.set_label_position('right')  # Move label to the left
             
             for idx, compare in enumerate(df[args.comparable].unique()):
