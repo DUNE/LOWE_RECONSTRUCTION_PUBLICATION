@@ -175,8 +175,8 @@ def main():
                 df_geom = df_var[df_var['Geometry'] == geom]
                 
                 # Loop through configurations and comparable values
-                for config, (kdx, value) in product(df_geom["Config"].unique(), enumerate(df_geom[args.comparable].unique())):
-                    df_config = df_geom[(df_geom[args.comparable] == value) & (df_geom['Config'] == config)]
+                for (ldx, (config, name)), (kdx, value) in product(enumerate(list(df[['Config', 'Name']].drop_duplicates().itertuples(index=False, name=None))), enumerate(df_geom[args.comparable].unique())):
+                    df_config = df_geom[(df_geom[args.comparable] == value) & (df_geom['Config'] == config) & (df_geom['Name'] == name)]
 
                     # Handle multiple entries for the same configuration
                     if len(df_config) > 1:
@@ -188,8 +188,16 @@ def main():
                     if args.rangex is not None:
                         df_config = df_config[(df_config[args.x] >= args.rangex[0]) & (df_config[args.x] <= args.rangex[1])]
                     
-                    label = config_dict[value] if value in config_dict else str(value)
-                    
+                    config_label = config_dict[value] if value in config_dict else str(value)
+                    if len(args.configs) <= 2 and len(args.names) == 1:
+                        geom_label = f"{geom.upper()}"
+                    elif len(args.configs) > 2 and len(args.names) == 1:
+                        geom_label = f"{geom.upper()}, {config_label}"
+                    elif len(args.configs) == 1 and len(args.names) > 1:
+                        geom_label = f"{geom.upper()}, {name}"
+                    else:
+                        geom_label = f"{geom.upper()}, {config_label}, {name}"
+                                            
                     # Plot the histogram for the current configuration
                     if not df_config.empty:
                         x = np.asarray(df_config[args.x].unique().tolist())
@@ -202,8 +210,8 @@ def main():
                                 weights=df_config[args.y],
                                 histtype='step',
                                 align=args.align,
-                                label=f"{geom.upper()}, {label}" if jdx == len(args.variables) -1 else None,
-                                color=f'C{idx}',
+                                label=geom_label if jdx == len(args.variables) -1 else None,
+                                color=f'C{idx}' if len(df_var['Geometry'].unique()) > 1 else f'C{ldx}',
                                 ls='-' if kdx == 0 else '--' if kdx == 1 else ':' if kdx == 2 else '-.'
                             )
 
@@ -213,8 +221,8 @@ def main():
                                 weights=df_config[args.y][::-1],
                                 histtype='step',
                                 align=args.align,
-                                label=f"{geom.upper()}, {label}" if jdx == len(args.variables) -1 else None,
-                                color=f'C{idx}',
+                                label=geom_label if jdx == len(args.variables) -1 else None,
+                                color=f'C{idx}' if len(df_var['Geometry'].unique()) > 1 else f'C{ldx}',
                                 ls='-' if kdx == 0 else '--' if kdx == 1 else ':' if kdx == 2 else '-.'
                             )
             
