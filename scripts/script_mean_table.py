@@ -196,17 +196,25 @@ def main():
             df_table = df_table.pivot_table(index=["Geometry", "Config"], columns=args.variable_name, values=[args.y], aggfunc='first')
         
         # Combine the "Geometry" and "Config" index into a single index called "Configuration"
-        df_table.index = df_table.index.map(lambda x: f"{x[0]} {x[1]}")
+        if len(args.configs) <= 2 and len(args.names) == 1:
+            df_table.index = df_table.index.map(lambda x: f"{x[0]}")
+        elif len(args.configs) > 2 and len(args.names) == 1:
+            df_table.index = df_table.index.map(lambda x: f"{x[0]} {x[1]}")
+        elif len(args.configs) == 1 and len(args.names) > 1:
+            df_table.index = df_table.index.map(lambda x: f"{x[1]}")
+        else:
+            df_table.index = df_table.index.map(lambda x: f"{x[0]} {x[1]}")
+        
         df_table.index.name = "Configuration"
         # Sort columns as they appear in args.variables
         if args.variable_title is not None:
             df_table = df_table.reindex(columns=args.variables, level=1)
 
         # Sort according to the configuration column and config_order
-        df_table = df_table.reindex(config_order, level='Configuration')
+        if len(args.configs) > 2 and len(args.names) == 1:
+            df_table = df_table.reindex(config_order, level='Configuration')
         # Drop rows with all NaN values
         df_table = df_table.dropna(how='all')
-
 
         # Make the "Configuration" index a column and drop the index
         df_table = df_table.reset_index()
@@ -222,7 +230,18 @@ def main():
 
         output_dir = os.path.join(os.path.dirname(__file__), '..', 'tables')
         os.makedirs(output_dir, exist_ok=True)
-        output_filename = f"{args.names[0].lower()}_{args.datafile.lower()}"
+        
+        if len(args.configs) == 1 and len(args.names) == 1:
+            output_filename = f"configuration_comparison_{args.configs[0].lower()}_{args.datafile.lower()}"
+        elif len(args.configs) == 2 and len(args.names) == 1:
+            output_filename = f"{args.names[0].lower()}_{args.datafile.lower()}"
+        elif len(args.configs) > 2 and len(args.names) == 1:
+            output_filename = f"configuration_comparison_{args.names[0].lower()}_{args.datafile.lower()}"
+        elif len(args.configs) == 1 and len(args.names) > 1:
+            output_filename = f"configuration_iteration_{args.configs[0].lower()}_{args.datafile.lower()}"   
+        else:
+            output_filename = f"comparison_{args.datafile.lower()}"     
+        
         if args.iterable is not None:
             output_filename += '_' + '_'.join([f"{str(col).lower()}{str(combination[idx]).lower()}" for idx, col in enumerate(unique_values.keys())])
         # Add variables to filename
