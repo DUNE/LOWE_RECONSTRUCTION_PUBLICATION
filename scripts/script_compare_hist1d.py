@@ -55,7 +55,7 @@ parser.add_argument(
     '--percentile', '-p',
     nargs='+',
     type=float,
-    default=[1, 99],
+    default=[0, 100],
     help='Percentile range for axis limits (e.g. 1 99)',
 )
 
@@ -129,6 +129,14 @@ parser.add_argument(
     action='store_true',
     help='Set y-axis to logarithmic scale',
     default=False,
+)
+
+parser.add_argument(
+    '--rangex',
+    nargs=2,
+    type=float,
+    default=None,
+    help='Range for x-axis values',
 )
 
 parser.add_argument(
@@ -223,6 +231,8 @@ def main():
                         data = np.mean(x, y)
                     elif args.operation == "subtract":
                         data = np.subtract(x, y)
+                    elif args.operation == "relative":
+                        data = np.divide(np.subtract(x, y), y)
                     elif args.operation == "sum":
                         data = np.sum(x, y)
                     elif args.operation == "rms":
@@ -233,10 +243,16 @@ def main():
                 
                 plt.hist(data, histtype='step', label=f"{compare}" if args.comparable != "Comparable" else f"{iterable}" if args.comparable != "Iterable" else None, bins=args.bins, range=hist_range, density=(args.labely == "Density"))
 
+            
             if args.logx:
                 ax.set_xscale('log')
+                if args.rangex is not None:
+                    ax.set_xlim(np.log10(args.rangex))
             else:
-                ax.set_xlim(hist_range)
+                if args.rangex is not None:
+                    ax.set_xlim(args.rangex)
+                else:
+                    ax.set_xlim(hist_range)
 
             if args.logy:
                 ax.set_yscale('log')
