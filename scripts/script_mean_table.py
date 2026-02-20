@@ -8,7 +8,7 @@ Demonstrates combined data to table conversion with custom styling
 """
 # Import config from __init__.py
 from lib import *
-from lib.functions import resolution, gaussian
+from lib.functions import resolution, gaussian, exponential_decay
 from lib.selection import prepare_selection, filter_dataframe
 from lib.imports import import_data
 from lib.format import format_with_error
@@ -114,6 +114,13 @@ parser.add_argument(
 ),
 
 parser.add_argument(
+    '--output', '-o',
+    type=str,
+    default=None,
+    help='Output filepath for the plot',
+)
+
+parser.add_argument(
     '--debug',
     action='store_true',
     help='Enable debug mode',
@@ -145,7 +152,11 @@ def main():
     df["Geometry"] = df["Geometry"].str.upper()
         
     # Substitute the names in df["Config"] to be more readable with the config_dict
-    df["Config"] = df["Config"].map(lambda x: config_dict.get(x, x))
+    if len(args.names) == 1:
+        df["Config"] = df["Config"].map(lambda x: config_dict.get(x, x))
+    else:
+        df["Config"] = df["Name"].str.split("_").str[0]
+        df['Config'] = df["Config"].map(lambda x: particle_dict.get(x, x))
 
     for combination in unique_combinations:
         this_df = filter_dataframe(df, args, unique_values, combination)
@@ -205,14 +216,22 @@ def main():
         else:
             df_table.index = df_table.index.map(lambda x: f"{x[0]} {x[1]}")
         
-        df_table.index.name = "Configuration"
+        if len(args.names) > 1:
+            df_table.index.name = "Particle"
+        else:
+            df_table.index.name = "Configuration"
+        
         # Sort columns as they appear in args.variables
         if args.variable_title is not None:
             df_table = df_table.reindex(columns=args.variables, level=1)
 
         # Sort according to the configuration column and config_order
+        if len(args.configs) == 1 and len(args.names) > 1:
+            df_table = df_table.reindex(particle_order, level='Particle')
+            # pass
         if len(args.configs) > 2 and len(args.names) == 1:
             df_table = df_table.reindex(config_order, level='Configuration')
+        
         # Drop rows with all NaN values
         df_table = df_table.dropna(how='all')
 
