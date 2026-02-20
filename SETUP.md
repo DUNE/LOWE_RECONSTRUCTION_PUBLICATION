@@ -16,13 +16,15 @@ cd matplotlib_dunestyle_examles
 
 ### 2. Create a Virtual Environment (Recommended)
 
-#### Using venv:
+#### Using venv
+
 ```bash
 python3 -m venv .venv
 source venv/bin/activate  # On Windows: venv\Scripts\activate
 ```
 
-#### Using conda:
+#### Using conda
+
 ```bash
 conda create -n dune-plots python=3.9
 conda activate dune-plots
@@ -49,6 +51,7 @@ You should see a message indicating the plot was saved, and the file should appe
 ### Common Issues
 
 #### "No module named matplotlib"
+
 Solution: Make sure you've activated your virtual environment and installed requirements.
 
 ```bash
@@ -56,6 +59,7 @@ pip install -r requirements.txt
 ```
 
 #### Display Issues
+
 If you're running on a headless server or encounter display-related errors:
 
 ```bash
@@ -64,6 +68,7 @@ set MPLBACKEND=Agg     # Windows
 ```
 
 Or add this to the beginning of your Python scripts:
+
 ```python
 import matplotlib
 matplotlib.use('Agg')
@@ -71,6 +76,7 @@ import matplotlib.pyplot as plt
 ```
 
 #### Permission Errors
+
 If you encounter permission errors when saving plots:
 
 ```bash
