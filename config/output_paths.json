@@ -1,0 +1,8 @@
+{
+  "plots": {
+    "reco": "/home/smanthey/Code/LOWE_RECONSTRUCTION_TECHNOTE/Images/Reco/",
+    "lowe": "/home/smanthey/Code/LOWE_RECONSTRUCTION_TECHNOTE/Images/LowE/",
+    "thesis": "/home/smanthey/Code/THESIS/figures/"
+  },
+  "tables": {}
+}

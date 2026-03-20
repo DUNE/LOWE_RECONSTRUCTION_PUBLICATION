@@ -5,13 +5,19 @@ Script 2: Simple Histogram Plot with DUNE Style
 Demonstrates basic plotting with custom styling
 """
 
+from _bootstrap import ensure_src_path
+
+ensure_src_path()
+
 from matplotlib.ticker import MaxNLocator
 from rich import print as rprint
 
 from lib import *
 from lib.selection import filter_dataframe
 from lib.exports import make_name_from_args
+from lib.format import make_title_from_args, make_subtitle_from_args
 from lib.imports import import_data, prepare_import
+from lib.plot import plot_data
 
 # Import with args parser
 parser = argparse.ArgumentParser(
@@ -181,6 +187,13 @@ parser.add_argument(
 )
 
 parser.add_argument(
+    "--title",
+    type=str,
+    default=None,
+    help="Title for the plot",
+)
+
+parser.add_argument(
     "--output",
     "-o",
     type=str,
@@ -311,7 +324,10 @@ def main():
 
             # Sample the y values according to the specified x values and create a boxplot of the y values for each x bin
             # If the x values are int create bins for each int value, otherwise create bins according to the specified number of bins
-            if np.issubdtype(x.dtype, np.integer):
+            if isinstance(x, list):
+                continue
+
+            elif np.issubdtype(x.dtype, np.integer):
                 bins = np.arange(x.min(), x.max() + 1.5) - 0.5
                 bin_centers = np.arange(x.min(), x.max() + 1)
                 if args.reduce and len(bins) > 8:
@@ -340,8 +356,13 @@ def main():
                         y[(x >= bins[i]) & (x < bins[i + 1])]
                         for i in range(len(bins) - 1)
                     ]
-                ax_current.boxplot(
-                    boxplot_data,
+                plot_data(
+                    args,
+                    ax_current,
+                    bin_centers,
+                    y=boxplot_data,
+                    label=f"Median {args.y}",
+                    plot_type="boxplot",
                     positions=bin_centers,
                     widths=(
                         np.diff(bins) * 0.8
@@ -349,15 +370,6 @@ def main():
                         else None
                     ),
                     showfliers=False,
-                    label=(
-                        f"{args.y}: {variable}"
-                        if variable is not None
-                        else (
-                            f"{iterable}"
-                            if args.iterable is not None
-                            else f"{args.y} vs {args.x}"
-                        )
-                    ),
                 )
             else:
 
@@ -391,9 +403,11 @@ def main():
                         f"[yellow]Warning:[/yellow] No operation specified. Defaulting to mean."
                     )
 
-                ax_current.scatter(
+                plot_data(
+                    args,
+                    ax_current,
                     bin_centers,
-                    y_scatter,
+                    y=y_scatter,
                     marker="o",
                     label=(
                         f"{args.y}: {variable}"
@@ -404,6 +418,7 @@ def main():
                             else f"{args.y} vs {args.x}"
                         )
                     ),
+                    plot_type="scatter_points",
                 )
 
         for idx, variable in enumerate(variables):
@@ -414,8 +429,9 @@ def main():
                 ax_current = ax[idx]
 
             if ncols > 1:
+                plot_subtitle = make_subtitle_from_args(args, idx)
                 ax_current.set_title(
-                    f"Variable: {variable}" if variable is not None else None,
+                    plot_subtitle,
                     fontsize=subtitlefontsize,
                 )
 
@@ -459,17 +475,7 @@ def main():
                 else None
             )
         # Set title
-        plot_title = f"{args.datafile.replace('_', ' ')}"
-        if config is not None:
-            plot_title += f" - {config}"
-
-        if args.select is not None:
-            if args.save_values is not None:
-                for save_key, save_value in zip(args.select, args.save_values):
-                    plot_title += f" - {save_key}: {save_value}"
-            else:
-                plot_title += f" - {variable}"
-
+        plot_title = make_title_from_args(args)
         fig.suptitle(plot_title, fontsize=titlefontsize)
         # dunestyle.WIP()
 
@@ -483,10 +489,12 @@ def main():
                 f"[green]Success:[/green] Plot saved to:\n{args.output}{output_file}"
             )
         else:
-            output_dir = os.path.join(os.path.dirname(__file__), "..", "plots")
+            output_dir = os.path.join(
+                os.path.dirname(__file__), "..", "output", "plots"
+            )
             os.makedirs(output_dir, exist_ok=True)
             rprint(
-                f"[green]Success:[/green] Plot saved to:\n{os.path.join(output_dir.split('..')[1], output_file)}"
+                f"[green]Success:[/green] Plot saved to:\n{os.path.join(output_dir.split('..')[1], output_file)[1:]}"
             )
 
         plt.savefig(os.path.join(output_dir, output_file))

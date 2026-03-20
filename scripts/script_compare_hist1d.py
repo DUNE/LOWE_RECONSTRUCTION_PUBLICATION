@@ -5,12 +5,18 @@ Script 2: Simple Histogram Plot with DUNE Style
 Demonstrates basic plotting with custom styling
 """
 
+from _bootstrap import ensure_src_path
+
+ensure_src_path()
+
 from rich import print as rprint
 
 from lib import *
 from lib.selection import filter_dataframe
 from lib.exports import make_name_from_args
+from lib.format import make_subtitle_from_args, make_title_from_args
 from lib.imports import import_data, prepare_import
+from lib.plot import plot_data
 
 # Import with args parser
 parser = argparse.ArgumentParser(
@@ -168,6 +174,13 @@ parser.add_argument(
 )
 
 parser.add_argument(
+    "--title",
+    type=str,
+    default=None,
+    help="Title for the plot",
+)
+
+parser.add_argument(
     "--output",
     "-o",
     type=str,
@@ -288,7 +301,11 @@ def main():
                 for col in args.x[1:]:
                     if args.operation in ["mean", "sum"]:
                         x = np.add(x, np.array(subset[col].values[0]))
-                    elif args.operation in ["subtract", "relative"]:
+                    elif args.operation in [
+                        "subtract",
+                        "relative",
+                        "absolute_relative",
+                    ]:
                         x = np.subtract(x, np.array(subset[col].values[0]))
                     elif args.operation == "rms":
                         x = np.add(x**2, np.array(subset[col].values[0]) ** 2)
@@ -297,6 +314,8 @@ def main():
                     x = x / len(args.x)
                 elif args.operation == "relative":
                     x = x / np.array(subset[args.x[-1]].values[0])
+                elif args.operation == "absolute_relative":
+                    x = np.abs(x) / np.array(subset[args.x[-1]].values[0])
                 elif args.operation == "rms":
                     x = np.sqrt(x / len(args.x))
             # print(x)
@@ -320,10 +339,15 @@ def main():
                 ),
             )
             bin_centers = (bins[:-1] + bins[1:]) / 2
-            ax_current.plot(
-                bin_centers, hist, drawstyle="steps-mid", label=f"{iterable}"
+            plot_data(
+                args,
+                ax_current,
+                bin_centers,
+                y=hist,
+                label=f"{iterable}",
+                plot_type="plot",
+                drawstyle="steps-mid",
             )
-            # ax_current.hist(x, histtype='step', label=f"{iterable}", bins=args.bins, range=hist_range, density=args.labely == "Density", weight=subset[args.weight].values[0] if args.weight is not None else None)
 
         for idx, variable in enumerate(variables):
             if ncols == 1:
@@ -333,8 +357,9 @@ def main():
                 ax_current = ax[idx]
 
             if ncols > 1:
+                plot_subtitle = make_subtitle_from_args(args, idx)
                 ax_current.set_title(
-                    f"Variable: {variable}" if variable is not None else None,
+                    plot_subtitle,
                     fontsize=subtitlefontsize,
                 )
 
@@ -373,17 +398,7 @@ def main():
                 else None
             )
         # Set title
-        plot_title = f"{args.datafile.replace('_', ' ')}"
-        if config is not None:
-            plot_title += f" - {config}"
-
-        if args.select is not None:
-            if args.save_values is not None:
-                for save_key, save_value in zip(args.select, args.save_values):
-                    plot_title += f" - {save_key}: {save_value}"
-            else:
-                plot_title += f" - {variable}"
-
+        plot_title = make_title_from_args(args)
         fig.suptitle(plot_title, fontsize=titlefontsize)
         # dunestyle.WIP()
 
@@ -395,10 +410,12 @@ def main():
                 f"[green]Success:[/green] Plot saved to:\n{args.output}{output_file}"
             )
         else:
-            output_dir = os.path.join(os.path.dirname(__file__), "..", "plots")
+            output_dir = os.path.join(
+                os.path.dirname(__file__), "..", "output", "plots"
+            )
             os.makedirs(output_dir, exist_ok=True)
             rprint(
-                f"[green]Success:[/green] Plot saved to:\n{os.path.join(output_dir.split('..')[1], output_file)}"
+                f"[green]Success:[/green] Plot saved to:\n{os.path.join(output_dir.split('..')[1], output_file)[1:]}"
             )
 
         plt.savefig(os.path.join(output_dir, output_file))

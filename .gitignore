@@ -206,16 +206,33 @@ marimo/_static/
 marimo/_lsp/
 __marimo__/
 
+# Notebooks
+notebooks/*.ipynb
+
+# Imported input data (keep directory structure)
+input/data/*.csv
+input/data/*.pkl
+
+# Imported script_lists expect the one named example_scripts.txt
+input/plots/*.txt
+input/tables/*.txt
+!input/plots/example_scripts.txt
+
 # Generated plots (keep directory structure)
-plots/*.png
-plots/*.pdf
-plots/*.svg
-plots/*.eps
-plots/*.jpg
-!plots/README.md
+output/plots/*.png
+output/plots/*.pdf
+output/plots/*.svg
+output/plots/*.eps
+output/plots/*.jpg
 
 # Generated tables (keep directory structure)
-tables/*.csv
-tables/*.tsv
-tables/*.xlsx
-tables/*.tex
+output/tables/*.csv
+output/tables/*.tsv
+output/tables/*.xlsx
+output/tables/*.tex
+
+# Generated test reports (keep directory structure)
+styles/*/examples/images/*.png
+tests/output/plots/*.png
+tests/output/*.xml
+tests/output/*.html

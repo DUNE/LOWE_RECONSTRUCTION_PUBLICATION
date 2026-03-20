@@ -1,0 +1,4 @@
+{"rule":"MORFOLOGIK_RULE_EN_US","sentence":"^\\QThe DUNE matplotlib style includes:\\E$"}
+{"rule":"MORFOLOGIK_RULE_EN_US","sentence":"^\\QCreate your example script in the \\E(?:Dummy|Ina|Jimmy-)[0-9]+\\Q directory\nFollow the naming convention: \\E(?:Dummy|Ina|Jimmy-)[0-9]+\\Q\nInclude docstrings and comments\nMake sure output is saved to \\E(?:Dummy|Ina|Jimmy-)[0-9]+$"}
+{"rule":"MORFOLOGIK_RULE_EN_US","sentence":"^\\QCustom DUNE matplotlib style - Professional styling for scientific plots\nExample scripts - Demonstrations of common plot types\nTemplate structure - Organized directory layout for your analysis\\E$"}
+{"rule":"UPPERCASE_SENTENCE_START","sentence":"^\\Qbg right:45% contain\\E$"}
