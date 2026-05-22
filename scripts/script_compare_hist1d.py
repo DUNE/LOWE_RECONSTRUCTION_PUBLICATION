@@ -13,57 +13,58 @@ from rich import print as rprint
 
 from lib import *
 from lib.selection import filter_dataframe
-from lib.exports import make_name_from_args
-from lib.format import make_subtitle_from_args, make_title_from_args
+from lib.exports import make_name_from_args, save_figure_to_paths
+from lib.format import make_subtitle_from_args, make_title_from_args, make_config_label_from_args, make_config_color_and_style_from_args
 from lib.imports import import_data, prepare_import
-from lib.plot import plot_data
+from lib.plot import apply_scientific_threshold_formatter, apply_legend_style, plot_data, create_common_subplots, apply_note_to_figure, place_vertical_label, place_horizontal_label, place_point_label
+
+from common_args import add_common_args
 
 # Import with args parser
 parser = argparse.ArgumentParser(
     description="Plot the charge over time distribution of the particles"
 )
 
-parser.add_argument(
-    "--datafile",
-    type=str,
-    default=None,
-    help="Path to the input data file (pkl format)",
-    required=True,
-)
-
-parser.add_argument(
-    "--configs",
-    nargs="+",
-    type=str,
-    default=None,
-    help="DUNE detector configuration(s) to include in the plot (e.g. hd_1x2x6_centralAPA, hd_1x2x6, etc.)",
-)
-
-parser.add_argument(
-    "--names",
-    "-n",
-    nargs="+",
-    type=str,
-    default=None,
-    help="Name of the simulation configuration (e.g. marley_official, marley, etc.)",
-)
-
-parser.add_argument(
-    "--variables",
-    "-v",
-    nargs="+",
-    type=str,
-    default=None,
-    help="List of column names to use as variables for multiple subplots",
-)
-
-parser.add_argument(
-    "-x",
-    nargs="+",
-    type=str,
-    default=None,
-    help="Column names for x-axis data",
-    required=True,
+add_common_args(
+    parser,
+    [
+        "datafile",
+        "configs",
+        "names",
+        "variables",
+        "x",
+        "iterable",
+        "reduce",
+        "select",
+        "save_values",
+        "bins",
+        "percentile",
+        "labelx",
+        "labely",
+        "logx",
+        "logy",
+        "rangex",
+        "rangey",
+        "title",
+        "output",
+        "horizontal",
+        "horizontal_label",
+        "vertical",
+        "vertical_label",
+        "point",
+        "point_label",
+        "note",
+        "debug",
+    ],
+    overrides={
+        "datafile": {"required": True},
+        "x": {"nargs": "+", "required": True, "help": "Column names for x-axis data"},
+        "iterable": {"help": "Column name for iterable data"},
+        "variables": {"help": "List of column names to use as variables for multiple subplots"},
+        "percentile": {"nargs": 2},
+        "labelx": {"default": r"Time ($\mu$s)"},
+        "labely": {"default": "Density"},
+    },
 )
 
 parser.add_argument(
@@ -74,14 +75,6 @@ parser.add_argument(
 )
 
 parser.add_argument(
-    "--iterable",
-    "-i",
-    type=str,
-    default=None,
-    help="Column name for iterable data",
-)
-
-parser.add_argument(
     "--weight",
     "-w",
     type=str,
@@ -89,111 +82,6 @@ parser.add_argument(
     help="Column name for weight data",
 )
 
-parser.add_argument(
-    "--reduce",
-    action="store_true",
-    help="Reduce number of lines plotted for clarity",
-    default=False,
-)
-
-parser.add_argument(
-    "--select",
-    nargs="+",
-    default=None,
-    help="If provided, filter plots for which according to select columns and values in save_values",
-)
-
-parser.add_argument(
-    "--save_values",
-    "-s",
-    nargs="+",
-    default=None,
-    help="If provided, filter plots for which according to select columns and these values",
-)
-
-parser.add_argument(
-    "--bins",
-    "-b",
-    type=int,
-    default=nbins,
-    help="Number of bins for histogram",
-)
-
-parser.add_argument(
-    "--percentile",
-    "-p",
-    nargs=2,
-    type=float,
-    default=None,
-    help="Percentile range for axis limits (e.g. 1 99)",
-)
-
-parser.add_argument(
-    "--labelx",
-    type=str,
-    default=r"Time ($\mu$s)",
-    help="Label for x-axis on plot",
-)
-
-parser.add_argument(
-    "--labely",
-    type=str,
-    default="Density",
-    help="Label for y-axis on plot",
-    # choices=["Counts", "Density"],
-)
-
-parser.add_argument(
-    "--logx",
-    action="store_true",
-    help="Set x-axis to logarithmic scale",
-    default=False,
-)
-
-parser.add_argument(
-    "--logy",
-    action="store_true",
-    help="Set y-axis to logarithmic scale",
-    default=False,
-)
-
-parser.add_argument(
-    "--rangex",
-    nargs=2,
-    type=float,
-    default=None,
-    help="Range for x-axis values",
-)
-
-parser.add_argument(
-    "--rangey",
-    nargs=2,
-    type=float,
-    default=None,
-    help="Range for y-axis values",
-)
-
-parser.add_argument(
-    "--title",
-    type=str,
-    default=None,
-    help="Title for the plot",
-)
-
-parser.add_argument(
-    "--output",
-    "-o",
-    type=str,
-    default=None,
-    help="Output filepath for the plot",
-)
-
-parser.add_argument(
-    "--debug",
-    "-d",
-    action="store_true",
-    help="Enable debug mode",
-)
 
 
 args = parser.parse_args()
@@ -208,7 +96,7 @@ def main():
         return
 
     # Select the entries in the dataframe with with name matching args.names and nake a plot for each iterable
-    if args.variables == None:
+    if args.variables is None:
         ncols = 1
     else:
         ncols = len(args.variables)
@@ -222,11 +110,9 @@ def main():
     for kdx, (config, name) in enumerate(zip(configs, names)):
         rprint(f"Plotting for Config: {config}, Name: {name}")
 
-        fig, ax = plt.subplots(
+        fig, ax = create_common_subplots(
             nrows=1,
             ncols=ncols,
-            figsize=(8 + 5 * (ncols - 1), 6),
-            constrained_layout=ncols > 1,
         )
         if config is not None and name is None and args.iterable != "Config":
             df_config = df[(df["Config"] == config)]
@@ -244,16 +130,18 @@ def main():
         hist_range = None
         variables = args.variables if args.variables is not None else [None]
         iterables = args.iterable if args.iterable is not None else [None]
+        iterable_values = (
+            df_config[args.iterable].unique() if args.iterable is not None else [None]
+        )
+        two_line_mode = len(iterable_values) == 2
         for (idx, variable), (jdx, iterable) in product(
             enumerate(variables),
             enumerate(
-                df_config[args.iterable].unique()
-                if args.iterable is not None
-                else [None]
+                iterable_values
             ),
         ):
             if args.iterable is not None:
-                if df_config[args.iterable].unique().size > 8 and args.reduce:
+                if len(iterable_values) > 8 and args.reduce:
                     if jdx % 2 == 1:
                         rprint(
                             f"\tSkipping plotting for {args.iterable}={iterable} to avoid overcrowding"
@@ -339,12 +227,28 @@ def main():
                 ),
             )
             bin_centers = (bins[:-1] + bins[1:]) / 2
+            
+            # Generate label, color, and linestyle based on iterable type
+            if args.iterable == "Config":
+                # When iterating over configs, use the config naming structure and styling
+                label = make_config_label_from_args(args, config=iterable, name=name)
+                color, linestyle = make_config_color_and_style_from_args(args, config=iterable, name=name)
+                if two_line_mode:
+                    color = f"C{jdx}"
+            else:
+                # For other iterables, use the iterable value directly
+                label = f"{iterable}"
+                color = f"C{jdx}" if two_line_mode else None
+                linestyle = None
+            
             plot_data(
                 args,
                 ax_current,
                 bin_centers,
                 y=hist,
-                label=f"{iterable}",
+                label=label,
+                color=color,
+                linestyle=linestyle,
                 plot_type="plot",
                 drawstyle="steps-mid",
             )
@@ -382,45 +286,61 @@ def main():
             if args.rangey is not None:
                 ax_current.set_ylim(args.rangey[0], args.rangey[1])
 
+            apply_scientific_threshold_formatter(ax_current, threshold=0.1, axis="both")
+
             if args.logy:
                 ax_current.semilogy()
 
             if args.logx:
                 ax_current.semilogx()
 
-            (
-                ax_current.legend(
+            if idx == ncols - 1:
+                apply_legend_style(
+                    ax_current,
                     title=args.iterable,
-                    title_fontsize=legendtitlefontsize,
-                    fontsize=legendfontsize,
+                    capitalize_labels=not getattr(args, "no_capitalize_legend", False),
                 )
-                if idx == ncols - 1
-                else None
+
+            vertical = getattr(args, "vertical", None)
+            vertical_label = getattr(args, "vertical_label", None)
+            horizontal = getattr(args, "horizontal", None)
+            horizontal_label = getattr(args, "horizontal_label", None)
+
+            if vertical is not None:
+                ax_current.axvline(vertical, color="gray", linestyle="--", linewidth=1)
+                if vertical_label is not None:
+                    place_vertical_label(ax_current, vertical, vertical_label, fontsize=linelabelfontsize)
+
+            if horizontal is not None:
+                ax_current.axhline(horizontal, color="gray", linestyle="--", linewidth=1)
+                if horizontal_label is not None:
+                    place_horizontal_label(ax_current, horizontal, horizontal_label, fontsize=linelabelfontsize)
+
+            point_values = parse_point_pairs(getattr(args, "point", None))
+            point_labels, point_label_warning = normalize_point_labels(
+                getattr(args, "point_label", None), len(point_values)
             )
+            if point_label_warning is not None:
+                rprint(f"[yellow]Warning:[/yellow] {point_label_warning}")
+
+            if point_values:
+                for point_idx, (point_x, point_y) in enumerate(point_values):
+                    ax_current.scatter(point_x, point_y, color="gray", s=40, zorder=6)
+                    if point_labels is not None:
+                        place_point_label(ax_current, point_x, point_y, point_labels[point_idx], fontsize=linelabelfontsize)
+
         # Set title
         plot_title = make_title_from_args(args)
         fig.suptitle(plot_title, fontsize=titlefontsize)
         # dunestyle.WIP()
 
+        apply_note_to_figure(fig, getattr(args, "note", None))
+
         output_file = make_name_from_args(args, kdx, prefix=None, suffix="hist1d.png")
-        if args.output is not None:
-            output_dir = os.path.dirname(args.output)
-            os.makedirs(output_dir, exist_ok=True)
-            rprint(
-                f"[green]Success:[/green] Plot saved to:\n{args.output}{output_file}"
-            )
-        else:
-            output_dir = os.path.join(
-                os.path.dirname(__file__), "..", "output", "plots"
-            )
-            os.makedirs(output_dir, exist_ok=True)
-            rprint(
-                f"[green]Success:[/green] Plot saved to:\n{os.path.join(output_dir.split('..')[1], output_file)[1:]}"
-            )
-
-        plt.savefig(os.path.join(output_dir, output_file))
-
-        plt.close()
+        default_output_dir = os.path.join(
+            os.path.dirname(__file__), "..", "output", "plots"
+        )
+        save_figure_to_paths(fig, args.output, output_file, default_output_dir, rprint)
 
 
 if __name__ == "__main__":

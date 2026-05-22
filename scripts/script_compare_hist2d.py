@@ -13,181 +13,59 @@ from rich import print as rprint
 
 from lib import *
 from lib.selection import filter_dataframe
-from lib.exports import make_name_from_args
+from lib.exports import make_name_from_args, save_figure_to_paths
 from lib.format import make_title_from_args, make_subtitle_from_args
 from lib.imports import import_data, prepare_import
-from lib.plot import plot_data
+from lib.plot import apply_scientific_threshold_formatter, plot_data, create_common_subplots, apply_note_to_figure, place_vertical_label, place_horizontal_label, place_point_label
+
+from common_args import add_common_args
 
 # Import with args parser
 parser = argparse.ArgumentParser(
     description="Plot the charge over time distribution of the particles"
 )
 
-parser.add_argument(
-    "--datafile",
-    type=str,
-    default=None,
-    help="Path to the input data file (pkl format)",
-    required=True,
-)
-
-parser.add_argument(
-    "--configs",
-    nargs="+",
-    type=str,
-    default=None,
-    help="DUNE detector configuration(s) to include in the plot (e.g. hd_1x2x6_centralAPA, hd_1x2x6, etc.)",
-)
-
-parser.add_argument(
-    "--names",
-    "-n",
-    nargs="+",
-    type=str,
-    default=None,
-    help="Name of the simulation configuration (e.g. marley_official, marley, etc.)",
-)
-
-parser.add_argument(
-    "--variables",
-    "-v",
-    nargs="+",
-    type=str,
-    default=None,
-    help="List of variable parameters to filter data (e.g. SignalParticleK, BackgroundType, etc.)",
-)
-
-parser.add_argument(
-    "-x",
-    type=str,
-    default="Time",
-    help="Column name for x-axis data",
-)
-
-parser.add_argument(
-    "-y",
-    type=str,
-    default="ChargePerEnergy",
-    help="Column name for y-axis data",
-)
-
-parser.add_argument(
-    "--percentile",
-    "-p",
-    nargs="+",
-    type=float,
-    default=[0, 100],
-    help="Percentile range for axis limits (e.g. 1 99)",
-)
-
-parser.add_argument(
-    "--iterable",
-    "-i",
-    type=str,
-    default=None,
-    help="List of iterable parameters to produce plots",
-)
-
-parser.add_argument(
-    "--select",
-    nargs="+",
-    default=None,
-    help="If provided, filter plots for which according to select columns and values in save_values",
-)
-
-parser.add_argument(
-    "--save_values",
-    "-s",
-    nargs="+",
-    default=None,
-    help="If iterable value is provided, save plots for which iterable equals this value",
-)
-
-parser.add_argument(
-    "--bins",
-    "-b",
-    type=int,
-    default=nbins,
-    help="Number of bins for the histogram",
-)
-
-parser.add_argument(
-    "--labelx",
-    type=str,
-    default=None,
-    help="Label for x-axis on plot",
-)
-
-parser.add_argument(
-    "--labely",
-    type=str,
-    default="Charge per Energy (ADC x tick / MeV)",
-    help="Label for y-axis on plot",
-)
-
-parser.add_argument(
-    "--rangex",
-    nargs=2,
-    type=float,
-    default=None,
-    help="Range for x-axis (e.g. 0 100)",
-)
-
-parser.add_argument(
-    "--rangey",
-    nargs=2,
-    type=float,
-    default=None,
-    help="Range for y-axis (e.g. 0 100)",
-)
-
-parser.add_argument(
-    "--logz",
-    action="store_true",
-    help="Set z-axis to logarithmic scale",
-    default=False,
-)
-
-parser.add_argument(
-    "--density",
-    action="store_true",
-    help="Normalize histogram to density",
-    default=False,
-)
-
-parser.add_argument(
-    "--zoom",
-    action="store_true",
-    help="Zoom into overlapping percentile ranges",
-    default=False,
-)
-
-parser.add_argument(
-    "--matchx",
-    action="store_true",
-    help="Match x-axis ranges across subplots",
-    default=False,
-)
-
-parser.add_argument(
-    "--matchy",
-    action="store_true",
-    help="Match y-axis ranges across subplots",
-    default=False,
-)
-
-parser.add_argument(
-    "--horizontal",
-    type=float,
-    default=None,
-    help="Draw horizontal line at specified y value",
-)
-
-parser.add_argument(
-    "--vertical",
-    type=float,
-    default=None,
-    help="Draw vertical line at specified x value",
+add_common_args(
+    parser,
+    [
+        "datafile",
+        "configs",
+        "names",
+        "variables",
+        "x",
+        "y",
+        "percentile",
+        "iterable",
+        "select",
+        "save_values",
+        "bins",
+        "labelx",
+        "labely",
+        "rangex",
+        "rangey",
+        "logz",
+        "density",
+        "zoom",
+        "matchx",
+        "matchy",
+        "horizontal",
+        "vertical",
+        "title",
+        "output",
+        "horizontal_label",
+        "vertical_label",
+        "point",
+        "point_label",
+        "note",
+        "debug",
+    ],
+    overrides={
+        "datafile": {"required": True},
+        "bins": {"default": nbins, "help": "Number of bins for the histogram"},
+        "percentile": {"default": [0, 100]},
+        "density": {"help": "Normalize histogram to density"},
+        "zoom": {"help": "Zoom into overlapping percentile ranges"},
+    },
 )
 
 parser.add_argument(
@@ -197,27 +75,6 @@ parser.add_argument(
     default=False,
 )
 
-parser.add_argument(
-    "--title",
-    type=str,
-    default=None,
-    help="Title for the plot",
-)
-
-parser.add_argument(
-    "--output",
-    "-o",
-    type=str,
-    default=None,
-    help="Output filepath for the plot",
-)
-
-parser.add_argument(
-    "--debug",
-    "-d",
-    action="store_true",
-    help="Enable debug mode",
-)
 
 
 args = parser.parse_args()
@@ -251,11 +108,9 @@ def main():
     for kdx, (config, name) in enumerate(zip(configs, names)):
         print(f"Plotting for Config: {config}, Name: {name}")
 
-        fig, ax = plt.subplots(
+        fig, ax = create_common_subplots(
             nrows=1,
             ncols=ncols,
-            figsize=(8 + 5 * (ncols - 1), 6),
-            constrained_layout=ncols > 1,
         )
         if config is None:
             df_config = df
@@ -356,7 +211,7 @@ def main():
                 ax_current.set_ylim(
                     ranges[0]
                 )  # Set y limits to match the heatmap range
-            if args.horizontal != None:
+            if args.horizontal is not None:
                 ax_current.axhline(
                     args.horizontal, color="k" if args.logz else "white", linestyle="--"
                 )
@@ -396,7 +251,7 @@ def main():
 
             ax_current.set_xlabel(
                 args.labelx
-                if args.labelx != None
+                if args.labelx is not None
                 else f"{args.x}" if args.x != "Time" else r"Time ($\mu$s)"
             )
             ax_current.set_ylabel(args.labely) if idx == 0 else None
@@ -409,30 +264,51 @@ def main():
             if args.rangey is not None:
                 ax_current.set_ylim(args.rangey)
 
+            apply_scientific_threshold_formatter(ax_current, threshold=0.1, axis="both")
+
+            vertical = getattr(args, "vertical", None)
+            vertical_label = getattr(args, "vertical_label", None)
+            horizontal = getattr(args, "horizontal", None)
+            horizontal_label = getattr(args, "horizontal_label", None)
+
+            if vertical is not None:
+                ax_current.axvline(vertical, color="gray", linestyle="--", linewidth=1)
+                if vertical_label is not None:
+                    place_vertical_label(ax_current, vertical, vertical_label, fontsize=linelabelfontsize)
+
+            if horizontal is not None:
+                ax_current.axhline(horizontal, color="gray", linestyle="--", linewidth=1)
+                if horizontal_label is not None:
+                    place_horizontal_label(ax_current, horizontal, horizontal_label, fontsize=linelabelfontsize)
+
+            point_values = parse_point_pairs(getattr(args, "point", None))
+            point_labels, point_label_warning = normalize_point_labels(
+                getattr(args, "point_label", None), len(point_values)
+            )
+            if point_label_warning is not None:
+                rprint(f"[yellow]Warning:[/yellow] {point_label_warning}")
+
+            if point_values:
+                for point_idx, (point_x, point_y) in enumerate(point_values):
+                    ax_current.scatter(point_x, point_y, color="gray", s=40, zorder=6)
+                    if point_labels is not None:
+                        place_point_label(ax_current, point_x, point_y, point_labels[point_idx], fontsize=linelabelfontsize)
+                    ax_current.scatter(point_x, point_y, color="gray", s=40, zorder=6)
+                    if point_labels is not None:
+                        place_point_label(ax_current, point_x, point_y, point_labels[point_idx], fontsize=linelabelfontsize)
+
         # Set title
         plot_title = make_title_from_args(args)
         fig.suptitle(f"{plot_title}", fontsize=titlefontsize)
         # dunestyle.WIP()
 
+        apply_note_to_figure(fig, getattr(args, "note", None))
+
         output_file = make_name_from_args(args, kdx, prefix=None, suffix="hist2d.png")
-        if args.output is not None:
-            output_dir = os.path.dirname(args.output)
-            os.makedirs(output_dir, exist_ok=True)
-            rprint(
-                f"[green]Success:[/green] Plot saved to:\n{args.output}{output_file}"
-            )
-        else:
-            output_dir = os.path.join(
-                os.path.dirname(__file__), "..", "output", "plots"
-            )
-            os.makedirs(output_dir, exist_ok=True)
-            rprint(
-                f"[green]Success:[/green] Plot saved to:\n{os.path.join(output_dir.split('..')[1], output_file)[1:]}"
-            )
-
-        plt.savefig(os.path.join(output_dir, output_file))
-
-        plt.close()
+        default_output_dir = os.path.join(
+            os.path.dirname(__file__), "..", "output", "plots"
+        )
+        save_figure_to_paths(fig, args.output, output_file, default_output_dir, rprint)
 
 
 if __name__ == "__main__":

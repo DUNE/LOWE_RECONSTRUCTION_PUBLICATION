@@ -15,7 +15,7 @@ from rich import print as rprint
 
 from lib import *
 from lib.selection import filter_dataframe
-from lib.exports import make_name_from_args
+from lib.exports import make_name_from_args, save_figure_to_paths
 from lib.format import make_title_from_args, make_subtitle_from_args
 from lib.imports import import_data, prepare_import
 from lib.functions import (
@@ -25,7 +25,9 @@ from lib.functions import (
     quadratic_cut,
     quadratic_function,
 )
-from lib.plot import plot_data
+from lib.plot import apply_legend_style, plot_data, create_common_subplots, create_common_two_panel_figure, apply_note_to_figure, place_vertical_label, place_horizontal_label, place_point_label
+
+from common_args import add_common_args
 
 # Remove RuntimeWarning: overflow encountered in divide
 warnings.filterwarnings("ignore", category=RuntimeWarning)
@@ -35,116 +37,48 @@ parser = argparse.ArgumentParser(
     description="Plot the energy distribution of the particles"
 )
 
-parser.add_argument(
-    "--datafile",
-    type=str,
-    default="NHit_Distributions",
-    help="Path to the input data file (pkl format)",
-)
-
-parser.add_argument(
-    "--configs",
-    nargs="+",
-    type=str,
-    default=None,
-    help="DUNE detector configuration(s) to include in the plot (e.g. hd_1x2x6_centralAPA, hd_1x2x6, etc.)",
-)
-
-parser.add_argument(
-    "--names",
-    nargs="+",
-    type=str,
-    default=None,
-    help="Name of the simulation configuration (e.g. marley_official, marley, etc.)",
-)
-
-parser.add_argument(
-    "--variables",
-    "-v",
-    nargs="+",
-    type=str,
-    default=None,
-    help="List of variable parameters to filter data (e.g. SignalParticleK, BackgroundType, etc.)",
-)
-
-parser.add_argument(
-    "-x",
-    type=str,
-    default="Values",
-    help="Column name for x-axis values",
-),
-
-parser.add_argument(
-    "-y",
-    type=str,
-    default="Density",
-    help="Column name for y-axis values",
-),
-
-parser.add_argument(
-    "--iterable",
-    "-i",
-    type=str,
-    default=None,
-    help="List of iterable parameters to produce plots",
-)
-
-parser.add_argument(
-    "--select",
-    nargs="+",
-    type=str,
-    default=None,
-    help="List of iterable parameters to produce plots",
-)
-
-parser.add_argument(
-    "--save_values",
-    "-s",
-    nargs="+",
-    default=None,
-    help="If iterable value is provided, save plots for which iterable equals this value",
-)
-
-parser.add_argument(
-    "--reduce",
-    action="store_true",
-    help="Reduce the number of plotted lines by only plotting every other line for cases with many unique iterables",
-    default=False,
-)
-
-parser.add_argument(
-    "--labelx",
-    type=str,
-    default=f"True Neutrino Energy (MeV)",
-    help="Label for x-axis on plot",
-)
-
-parser.add_argument(
-    "--labely",
-    type=str,
-    default=None,
-    help="Label for y-axis on plot",
-)
-
-parser.add_argument(
-    "--labelz",
-    type=str,
-    default=None,
-    help="Title for legend on plot (if applicable)",
-)
-
-parser.add_argument(
-    "--logx",
-    action="store_true",
-    help="Set x-axis to logarithmic scale",
-    default=False,
-)
-
-parser.add_argument(
-    "--logy",
-    action="store_true",
-    help="Set y-axis to logarithmic scale",
-    default=False,
+add_common_args(
+    parser,
+    [
+        "datafile",
+        "configs",
+        "names",
+        "variables",
+        "x",
+        "y",
+        "iterable",
+        "select",
+        "save_values",
+        "reduce",
+        "labelx",
+        "labely",
+        "labelz",
+        "logx",
+        "logy",
+        "rangex",
+        "rangey",
+        "title",
+        "output",
+        "horizontal",
+        "horizontal_label",
+        "vertical",
+        "vertical_label",
+        "point",
+        "point_label",
+        "note",
+        "debug",
+    ],
+    overrides={
+        "datafile": {"default": "NHit_Distributions"},
+        "names": {"flags": ["--names"]},
+        "x": {"default": "Values"},
+        "y": {"default": "Density"},
+        "labelx": {"default": "True Neutrino Energy (MeV)"},
+        "labelz": {"help": "Title for legend on plot (if applicable)"},
+        "reduce": {
+            "help": "Reduce the number of plotted lines by only plotting every other line for cases with many unique iterables"
+        },
+    },
 )
 
 parser.add_argument(
@@ -184,42 +118,12 @@ parser.add_argument(
 )
 
 parser.add_argument(
-    "--rangex",
-    nargs=2,
-    type=float,
-    default=None,
-    help="Font size for legend",
-)
-
-parser.add_argument(
-    "--rangey",
-    nargs=2,
-    type=float,
-    default=None,
-    help="Font size for legend",
-)
-
-parser.add_argument(
-    "--title",
-    type=str,
-    default=None,
-    help="Title for the plot",
-)
-
-parser.add_argument(
-    "--output",
-    "-o",
-    type=str,
-    default=None,
-    help="Output filepath for the plot",
-)
-
-parser.add_argument(
-    "--debug",
-    "-d",
+    "--no_lower_plot",
     action="store_true",
-    help="Enable debug mode",
+    help="Disable rendering of the lower residual subplot",
+    default=False,
 )
+
 
 args = parser.parse_args()
 
@@ -244,10 +148,21 @@ def main():
 
     # Select the entries in the dataframe with with name matching args.name and nake a plot for each iterable
     for kdx, (config, name) in enumerate(zip(configs, names)):
-        fig = plt.figure(figsize=(8, 6))
-        gs = fig.add_gridspec(nrows=2, ncols=1, height_ratios=[3, 1], hspace=0)
-        axs = gs.subplots(sharex=True)
+        render_lower_plot = not getattr(args, "no_lower_plot", False)
+        if render_lower_plot:
+            fig, gs = create_common_two_panel_figure(
+                ncols=1,
+                height_ratios=[3, 1],
+            )
+            ax_top = fig.add_subplot(gs[0])
+            ax_bottom = fig.add_subplot(gs[1], sharex=ax_top)
+        else:
+            fig, ax_top = create_common_subplots(nrows=1, ncols=1)
+            ax_bottom = None
+
+        limit = 1
         df_config = df[(df["Config"] == config) & (df["Name"] == name)]
+        fit_function_label = None
 
         # variables = args.variables if args.variables is not None else [None]
         iterables = (
@@ -275,22 +190,44 @@ def main():
                 df_iterable = df_config.copy()
 
             subset = filter_dataframe(df_iterable, args)
+            if subset.empty:
+                continue
+
+            fit_function_label = subset["FitFunctionLabel"].iloc[0]
 
             x = subset[args.x].values[0].astype(float)
             y = subset[args.y].values[0].astype(float)
 
             params = subset["Params"].iloc[0]
             params_format = subset["ParamsFormat"].iloc[0]
-            params_labels = subset["ParamsLabels"].iloc[0]
+            params_labels = subset["ParamsLabel"].iloc[0]
             params_error = subset["ParamsError"].iloc[0]
+            params_units = subset["ParamsUnit"].iloc[0] if "ParamsUnit" in subset.columns else None
             func = subset["FitFunction"].iloc[0]
             fit = func(x, *params)
+            y_error = None
+
+            if params_units is None or (
+                isinstance(params_units, float) and np.isnan(params_units)
+            ):
+                params_units = [""] * len(params)
+            elif isinstance(params_units, str):
+                params_units = [params_units] * len(params)
+            elif isinstance(params_units, (list, tuple, np.ndarray, pd.Series)):
+                params_units = list(params_units)
+            else:
+                params_units = [str(params_units)] * len(params)
+
+            if len(params_units) < len(params):
+                params_units = params_units + [""] * (len(params) - len(params_units))
+            elif len(params_units) > len(params):
+                params_units = params_units[: len(params)]
 
             if args.errory == True:
                 y_error = subset[f"{args.y}Error"].values[0]
                 plot_data(
                     args,
-                    axs[0],
+                    ax_top,
                     x,
                     y=y,
                     errory=y_error,
@@ -306,7 +243,7 @@ def main():
             else:
                 plot_data(
                     args,
-                    axs[0],
+                    ax_top,
                     x,
                     y=y,
                     plot_type="plot",
@@ -327,7 +264,7 @@ def main():
                 fit_x = np.linspace(np.min(x), np.max(x), 1000)
                 plot_data(
                     args,
-                    axs[0],
+                    ax_top,
                     fit_x,
                     y=func(fit_x, *params),
                     label="Fit",
@@ -342,7 +279,7 @@ def main():
                 residuals = np.full_like(diff, np.nan)
                 residuals[mask] = diff[mask] / fit[mask]
 
-                if args.errory:
+                if args.errory and y_error is not None:
                     residuals_error = np.full_like(y, np.nan)
                     residuals_error[mask] = y_error[mask] / fit[mask]
                 else:
@@ -365,127 +302,184 @@ def main():
                     # Set limit to number of free parameters in the fit as a more reasonable default if the computed limit is unreasonably large or not finite
                     limit = len(params)
 
-                # Plot residuals
-                if args.errory:
-                    plot_data(
-                        args,
-                        axs[1],
-                        x,
-                        y=residuals,
-                        errory=residuals_error,
-                        color="black",
-                        plot_type="errorbar",
-                        fmt="o",
-                    )
-                else:
-                    plot_data(
-                        args,
-                        axs[1],
-                        x,
-                        y=residuals,
-                        color="black",
-                        plot_type="plot",
-                        marker="o",
-                        linestyle="None",
-                    )
-                # Set the limits for the residuals plot based on the central 90% of finite residuals to avoid outliers dominating the scale
-                axs[1].set_ylim(-limit, limit)
+                if ax_bottom is not None:
+                    # Plot residuals
+                    if args.errory:
+                        plot_data(
+                            args,
+                            ax_bottom,
+                            x,
+                            y=residuals,
+                            errory=residuals_error,
+                            color="black",
+                            plot_type="errorbar",
+                            fmt="o",
+                        )
+                    else:
+                        plot_data(
+                            args,
+                            ax_bottom,
+                            x,
+                            y=residuals,
+                            color="black",
+                            plot_type="plot",
+                            marker="o",
+                            linestyle="None",
+                        )
+                    # Set the limits for the residuals plot based on the central 90% of finite residuals to avoid outliers dominating the scale
+                    ax_bottom.set_ylim(-limit, limit)
 
                 chi2 = (
                     (diff[mask] ** 2 / fit[mask]).sum() if fit[mask].size > 0 else 0
                 )  # Avoid division by zero
 
-                for ldx, (param_label, param_format, param, param_error) in enumerate(
-                    zip(params_labels, params_format, params, params_error)
+                for ldx, (param_label, param_format, param, param_error, param_unit) in enumerate(
+                    zip(params_labels, params_format, params, params_error, params_units)
                 ):
-                    axs[0].text(
+                    unit_text = str(param_unit).strip()
+                    param_display = param
+                    param_error_display = param_error
+                    if unit_text in {"%", "\\%"}:
+                        param_display = param * 100
+                        param_error_display = param_error * 100
+
+                    unit_suffix = f" {unit_text}" if unit_text else ""
+                    ax_top.text(
                         args.fitlegendposition[0],
                         args.fitlegendposition[1] - 0.08 - 0.06 * ldx,
-                        r"{0} = {1:{2}} $\pm$ {3:{2}}".format(
-                            param_label, param, param_format, param_error
+                        r"{0} = {1:{2}} $\pm$ {3:{2}}{4}".format(
+                            param_label,
+                            param_display,
+                            param_format,
+                            param_error_display,
+                            unit_suffix,
                         ),
                         fontdict={"size": legendfontsize},
-                        transform=axs[0].transAxes,
+                        transform=ax_top.transAxes,
                     )
 
                 if args.chi2:
-                    axs[0].text(
+                    ax_top.text(
                         args.fitlegendposition[0],
                         args.fitlegendposition[1] - 0.08 - 0.06 * (len(params)),
                         r"$\chi^2$/ndof = {0:0.2f}/{1:d}".format(chi2, len(params)),
                         fontdict={"size": legendfontsize},
-                        transform=axs[0].transAxes,
+                        transform=ax_top.transAxes,
                     )
 
-        axs[0].set_ylabel(
+        if fit_function_label is None:
+            rprint("[yellow]Warning:[/yellow] No valid fit entries available to plot.")
+            plt.close(fig)
+            continue
+
+        ax_top.set_ylabel(
             args.labely if args.labely is not None else f"{args.y}",
             fontsize=ysublabelfontsize,
         )
 
         if args.rangex is not None:
-            axs[0].set_xlim(args.rangex)
+            ax_top.set_xlim(args.rangex)
         if args.rangey is not None:
-            axs[0].set_ylim(args.rangey)
+            ax_top.set_ylim(args.rangey)
         if args.logy:
-            axs[0].set_yscale("log")
+            ax_top.set_yscale("log")
         if args.logx:
-            axs[0].set_xscale("log")
+            ax_top.set_xscale("log")
 
-        axs[0].set_title(
-            f"{subset['FitFunctionLabel'].iloc[0]} Fit",
+        ax_top.set_title(
+            f"{fit_function_label} Fit",
             fontsize=subtitlefontsize,
         )
-        axs[0].text(
+        ax_top.text(
             args.fitlegendposition[0],
             args.fitlegendposition[1],
             "Fit Parameters:",
             fontdict={"size": legendfontsize, "weight": "bold"},
-            transform=axs[0].transAxes,
+            transform=ax_top.transAxes,
         )
-        axs[0].legend(
-            fontsize=legendfontsize,
+
+        # Ensure the fit line appears last in the legend ordering.
+        legend_handles, legend_labels = ax_top.get_legend_handles_labels()
+        fit_indices = [
+            idx for idx, label in enumerate(legend_labels) if str(label).strip() == "Fit"
+        ]
+        if fit_indices:
+            fit_idx = fit_indices[0]
+            fit_handle = legend_handles.pop(fit_idx)
+            fit_label = legend_labels.pop(fit_idx)
+            legend_handles.append(fit_handle)
+            legend_labels.append(fit_label)
+
+        apply_legend_style(
+            ax_top,
             title=args.labelz if args.labelz is not None else None,
-            title_fontsize=legendtitlefontsize,
+            handles=legend_handles,
+            labels=legend_labels,
+            capitalize_labels=not getattr(args, "no_capitalize_legend", False),
         )
 
-        axs[1].axhline(y=0, color="r", zorder=-1)
-        if args.rangex is not None:
-            axs[1].set_xlim(args.rangex)
+        if ax_bottom is not None:
+            ax_bottom.axhline(y=0, color="r", zorder=-1)
+            if args.rangex is not None:
+                ax_bottom.set_xlim(args.rangex)
 
-        axs[1].set_xlabel(
-            args.labelx if args.labelx is not None else f"{args.x}",
-            fontsize=xlabelfontsize,
+            ax_bottom.set_xlabel(
+                args.labelx if args.labelx is not None else f"{args.x}",
+                fontsize=xlabelfontsize,
+            )
+            if args.logx:
+                ax_bottom.set_xscale("log")
+
+            ax_bottom.set_ylim(-limit, limit)
+            ax_bottom.set_ylabel("(Data - Fit)/Fit", fontsize=ysublabelfontsize)
+        else:
+            ax_top.set_xlabel(
+                args.labelx if args.labelx is not None else f"{args.x}",
+                fontsize=xlabelfontsize,
+            )
+
+        vertical = getattr(args, "vertical", None)
+        vertical_label = getattr(args, "vertical_label", None)
+        horizontal = getattr(args, "horizontal", None)
+        horizontal_label = getattr(args, "horizontal_label", None)
+
+        if vertical is not None:
+            ax_top.axvline(vertical, color="gray", linestyle="--", linewidth=1)
+            if ax_bottom is not None:
+                ax_bottom.axvline(vertical, color="gray", linestyle="--", linewidth=1)
+            if vertical_label is not None:
+                place_vertical_label(ax_top, vertical, vertical_label, fontsize=linelabelfontsize)
+
+        if horizontal is not None:
+            ax_top.axhline(horizontal, color="gray", linestyle="--", linewidth=1)
+            if horizontal_label is not None:
+                place_horizontal_label(ax_top, horizontal, horizontal_label, fontsize=linelabelfontsize)
+
+        point_values = parse_point_pairs(getattr(args, "point", None))
+        point_labels, point_label_warning = normalize_point_labels(
+            getattr(args, "point_label", None), len(point_values)
         )
-        if args.logx:
-            axs[1].set_xscale("log")
+        if point_label_warning is not None:
+            rprint(f"[yellow]Warning:[/yellow] {point_label_warning}")
 
-        axs[1].set_ylim(-limit, limit)
-        axs[1].set_ylabel("(Data - Fit)/Fit", fontsize=ysublabelfontsize)
+        if point_values:
+            for point_idx, (point_x, point_y) in enumerate(point_values):
+                ax_top.scatter(point_x, point_y, color="gray", s=40, zorder=6)
+                if point_labels is not None:
+                    place_point_label(ax_top, point_x, point_y, point_labels[point_idx], fontsize=linelabelfontsize)
 
         figure_title = make_title_from_args(args)
         fig.suptitle(figure_title, fontsize=titlefontsize)
 
         # dunestyle.WIP()
 
+        apply_note_to_figure(fig, getattr(args, "note", None))
+
         output_file = make_name_from_args(args, kdx, prefix=None, suffix="fit.png")
-        if args.output is not None:
-            output_dir = os.path.dirname(args.output)
-            os.makedirs(output_dir, exist_ok=True)
-            rprint(
-                f"[green]Success:[/green] Plot saved to:\n{args.output}{output_file}"
-            )
-        else:
-            output_dir = os.path.join(
-                os.path.dirname(__file__), "..", "output", "plots"
-            )
-            os.makedirs(output_dir, exist_ok=True)
-            rprint(
-                f"[green]Success:[/green] Plot saved to:\n{os.path.join(output_dir.split('..')[1], output_file)[1:]}"
-            )
-
-        plt.savefig(os.path.join(output_dir, output_file))
-
-        plt.close()
+        default_output_dir = os.path.join(
+            os.path.dirname(__file__), "..", "output", "plots"
+        )
+        save_figure_to_paths(fig, args.output, output_file, default_output_dir, rprint)
 
 
 if __name__ == "__main__":

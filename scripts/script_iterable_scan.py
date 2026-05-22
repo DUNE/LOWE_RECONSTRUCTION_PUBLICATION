@@ -13,76 +13,84 @@ from rich import print as rprint
 
 from lib import *
 from lib.selection import filter_dataframe
-from lib.exports import make_name_from_args
+from lib.exports import make_name_from_args, save_figure_to_paths
 from lib.format import make_title_from_args, make_subtitle_from_args
 from lib.imports import import_data, prepare_import
 from lib.functions import resolution
-from lib.plot import plot_data
+from lib.plot import (
+    apply_legend_style,
+    plot_data,
+    create_common_subplots,
+    apply_note_to_figure,
+    place_vertical_label,
+    place_horizontal_label,
+    place_point_label,
+)
+from common_args import add_common_args, map_iterable_label, map_iterable_color
+
 
 # Import with args parser
 parser = argparse.ArgumentParser(
     description="Plot the energy distribution of the particles"
 )
 
-parser.add_argument(
-    "--datafile",
-    type=str,
-    default=None,
-    help="Name of the input data file (pkl format)",
-    required=True,
-)
-
-parser.add_argument(
-    "--configs",
-    nargs="+",
-    type=str,
-    default=None,
-    help="DUNE detector configuration(s) to include in the plot (e.g. hd_1x2x6_centralAPA, hd_1x2x6, etc.)",
-)
-
-parser.add_argument(
-    "--names",
-    nargs="+",
-    type=str,
-    default=None,
-    help="Name of the simulation configuration (e.g. marley_official, marley, etc.)",
-)
-
-parser.add_argument(
-    "--variables",
-    "-v",
-    nargs="+",
-    type=str,
-    default=None,
-    help="List of variable parameters to filter data (e.g. SignalParticleK, BackgroundType, etc.)",
-)
-
-parser.add_argument(
-    "--iterable",
-    "-i",
-    type=str,
-    default=None,
-    help="Iterable column to produce plots",
-    required=True,
-)
-
-parser.add_argument(
-    "--select",
-    nargs="+",
-    default=None,
-    help="If provided, use these key to apply save_values filtering",
-)
-
-parser.add_argument(
-    "--save_values",
-    "-s",
-    nargs="+",
-    default=None,
-    help="If select key is provided, save plots for which select key equals this value",
-)
-
-parser.add_argument(
-    "-x", type=str, default=None, help="Column name for x-axis values", required=True
+add_common_args(
+    parser,
+    [
+        "datafile",
+        "configs",
+        "names",
+        "variables",
+        "iterable",
+        "select",
+        "save_values",
+        "x",
+        "y",
+        "reduce",
+        "labelx",
+        "labely",
+        "labelz",
+        "logx",
+        "logy",
+        "rangex",
+        "rangey",
+        "plot_style",
+        "plot_type",
+        "title",
+        "output",
+        "horizontal",
+        "horizontal_label",
+        "vertical",
+        "vertical_label",
+        "point",
+        "point_label",
+        "note",
+        "debug",
+    ],
+    overrides={
+        "datafile": {
+            "required": True,
+            "help": "Name of the input data file (pkl format)",
+        },
+        "names": {"flags": ["--names"]},
+        "iterable": {"required": True},
+        "select": {
+            "help": "If provided, use these key to apply save_values filtering"
+        },
+        "save_values": {
+            "help": "If select key is provided, save plots for which select key equals this value"
+        },
+        "x": {"required": True},
+        "y": {"required": True},
+        "labelx": {"default": "True Neutrino Energy (MeV)"},
+        "plot_style": {
+            "help": "Plot line style for connected plots (options: -, --, :, -., solid, dashed, dotted, dashdot, none)",
+        },
+        "plot_type": {
+            "choices": ["scatter", "line", "bar", "step", "plot", "errorbar"],
+            "help": "Explicit plot type override (scatter, line, bar, step, plot, errorbar)",
+        },
+    },
 )
 
 parser.add_argument(
@@ -93,72 +101,10 @@ parser.add_argument(
 )
 
 parser.add_argument(
-    "-y", type=str, default=None, help="Column name for y-axis values", required=True
-)
-
-parser.add_argument(
     "--stacked",
     action="store_true",
     help="Create stacked histograms",
     default=False,
-)
-
-parser.add_argument(
-    "--reduce",
-    action="store_true",
-    help="Reduce number of lines plotted for clarity",
-    default=False,
-)
-
-parser.add_argument(
-    "--labelx",
-    type=str,
-    default=f"True Neutrino Energy (MeV)",
-    help="Label for x-axis on plot",
-)
-
-parser.add_argument(
-    "--labely",
-    type=str,
-    default=None,
-    help="Label for y-axis on plot",
-)
-
-parser.add_argument(
-    "--labelz",
-    type=str,
-    default=None,
-    help="Label for iterable data in legend",
-)
-
-parser.add_argument(
-    "--logx",
-    action="store_true",
-    help="Set x-axis to logarithmic scale",
-    default=False,
-)
-
-parser.add_argument(
-    "--logy",
-    action="store_true",
-    help="Set y-axis to logarithmic scale",
-    default=False,
-)
-
-parser.add_argument(
-    "--rangex",
-    nargs=2,
-    type=float,
-    default=None,
-    help="Range for x-axis (min max)",
-)
-
-parser.add_argument(
-    "--rangey",
-    nargs=2,
-    type=float,
-    default=None,
-    help="Range for y-axis (min max)",
 )
 
 parser.add_argument(
@@ -169,29 +115,28 @@ parser.add_argument(
 )
 
 parser.add_argument(
-    "--title",
+    "--iterable_mapping",
     type=str,
     default=None,
-    help="Title for the plot",
+    help=(
+        "Optional mapping dictionary name from plot_params mappings used to "
+        "rename iterable values in legend labels"
+    ),
 )
 
 parser.add_argument(
-    "--output",
-    "-o",
+    "--iterable_color_mapping",
     type=str,
     default=None,
-    help="Output filepath for the plot",
-)
-
-parser.add_argument(
-    "--debug",
-    "-d",
-    action="store_true",
-    help="Enable debug mode",
+    help=(
+        "Optional mapping dictionary name from plot_params mappings used to "
+        "set iterable line colors in legend/plot (supports Cn and rgb(r,g,b))"
+    ),
 )
 
 args = parser.parse_args()
 
+_MISSING_ITERABLE_MAPPING_WARNING_SHOWN = False
 
 def main():
     # For each configuration provided combine the data files and plot the results
@@ -202,7 +147,7 @@ def main():
         return
 
     # Select the entries in the dataframe with with name matching args.names and nake a plot for each iterable
-    if args.variables == None:
+    if args.variables is None:
         ncols = 1
     else:
         ncols = len(args.variables)
@@ -216,11 +161,9 @@ def main():
     for kdx, (config, name) in enumerate(zip(configs, names)):
         rprint(f"Plotting for Config: {config}, Name: {name}")
 
-        fig, ax = plt.subplots(
+        fig, ax = create_common_subplots(
             nrows=1,
             ncols=ncols,
-            figsize=(8 + 5 * (ncols - 1), 6),
-            constrained_layout=ncols > 1,
         )
 
         if config is not None and name is None:
@@ -242,11 +185,13 @@ def main():
         variables = args.variables if args.variables is not None else [None]
         # Drop None values from df in iterable column
         df_config = df_config.dropna(subset=[args.iterable])
+        iterable_values = df_config[args.iterable].unique()
+        two_line_mode = iterable_values.size == 2
 
         for (idx, variable), (jdx, iterable) in product(
-            enumerate(variables), enumerate(df_config[args.iterable].unique())
+            enumerate(variables), enumerate(iterable_values)
         ):
-            if df_config[args.iterable].unique().size > 8 and args.reduce:
+            if iterable_values.size > 8 and args.reduce:
                 if jdx % 2 == 1:
                     rprint(
                         f"\tSkipping plotting for {args.iterable}={iterable} to avoid overcrowding"
@@ -296,6 +241,7 @@ def main():
                 continue
 
             y = subset[args.y].astype(float).to_numpy()
+            x_edges = None
             try:
                 x = subset[args.x].astype(float).to_numpy()
                 x_bin = x[1] - x[0] if len(x) > 1 else 1
@@ -322,37 +268,108 @@ def main():
             if bottom is None:
                 bottom = np.zeros(len(x)) if args.stacked else None
 
-            if args.iterable == "PDG":
-                rprint(
-                    f"\tMapping PDG codes to particle names for iterable {args.iterable}"
-                )
-                try:
-                    value_int = int(iterable)
-                    value_str = particle_dict.get(value_int, str(iterable))
-                    iterable = value_str
-                except (ValueError, TypeError):
-                    pass  # If conversion fails, keep original iterable value
+            iterable_label = map_iterable_label(
+                iterable,
+                args.iterable,
+                getattr(args, "iterable_mapping", None),
+                len(iterable_values),
+            )
+            iterable_color = (
+                f"C{jdx}"
+                if two_line_mode
+                else map_iterable_color(iterable, getattr(args, "iterable_color_mapping", None))
+            )
 
-            if args.iterable == "Plane":
-                rprint(f"\tMapping Plane numbers to names for iterable {args.iterable}")
-                if len(df_config[args.iterable].unique()) > 2:
-                    try:
-                        value_int = int(iterable)
-                        value_str = plane_dict.get(value_int, str(iterable))
-                        iterable = value_str
-                    except (ValueError, TypeError):
-                        pass
+            if args.plot_type is not None:
+                rprint(
+                    f"\tPlotting {len(x)} points with explicit plot_type={args.plot_type} for {args.iterable}={iterable} (legend={iterable_label}), Variable={variable}"
+                )
+
+                plot_label = iterable_label if idx == ncols - 1 else None
+
+                if args.plot_type == "bar":
+                    plot_data(
+                        args,
+                        ax_current,
+                        x,
+                        y=y,
+                        label=plot_label,
+                        color=iterable_color,
+                        plot_type="bar",
+                        bottom=bottom if args.stacked else None,
+                    )
+                    if args.stacked:
+                        bottom += y
+
+                elif args.plot_type == "step":
+                    plot_data(
+                        args,
+                        ax_current,
+                        x,
+                        x_edges=x_edges,
+                        y=y,
+                        label=plot_label,
+                        color=iterable_color,
+                        plot_type="step",
+                        linestyle=args.plot_style,
+                    )
+
+                elif args.plot_type == "errorbar":
+                    plot_data(
+                        args,
+                        ax_current,
+                        x,
+                        y=y,
+                        errory=x_error,
+                        label=plot_label,
+                        color=iterable_color,
+                        plot_type="errorbar",
+                        fmt="o",
+                        linestyle=args.plot_style,
+                    )
+
+                elif args.plot_type == "line":
+                    plot_data(
+                        args,
+                        ax_current,
+                        x,
+                        y=y,
+                        label=plot_label,
+                        color=iterable_color,
+                        plot_type="line",
+                        linestyle=args.plot_style,
+                    )
+
+                elif args.plot_type == "scatter":
+                    plot_data(
+                        args,
+                        ax_current,
+                        x,
+                        y=y,
+                        label=plot_label,
+                        color=iterable_color,
+                        plot_type="scatter",
+                        fmt="o",
+                    )
+
                 else:
-                    try:
-                        value_int = int(iterable)
-                        value_str = simple_plane_dict.get(value_int, str(iterable))
-                        iterable = value_str
-                    except (ValueError, TypeError):
-                        pass
+                    plot_data(
+                        args,
+                        ax_current,
+                        x,
+                        y=y,
+                        label=plot_label,
+                        color=iterable_color,
+                        plot_type="plot",
+                        marker="o",
+                        linestyle=args.plot_style,
+                    )
+
+                continue
 
             if x_error is not None and args.errorx:
                 rprint(
-                    f"\tPlotting {len(x)} points with error bars for {args.iterable}={iterable}, Variable={variable}"
+                    f"\tPlotting {len(x)} points with error bars for {args.iterable}={iterable_label}, Variable={variable}"
                 )
                 if args.stacked:
                     plot_data(
@@ -361,7 +378,8 @@ def main():
                         x,
                         y=y,
                         errory=x_error,
-                        label=f"{iterable}" if idx == ncols - 1 else None,
+                        label=iterable_label if idx == ncols - 1 else None,
+                        color=iterable_color,
                         plot_type="bar",
                         bottom=bottom,
                     )
@@ -374,7 +392,8 @@ def main():
                             ax_current,
                             x,
                             y=y,
-                            linestyle="-",
+                            linestyle=args.plot_style,
+                            color=iterable_color,
                             label=None,
                             plot_type="plot",
                         )
@@ -385,14 +404,15 @@ def main():
                             x,
                             y=y,
                             errory=x_error,
-                            label=f"{iterable}" if idx == ncols - 1 else None,
+                            label=iterable_label if idx == ncols - 1 else None,
+                            color=iterable_color,
                             plot_type="errorbar",
                             fmt="o",
                         )
 
             else:
                 rprint(
-                    f"\tPlotting {len(x)} points for {args.iterable}={iterable}, Variable={variable}"
+                    f"\tPlotting {len(x)} points for {args.iterable}={iterable_label}, Variable={variable}"
                 )
                 if args.stacked:
                     plot_data(
@@ -400,7 +420,8 @@ def main():
                         ax_current,
                         x,
                         y=y,
-                        label=f"{iterable}" if idx == ncols - 1 else None,
+                        label=iterable_label if idx == ncols - 1 else None,
+                        color=iterable_color,
                         plot_type="bar",
                         bottom=bottom,
                     )
@@ -413,9 +434,10 @@ def main():
                             x,
                             x_edges=x_edges,
                             y=y,
-                            label=f"{iterable}" if idx == ncols - 1 else None,
+                            label=iterable_label if idx == ncols - 1 else None,
+                            color=iterable_color,
                             plot_type="step",
-                            linewidth=2,
+                            linestyle=args.plot_style,
                         )
                     else:
                         plot_data(
@@ -423,11 +445,11 @@ def main():
                             ax_current,
                             x,
                             y=y,
-                            label=f"{iterable}" if idx == ncols - 1 else None,
+                            label=iterable_label if idx == ncols - 1 else None,
+                            color=iterable_color,
                             plot_type="plot",
                             marker="o",
                             linestyle="None",
-                            linewidth=2,
                         )
 
         for idx, variable in enumerate(variables):
@@ -474,53 +496,68 @@ def main():
                 ax_current.semilogx()
 
             if args.stacked:
-                (
-                    ax_current.legend(
+                if idx == ncols - 1:
+                    apply_legend_style(
+                        ax_current,
                         title=args.labelz if args.labelz is not None else args.iterable,
-                        title_fontsize=legendtitlefontsize,
-                        fontsize=legendfontsize,
                         loc="upper left",
                         bbox_to_anchor=(0, 1),
+                        capitalize_labels=not getattr(args, "no_capitalize_legend", False),
                     )
-                    if idx == ncols - 1
-                    else None
-                )
 
             else:
-                (
-                    ax_current.legend(
+                if idx == ncols - 1:
+                    apply_legend_style(
+                        ax_current,
                         title=args.labelz if args.labelz is not None else args.iterable,
-                        title_fontsize=legendtitlefontsize,
-                        fontsize=legendfontsize,
+                        capitalize_labels=not getattr(args, "no_capitalize_legend", False),
                     )
-                    if idx == ncols - 1
-                    else None
-                )
+
+            vertical = getattr(args, "vertical", None)
+            vertical_label = getattr(args, "vertical_label", None)
+            horizontal = getattr(args, "horizontal", None)
+            horizontal_label = getattr(args, "horizontal_label", None)
+
+            if vertical is not None:
+                ax_current.axvline(vertical, color="gray", linestyle="--", linewidth=1)
+                if vertical_label is not None:
+                    # Place vertical label next to the line using content-aware helper
+                    place_vertical_label(
+                        ax_current, vertical, vertical_label, fontsize=linelabelfontsize
+                    )
+
+            if horizontal is not None:
+                ax_current.axhline(horizontal, color="gray", linestyle="--", linewidth=1)
+                if horizontal_label is not None:
+                    # Place horizontal label next to the line using content-aware helper
+                    place_horizontal_label(
+                        ax_current, horizontal, horizontal_label, fontsize=linelabelfontsize
+                    )
+
+            point_values = parse_point_pairs(getattr(args, "point", None))
+            point_labels, point_label_warning = normalize_point_labels(
+                getattr(args, "point_label", None), len(point_values)
+            )
+            if point_label_warning is not None:
+                rprint(f"[yellow]Warning:[/yellow] {point_label_warning}")
+
+            if point_values:
+                for point_idx, (point_x, point_y) in enumerate(point_values):
+                    ax_current.scatter(point_x, point_y, color="gray", s=40, zorder=6)
+                    if point_labels is not None:
+                        place_point_label(ax_current, point_x, point_y, point_labels[point_idx], fontsize=linelabelfontsize)
 
         plot_title = make_title_from_args(args)
         fig.suptitle(plot_title, fontsize=titlefontsize)
         # dunestyle.WIP()
 
+        apply_note_to_figure(fig, getattr(args, "note", None))
+
         output_file = make_name_from_args(args, kdx, prefix=None, suffix="scan.png")
-        if args.output is not None:
-            output_dir = os.path.dirname(args.output)
-            os.makedirs(output_dir, exist_ok=True)
-            rprint(
-                f"[green]Success:[/green] Plot saved to:\n{args.output}{output_file}"
-            )
-        else:
-            output_dir = os.path.join(
-                os.path.dirname(__file__), "..", "output", "plots"
-            )
-            os.makedirs(output_dir, exist_ok=True)
-            rprint(
-                f"[green]Success:[/green] Plot saved to:\n{os.path.join(output_dir.split('..')[1], output_file)[1:]}"
-            )
-
-        plt.savefig(os.path.join(output_dir, output_file))
-
-        plt.close()
-
+        default_output_dir = os.path.join(
+            os.path.dirname(__file__), "..", "output", "plots"
+        )
+        save_figure_to_paths(fig, args.output, output_file, default_output_dir, rprint)
 
 if __name__ == "__main__":
     main()

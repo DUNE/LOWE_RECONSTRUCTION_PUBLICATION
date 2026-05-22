@@ -10,12 +10,14 @@ from _bootstrap import ensure_src_path
 ensure_src_path()
 
 from lib import *
-from lib.exports import make_name_from_args
-from lib.format import make_subtitle_from_args, make_title_from_args
+from lib.exports import make_name_from_args, save_figure_to_paths
+from lib.format import make_subtitle_from_args, make_title_from_args, make_config_label_from_args, make_config_color_and_style_from_args
 from lib.functions import resolution, gaussian
 from lib.imports import import_data, prepare_import
-from lib.plot import plot_data
+from lib.plot import apply_scientific_threshold_formatter, apply_legend_style, plot_data, create_common_subplots, apply_note_to_figure
 from lib.selection import prepare_selection, filter_dataframe
+from common_args import add_common_args, map_iterable_label, map_iterable_color
+
 
 from rich import print as rprint
 
@@ -24,66 +26,53 @@ parser = argparse.ArgumentParser(
     description="Plot the energy distribution of the particles"
 )
 
-parser.add_argument(
-    "--datafile",
-    type=str,
-    default="Vertex_Reconstruction_Efficiency",
-    help="Path to the input data file (pkl format)",
-)
-
-parser.add_argument(
-    "--configs",
-    nargs="+",
-    type=str,
-    default=[
-        "hd_1x2x6",
-        "hd_1x2x6_lateralAPA",
-        "hd_1x2x6_centralAPA",
-        "vd_1x8x14_3view_30deg",
-        "vd_1x8x14_3view_30deg_nominal",
+add_common_args(
+    parser,
+    [
+        "datafile",
+        "configs",
+        "names",
+        "variables",
+        "iterable",
+        "select",
+        "save_values",
+        "x",
+        "rangex",
+        "rangey",
+        "y",
+        "plot_type",
+        "logx",
+        "logy",
+        "labelx",
+        "labely",
+        "horizontal",
+        "vertical",
+        "vertical_label",
+        "horizontal_label",
+        "point",
+        "point_label",
+        "note",
+        "title",
+        "output",
+        "debug",
     ],
-    help="DUNE detector configuration(s) to include in the plot (e.g. hd_1x2x6_centralAPA, hd_1x2x6, etc.)",
-)
-
-parser.add_argument(
-    "--names",
-    nargs="+",
-    type=str,
-    default=["marley_official"],
-    help="Name of the simulation configuration (e.g. marley_official, marley, etc.)",
-)
-
-parser.add_argument(
-    "--variables",
-    "-v",
-    nargs="+",
-    type=str,
-    default=None,
-    help="Row filter variable name",
-)
-
-parser.add_argument(
-    "--iterable",
-    "-i",
-    type=str,
-    default=None,
-    help="Iterable column to produce plots",
-)
-
-parser.add_argument(
-    "--select",
-    nargs="+",
-    type=str,
-    default=None,
-    help="List of columns to filter the iterable or variables",
-)
-
-parser.add_argument(
-    "--save_values",
-    "-s",
-    nargs="+",
-    default=None,
-    help="If select is provided, only save these values from the iterable column(s)",
+    overrides={
+        "configs": {
+            "default": [
+                "hd_1x2x6",
+                "hd_1x2x6_lateralAPA",
+                "hd_1x2x6_centralAPA",
+                "vd_1x8x14_3view_30deg",
+                "vd_1x8x14_3view_30deg_nominal",
+            ]
+        },
+        "names": {"flags": ["--names"], "default": ["marley_official"]},
+        "x": {"default": "Values"},
+        "plot_type": {"default": "step", "choices": ["scatter", "line", "step"], "help": "Style of errors."},
+        "labelx": {"nargs": "+"},
+        "output": {"help": "Output filepath for the plot"},
+        "debug": {"flags": ["--debug"]},
+    },
 )
 
 parser.add_argument(
@@ -92,44 +81,6 @@ parser.add_argument(
     type=str,
     default="Config",
     help="List of comparable parameter to produce plots",
-)
-
-parser.add_argument(
-    "-x",
-    type=str,
-    default="Values",
-    help="Column name for x-axis values",
-)
-
-parser.add_argument(
-    "--rangex",
-    nargs=2,
-    type=float,
-    default=None,
-    help="Range for x-axis values",
-)
-
-parser.add_argument(
-    "--rangey",
-    nargs=2,
-    type=float,
-    default=None,
-    help="Range for y-axis values",
-),
-
-parser.add_argument(
-    "-y",
-    type=str,
-    default=None,
-    help="Column name for y-axis values",
-),
-
-parser.add_argument(
-    "--plot_type",
-    type=str,
-    default="step",
-    help="Style of errors.",
-    choices=["scatter", "line", "step"],
 )
 
 parser.add_argument(
@@ -152,35 +103,6 @@ parser.add_argument(
     type=str,
     default=None,
     help="Operation to perform on data (e.g. mean, sum, etc.)",
-)
-
-parser.add_argument(
-    "--logx",
-    action="store_true",
-    help="Set x-axis to logarithmic scale",
-    default=False,
-)
-
-parser.add_argument(
-    "--logy",
-    action="store_true",
-    help="Set y-axis to logarithmic scale",
-    default=False,
-)
-
-parser.add_argument(
-    "--labelx",
-    nargs="+",
-    type=str,
-    default=None,
-    help="Label for x-axis on plot",
-)
-
-parser.add_argument(
-    "--labely",
-    type=str,
-    default=None,
-    help="Label for y-axis on plot",
 )
 
 parser.add_argument(
@@ -220,41 +142,178 @@ parser.add_argument(
 )
 
 parser.add_argument(
-    "--horizontal",
-    type=float,
-    default=None,
-    help="Draw horizontal line at specified y value",
-)
-
-parser.add_argument(
-    "--vertical",
-    type=float,
-    default=None,
-    help="Draw vertical line at specified x value",
-)
-
-parser.add_argument(
-    "--title",
+    "--iterable_mapping",
     type=str,
     default=None,
-    help="Title for the plot",
+    help=(
+        "Optional mapping dictionary name from plot_params mappings used to "
+        "rename iterable values in legend labels"
+    ),
 )
 
 parser.add_argument(
-    "--output",
-    "-o",
+    "--iterable_color_mapping",
     type=str,
     default=None,
-    help="Output filepath for the plot",
+    help=(
+        "Optional mapping dictionary name from plot_params mappings used to "
+        "set iterable line colors in legend/plot (supports Cn and rgb(r,g,b))"
+    ),
+)
+
+# Styling options for the combined line
+parser.add_argument(
+    "--combined_color",
+    type=str,
+    default="C0",
+    help="Color for the combined line (e.g. C0, red, #RRGGBB)",
 )
 
 parser.add_argument(
-    "--debug",
-    action="store_true",
-    help="Enable debug mode",
+    "--combined_linestyle",
+    type=str,
+    default="-",
+    help="Linestyle for the combined line (e.g. '-', '--', ':', '-.')",
 )
+
+parser.add_argument(
+    "--combined_linewidth",
+    type=float,
+    default=None,
+    help="Line width for the combined line (overrides default if set)",
+)
+
+parser.add_argument(
+    "--combined_alpha",
+    type=float,
+    default=1.0,
+    help="Alpha (transparency) for the combined line (0.0-1.0)",
+)
+
+parser.add_argument(
+    "--combined_label",
+    type=str,
+    default="Combined",
+    help="Legend label for the combined line",
+)
+
 args = parser.parse_args()
 
+_MISSING_ITERABLE_MAPPING_WARNING_SHOWN = False
+_MISSING_MAPPING_WARNINGS_SHOWN = set()
+_MISSING_MAPPING_ENTRY_WARNINGS_SHOWN = set()
+
+def _coerce_numeric_array(value):
+    arr = np.asarray(value)
+    if arr.ndim == 0:
+        arr = np.asarray([arr.item()])
+    return arr.astype(float)
+
+def _find_fallback_x_array(row, x_key, y_key, target_len):
+    for key, value in row.items():
+        if key in {x_key, y_key}:
+            continue
+        try:
+            candidate = _coerce_numeric_array(value)
+        except (TypeError, ValueError):
+            continue
+        if candidate.size == target_len:
+            return candidate
+    return None
+
+def _extract_xy_arrays(df_config, args):
+    x_arrays = []
+    y_arrays = []
+
+    for _, row in df_config.iterrows():
+        try:
+            x = _coerce_numeric_array(row[args.x])
+            y = _coerce_numeric_array(row[args.y])
+        except (TypeError, ValueError, KeyError):
+            continue
+
+        if x.size == 1 and y.size > 1:
+            fallback = _find_fallback_x_array(row, args.x, args.y, y.size)
+            if fallback is not None:
+                x = fallback
+            else:
+                x = np.full(y.shape, float(x[0]))
+        elif y.size == 1 and x.size > 1:
+            y = np.full(x.shape, float(y[0]))
+        elif x.size != y.size:
+            continue
+
+        x_arrays.append(x)
+        y_arrays.append(y)
+
+    if not x_arrays:
+        return None, None
+
+    return np.concatenate(x_arrays), np.concatenate(y_arrays)
+
+def _concat_numeric_cells(values):
+    arrays = []
+    for value in values:
+        try:
+            arrays.append(_coerce_numeric_array(value))
+        except (TypeError, ValueError):
+            continue
+    if not arrays:
+        return None
+    return np.concatenate(arrays)
+
+def _build_geometry_combined_subset(subset, configs, names, args):
+    combine_operation = getattr(args, "combine_operation", None) or "mean"
+    grouped = {}
+
+    for config, name in zip(configs, names):
+        geom = str(config).split("_")[0]
+        df_config = subset[(subset["Config"] == config) & (subset["Name"] == name)]
+        if df_config.empty:
+            continue
+
+        x, y = _extract_xy_arrays(df_config, args)
+        if x is None or y is None:
+            continue
+
+        if geom not in grouped:
+            grouped[geom] = {
+                "config": config,
+                "name": name,
+                "y_by_x": {},
+            }
+
+        for x_val, y_val in zip(x, y):
+            x_key = float(x_val)
+            grouped[geom]["y_by_x"].setdefault(x_key, []).append(float(y_val))
+
+    rows = []
+    combined_configs = []
+    combined_names = []
+
+    for geom, data in grouped.items():
+        x_vals = np.array(sorted(data["y_by_x"].keys()), dtype=float)
+        if combine_operation == "sum":
+            y_vals = np.array(
+                [np.sum(data["y_by_x"][xv]) for xv in x_vals], dtype=float
+            )
+        else:
+            y_vals = np.array(
+                [np.mean(data["y_by_x"][xv]) for xv in x_vals], dtype=float
+            )
+
+        rows.append(
+            {
+                "Config": data["config"],
+                "Name": data["name"],
+                args.x: x_vals,
+                args.y: y_vals,
+            }
+        )
+        combined_configs.append(data["config"])
+        combined_names.append(data["name"])
+
+    return pd.DataFrame(rows), combined_configs, combined_names
 
 def main():
     """
@@ -269,11 +328,9 @@ def main():
         return
 
     ncols = len(args.variables) if args.variables is not None else 1
-    fig, ax = plt.subplots(
+    fig, ax = create_common_subplots(
         nrows=1,
         ncols=ncols,
-        figsize=(8 + 5 * (ncols - 1), 6),
-        constrained_layout=ncols > 1,
     )
 
     used_colors = []
@@ -315,10 +372,18 @@ def main():
         configs, names = prepare_import(args)
         configs = configs if configs is not None else [None]
         names = names if names is not None else [None]
-        geoms = [geom.split("_")[0] for geom in configs]
 
-        # combinedy = np.array([])
-        # combined_errory = np.array([]) if args.errory is not None else None
+        if getattr(args, "combine", None) == "Geometry":
+            subset, configs, names = _build_geometry_combined_subset(
+                subset, configs, names, args
+            )
+
+        single_loaded_file = len(configs) == 1 and len(names) == 1
+        geoms = [str(geom).split("_")[0] if geom is not None else "" for geom in configs]
+        two_line_mode = len(configs) == 2 and len(names) == 2
+
+        combinedy = None
+        combined_errory = None
         for ldx, (geom, config, name) in enumerate(zip(geoms, configs, names)):
             rprint(
                 f"[blue]Info:[/blue] Processing Geometry: {geom}, Config: {config}, Name: {name}"
@@ -361,38 +426,78 @@ def main():
                 pass
 
             else:
-                df_config = df_config.explode(column=columns)
+                try:
+                    df_config = df_config.explode(column=columns)
+                except ValueError:
+                    # Keep row as-is; downstream extraction handles mixed scalar/vector cells.
+                    pass
 
             df_config = df_config.dropna(subset=columns)
 
-            config_label = config_dict[config] if config in config_dict else str(config)
-            if len(args.configs) <= 2 and len(args.names) == 1:
-                geom_label = f"{geom.upper()}"
-            elif len(args.configs) > 2 and len(args.names) == 1:
-                geom_label = f"{geom.upper()}, {config_label}"
-            elif len(args.configs) == 1 and len(args.names) > 1:
-                geom_label = f"{geom.upper()}, {name}"
-            else:
-                geom_label = f"{geom.upper()}, {config_label}, {name}"
+            # Generate the label using the config naming structure function
+            # Apply iterable mapping to the per-line keys (geometry/config/name).
+            geom_label = make_config_label_from_args(args, config=config, name=name, iterable=None)
 
-            if args.iterable is not None:
-                geom_label += f", {iterable}"
+            if getattr(args, "combine", None) == "Geometry":
+                geom_label = str(geom).upper()
 
-            x = np.asarray(df_config[args.x].tolist())
-            y = np.asarray(df_config[args.y].tolist())
+            mapping_name = getattr(args, "iterable_mapping", None)
+            if mapping_name is not None:
+                mapped_geom = map_label_key(geom, mapping_name, "Geometry")
+                mapped_config = map_label_key(config, mapping_name, "Config")
+                mapped_name = map_label_key(name, mapping_name, "Name")
+
+                geom_label = geom_label.replace(str(geom).upper(), str(mapped_geom))
+                config_label = (
+                    config_dict.get(config, str(config)) if config is not None else None
+                )
+                if config_label is not None:
+                    # geom_label = geom_label.replace(str(config_label), str(mapped_config))
+                    geom_label = str(mapped_config)
+                if name is not None:
+                    # geom_label = geom_label.replace(str(name), str(mapped_name))
+                    geom_label += ", " + str(mapped_name)
+
+            x, y = _extract_xy_arrays(df_config, args)
+            if x is None or y is None:
+                rprint(
+                    f"[yellow]Warning:[/yellow] Could not parse x/y for Config: {config}, Name: {name}. Skipping..."
+                )
+                continue
 
             if args.errory:
                 if errory_sym == "asymmetric":
-                    errory = [
-                        np.asarray(df_config[f"{args.y}Error-"].tolist()),
-                        np.asarray(df_config[f"{args.y}Error+"].tolist()),
-                    ]
+                    lower = _concat_numeric_cells(df_config[f"{args.y}Error-"].tolist())
+                    upper = _concat_numeric_cells(df_config[f"{args.y}Error+"].tolist())
+                    errory = [lower, upper] if lower is not None and upper is not None else None
                 elif errory_sym == "symmetric":
-                    errory = np.asarray(df_config[f"{args.y}Error"].tolist())
+                    errory = _concat_numeric_cells(df_config[f"{args.y}Error"].tolist())
                 else:
                     errory = None
             else:
                 errory = None
+
+            mapping_name = getattr(args, "iterable_mapping", None)
+            if mapping_name is not None:
+                mapped_geom = map_label_key(geom, mapping_name, "Geometry")
+                mapped_config = map_label_key(config, mapping_name, "Config")
+                mapped_name = map_label_key(name, mapping_name, "Name")
+
+                label_parts = [str(mapped_geom)]
+                if mapped_config is not None and str(mapped_config) != str(mapped_geom):
+                    label_parts.append(str(mapped_config))
+                if mapped_name is not None and str(mapped_name) not in label_parts:
+                    label_parts.append(str(mapped_name))
+
+                geom_label = ", ".join(label_parts)
+            else:
+                geom_label = (
+                    str(geom).upper()
+                    if getattr(args, "combine", None) == "Geometry"
+                    else make_config_label_from_args(
+                        args, config=config, name=name, iterable=None
+                    )
+                )
 
             if args.operation is not None:
                 if ldx == 0:
@@ -530,34 +635,36 @@ def main():
             if args.operation is not None:
                 offset = 1
 
-            this_color = (
-                (
-                    f"C{0+offset}"
-                    if (geom == "hd" or len(np.unique(geoms)) == 1)
-                    else (
-                        f"C{1+offset}"
-                        if geom == "vd" and "shielded" not in config
-                        else f"C{2+offset}"
-                    )
-                )
-                if (len(geoms) > 1 or len(args.configs) > 1)
-                else f"C{kdx}"
-            )
-            # Track the colors added to the plot. If colot already used, change linestyle to differentiate
-            this_linestyle = "-"
-            if this_color in used_colors and (
-                len(geoms) > 1 or len(args.configs) > 1
-            ):  # Only change linestyle if there are multiple geometries to compare
-                # Count and print how many times the color has been used before
-                count = used_colors.count(this_color)
-                if count == 1:
-                    this_linestyle = "--"
-                elif count == 2:
-                    this_linestyle = ":"
-                elif count == 3:
-                    this_linestyle = "-."
-            else:
+            if two_line_mode:
+                this_color = f"C{ldx}"
                 this_linestyle = "-"
+            elif single_loaded_file:
+                this_color = f"C{(kdx + offset) % 10}"
+                this_linestyle = "-"
+            else:
+                this_color, base_linestyle = make_config_color_and_style_from_args(
+                    args, config=config, name=name
+                )
+                if this_color is None:
+                    this_color = f"C{(kdx + offset) % 10}"
+                if base_linestyle is None:
+                    base_linestyle = "-"
+                this_linestyle = base_linestyle
+
+                # Track the colors added to the plot. If colot already used, change linestyle to differentiate
+                if this_color in used_colors and (
+                    len(geoms) > 1 or len(args.configs) > 1 or len(args.names) > 2
+                ):  # Only change linestyle if there are multiple geometries to compare
+                    # Count and print how many times the color has been used before
+                    count = used_colors.count(this_color)
+                    if count == 1:
+                        this_linestyle = "--"
+                    elif count == 2:
+                        this_linestyle = ":"
+                    elif count == 3:
+                        this_linestyle = "-."
+                else:
+                    this_linestyle = "-"
 
             used_colors.append(this_color)
 
@@ -569,8 +676,23 @@ def main():
                 x = x[::-1]
                 x_edges = x_edges[::-1]
                 y = y[::-1]
-                if args.errory:
+                if args.errory and errory is not None:
                     errory = errory[::-1]
+
+            if not np.all(np.diff(x_edges) > 0):
+                # Fallback for duplicate/non-uniform x values: construct strictly increasing bin edges.
+                unique_x = np.unique(np.sort(np.asarray(x, dtype=float)))
+                if len(unique_x) == 1:
+                    width = 1.0
+                    x_edges = np.array(
+                        [unique_x[0] - width / 2, unique_x[0] + width / 2],
+                        dtype=float,
+                    )
+                else:
+                    mids = 0.5 * (unique_x[:-1] + unique_x[1:])
+                    first = unique_x[0] - 0.5 * (unique_x[1] - unique_x[0])
+                    last = unique_x[-1] + 0.5 * (unique_x[-1] - unique_x[-2])
+                    x_edges = np.concatenate(([first], mids, [last]))
 
             if args.project is not None and config in args.project:
                 plot_data(
@@ -604,7 +726,7 @@ def main():
                     this_linestyle,
                 )
 
-        if args.operation is not None:
+        if args.operation is not None and combinedy is not None:
             if args.operation == "squared_sum":
                 combinedy = np.power(combinedy, 0.5)
 
@@ -612,6 +734,18 @@ def main():
             combined_errory = (
                 np.power(combined_errory, 0.5) if combined_errory is not None else None
             )
+
+            # Use CLI-configurable styling for the combined line
+            combined_label = (
+                getattr(args, "combined_label", "Combined") if idx == ncols - 1 else None
+            )
+            combined_color = args.combined_color if getattr(args, "combined_color", None) is not None else "C0"
+            combined_linestyle = args.combined_linestyle if getattr(args, "combined_linestyle", None) is not None else "-"
+            combined_kwargs = {}
+            if getattr(args, "combined_linewidth", None) is not None:
+                combined_kwargs["linewidth"] = args.combined_linewidth
+            if getattr(args, "combined_alpha", None) is not None:
+                combined_kwargs["alpha"] = args.combined_alpha
 
             plot_data(
                 args,
@@ -621,9 +755,10 @@ def main():
                 combinedy,
                 combined_errory,
                 errory_sym,
-                "Combined" if idx == ncols - 1 else None,
-                f"C0",
-                "-",
+                combined_label,
+                combined_color,
+                combined_linestyle,
+                **combined_kwargs,
             )
 
         # Set titles and labels for the axes
@@ -653,14 +788,39 @@ def main():
         if args.rangey is not None:
             ax_current.set_ylim(args.rangey[0], args.rangey[1])
 
+        apply_scientific_threshold_formatter(ax_current, threshold=0.1, axis="both")
+
         # Add horizontal line if specified
-        if args.horizontal is not None:
+        horizontal = getattr(args, "horizontal", None)
+        horizontal_label = getattr(args, "horizontal_label", None)
+        vertical = getattr(args, "vertical", None)
+        vertical_label = getattr(args, "vertical_label", None)
+
+        if horizontal is not None:
             ax_current.axhline(
-                args.horizontal, color="gray", linestyle="--", linewidth=1
+                horizontal, color="gray", linestyle="--", linewidth=1
             )
+            if horizontal_label is not None:
+                place_horizontal_label(ax_current, horizontal, horizontal_label, fontsize=linelabelfontsize)
+
         # Add vertical line if specified
-        if args.vertical is not None:
-            ax_current.axvline(args.vertical, color="gray", linestyle="--", linewidth=1)
+        if vertical is not None:
+            ax_current.axvline(vertical, color="gray", linestyle="--", linewidth=1)
+            if vertical_label is not None:
+                place_vertical_label(ax_current, vertical, vertical_label, fontsize=linelabelfontsize)
+
+        point_values = parse_point_pairs(getattr(args, "point", None))
+        point_labels, point_label_warning = normalize_point_labels(
+            getattr(args, "point_label", None), len(point_values)
+        )
+        if point_label_warning is not None:
+            rprint(f"[yellow]Warning:[/yellow] {point_label_warning}")
+
+        if point_values:
+            for point_idx, (point_x, point_y) in enumerate(point_values):
+                ax_current.scatter(point_x, point_y, color="gray", s=40, zorder=6)
+                if point_labels is not None:
+                        place_point_label(ax_current, point_x, point_y, point_labels[point_idx], fontsize=linelabelfontsize)
 
         # Set logarithmic scale if specified
         if args.logy:
@@ -670,7 +830,10 @@ def main():
 
         # Add legend for the last variable
         if idx == ncols - 1:
-            ax_current.legend()
+            apply_legend_style(
+                ax_current,
+                capitalize_labels=not getattr(args, "no_capitalize_legend", False),
+            )
 
     # Set the figure title
     figure_title = make_title_from_args(args)
@@ -678,26 +841,15 @@ def main():
 
     # dunestyle.WIP()
 
+    apply_note_to_figure(fig, getattr(args, "note", None))
+
     output_file = make_name_from_args(
         args,
         prefix=None if len(np.unique(geoms)) > 1 else np.unique(geoms)[0],
         suffix="comparison.png",
     )
-    if args.output is not None:
-        output_dir = os.path.dirname(args.output)
-        os.makedirs(output_dir, exist_ok=True)
-        rprint(f"[green]Success:[/green] Plot saved to:\n{args.output}{output_file}")
-    else:
-        output_dir = os.path.join(os.path.dirname(__file__), "..", "output", "plots")
-        os.makedirs(output_dir, exist_ok=True)
-        rprint(
-            f"[green]Success:[/green] Plot saved to:\n{os.path.join(output_dir.split('..')[1], output_file)[1:]}"
-        )
-
-    plt.savefig(os.path.join(output_dir, output_file))
-
-    plt.close()
-
+    default_output_dir = os.path.join(os.path.dirname(__file__), "..", "output", "plots")
+    save_figure_to_paths(fig, args.output, output_file, default_output_dir, rprint)
 
 if __name__ == "__main__":
     main()
