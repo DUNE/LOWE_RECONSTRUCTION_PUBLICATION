@@ -10,5 +10,14 @@
     "python.testing.unittestEnabled": false,
     "python.testing.pytestArgs": [
         "tests"
-    ]
+    ],
+    "markdown.marp.themes": [
+        "./themes/dune.css"
+    ],
+    "chat.tools.terminal.autoApprove": {
+        "/^python3 scripts/script_compare_reduction\\.py --datafile Weighted_Distributions --names marley neutron gamma radiological --iterable Name -x '#Hits' -y Counts --configs hd_1x2x6_centralAPA --select Weight -s SignalParticleWeight --debug$/": {
+            "approve": true,
+            "matchCommandLine": true
+        }
+    }
 }

@@ -42,9 +42,7 @@ def load_output_paths(kind):
 def run_script(script_name):
     script_name = " ".join(script_name.split())  # Remove extra spaces
     rprint(f"\n[cyan]Running[/cyan] {script_name}")
-    result = os.system(f"python {script_name}")
-    if result != 0:
-        rprint(f"[red]Error:[/red] {script_name} failed to execute.")
+    result = os.system(f"{shlex.quote(sys.executable)} {script_name}")
     return result
 
 
@@ -64,13 +62,18 @@ if __name__ == "__main__":
 
     all_results = []
     for script_name in scripts:
-        external_output = output_paths.get(args.scripts)
+        external_outputs = output_paths.get(args.scripts) or []
+        # Ensure external_outputs is a list
+        if not isinstance(external_outputs, list):
+            external_outputs = [external_outputs]
+        
         if (
-            external_output is not None
+            external_outputs
             and " -o " not in script_name
             and " --output " not in script_name
         ):
-            script_name += f" -o {shlex.quote(external_output)}"
+            output_args = " ".join([shlex.quote(path) for path in external_outputs])
+            script_name += f" -o {output_args}"
         if args.plot:
             script_name += " -p"
         if args.debug:

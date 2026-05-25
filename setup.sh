@@ -88,8 +88,8 @@ PY
 fi
 python3 -c "import dunestyle.matplotlib; print('dunestyle import OK')"
 
-echo -e "\e[35m -> Installing required Python packages from requirements.txt\n\e[0m"
-python3 -m pip install -r requirements.txt pytest
+echo -e "\e[35m -> Installing required Python packages from src/requirements.txt\n\e[0m"
+python3 -m pip install -r src/requirements.txt pytest
 
 echo -e "\e[35m -> Running plotting test workflow and generating visual artifacts\n\e[0m"
 python3 -m pytest \
@@ -99,9 +99,10 @@ python3 -m pytest \
     tests/test_script_compare_reduction.py \
     tests/test_script_line_fit.py
 
-echo -e "\e[32m \n-> Setup complete! Run a plot command list with \e[0m\e[33mpython3 run_plot_scripts.py -s <name>\e[0m\e[32m.
- Run a table command list with \e[0m\e[33mpython3 run_table_scripts.py -s <name>\e[0m\e[32m.
- Visual test artifacts are available at \e[0m\e[33mtests/output/index.html\e[0m\e[32m.\n\e[0m"
+echo -e "\e[32m \n-> Setup complete!
+Run a plot command list with \e[0m\e[33mpython3 run_plot_scripts.py -s <name>\e[0m\e[32m.
+Run a table command list with \e[0m\e[33mpython3 run_table_scripts.py -s <name>\e[0m\e[32m.
+Visual test artifacts are available at \e[0m\e[33mtests/output/index.html\e[0m\e[32m.\n\e[0m"
 }
 
 if setup_main; then

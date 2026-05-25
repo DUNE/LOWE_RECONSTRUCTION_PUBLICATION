@@ -100,6 +100,17 @@ python3 scripts/script_line_fit.py --datafile Example_Fit -x Values -y Density -
 python3 scripts/script_mean_table.py --datafile Example_Table -y Efficiency --variables X Y Z -t Coordinate
 ```
 
+For [`script_compare_configuration.py`](scripts/script_compare_configuration.py), you can group multiple input lines into combined lines with:
+
+- `--combine <criterion>` where criterion is `Geometry`, `Config`, or `Name`
+- `--combine_operation <mode>` where mode is `mean`, `sum`, or `squared_sum`
+
+Example (combine HD and VD families into two lines, summing each group):
+
+```bash
+python3 scripts/script_compare_configuration.py --datafile TPC_Cluster_Efficiency_Drift_Scan --configs hd_1x2x6_centralAPA hd_1x2x6_lateralAPA vd_1x8x14_3view_30deg_nominal vd_1x8x14_3view_30deg_shielded -y Efficiency -x Coordinate -v X --select Energy -s 10 --title 'Signal + Background Productions' --labelx 'Drift Coordinate (cm)' --labely 'TPC-PDS Matching Efficiency (%)' --combine Geometry --combine_operation sum
+```
+
 Generated artifacts are written by default to:
 
 - [`output/plots/`](output/plots/)

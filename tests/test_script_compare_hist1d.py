@@ -93,19 +93,33 @@ def test_main_plots_histogram_for_each_iterable(monkeypatch, plot_artifact_dir):
         debug=False,
     )
 
+    first_values = np.concatenate(
+        [
+            np.linspace(0.02, 0.38, 120),
+            np.linspace(0.42, 0.98, 180),
+        ]
+    )
+    second_values = np.concatenate(
+        [
+            np.linspace(0.08, 0.32, 90),
+            np.linspace(0.36, 0.72, 140),
+            np.linspace(0.76, 0.96, 70),
+        ]
+    )
+
     df = pd.DataFrame(
         [
             {
                 "Config": "cfg_a",
                 "Name": "sample_a",
                 "Category": "first",
-                "Values": np.array([0.0, 0.2, 0.8, 1.0]),
+                "Values": first_values,
             },
             {
                 "Config": "cfg_a",
                 "Name": "sample_a",
                 "Category": "second",
-                "Values": np.array([0.1, 0.4, 0.6, 0.9]),
+                "Values": second_values,
             },
         ]
     )

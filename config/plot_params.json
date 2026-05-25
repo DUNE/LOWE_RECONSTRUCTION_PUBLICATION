@@ -1,0 +1,147 @@
+{
+  "rcparams": {
+    "font.size": 11
+  },
+  "font_sizes": {
+    "titlefontsize": "xx-large",
+    "subtitlefontsize": "x-large",
+    "legendtitlefontsize": "xx-large",
+    "legendfontsize": "x-large",
+    "xlabelfontsize": "xx-large",
+    "ylabelfontsize": "xx-large",
+    "xsublabelfontsize": "x-large",
+    "ysublabelfontsize": "x-large",
+    "linelabelfontsize": "large"
+  },
+  "plot_settings": {
+    "nbins": 50,
+    "default_linewidth": 2,
+    "figure_layout": {
+      "base_width": 8,
+      "panel_width": 5,
+      "height": 6,
+      "margins_inches": {
+        "left": 0.96,
+        "right": 0.40,
+        "bottom": 0.72,
+        "top": 0.60,
+        "wspace": 0.25,
+        "hspace": 0.15
+      },
+      "two_panel_hspace": 0
+    },
+    "legend_style": {
+      "fontsize": "x-large",
+      "title_fontsize": "xx-large",
+      "frameon": false,
+      "loc": "best"
+    },
+    "note_style": {
+      "fontsize": "large",
+      "bbox": {
+        "boxstyle": "round,pad=0.5",
+        "facecolor": "white",
+        "alpha": 0.8,
+        "edgecolor": "gray",
+        "linewidth": 0.5
+      }
+    }
+  },
+  "mappings": {
+    "near-thld": {
+      "hd": "HD",
+      "vd": "VD",
+      "marley_official": "Near-Threshold",
+      "hd_1x2x6": "HD",
+      "hd_1x2x6_lateralAPA": "HD",
+      "hd_1x2x6_centralAPA": "HD",
+      "vd_1x8x14_3view_30deg": "VD",
+      "vd_1x8x14_3view_30deg_nominal": "VD",
+      "vd_1x8x14_3view_30deg_shielded": "VD"
+    },
+    "pandora": {
+      "hd": "HD",
+      "vd": "VD",
+      "marley_pandora": "Pandora",
+      "hd_1x2x6": "HD",
+      "hd_1x2x6_lateralAPA": "HD",
+      "hd_1x2x6_centralAPA": "HD",
+      "vd_1x8x14_3view_30deg": "VD",
+      "vd_1x8x14_3view_30deg_nominal": "VD",
+      "vd_1x8x14_3view_30deg_shielded": "VD"
+    },
+    "config_dict": {
+      "hd_1x2x6": "Signal",
+      "hd_1x2x6_lateralAPA": "Lateral",
+      "hd_1x2x6_centralAPA": "Central",
+      "vd_1x8x14_3view_30deg": "Signal",
+      "vd_1x8x14_3view_30deg_nominal": "Top",
+      "vd_1x8x14_3view_30deg_shielded": "Bottom Shielded"
+    },
+    "config_color": {
+      "hd_1x2x6": "C1",
+      "hd_1x2x6_lateralAPA": "C3",
+      "hd_1x2x6_centralAPA": "C1",
+      "vd_1x8x14_3view_30deg": "C2",
+      "vd_1x8x14_3view_30deg_nominal": "C2",
+      "vd_1x8x14_3view_30deg_shielded": "C4"
+    },
+    "config_line": {
+      "hd_1x2x6": "-",
+      "hd_1x2x6_lateralAPA": "-",
+      "hd_1x2x6_centralAPA": "-",
+      "vd_1x8x14_3view_30deg": "-",
+      "vd_1x8x14_3view_30deg_nominal": "-",
+      "vd_1x8x14_3view_30deg_shielded": "-"
+    },
+    "name_color": {
+      "gamma": "C0",
+      "electron": "C1",
+      "neutron": "C2",
+      "proton": "C3",
+      "alpha": "C4",
+      "marley": "C5",
+      "marley_official": "C5",
+      "neutrino": "C6"
+    },
+    "particle_dict": {
+      "11": "electron",
+      "22": "gamma",
+      "2112": "neutron",
+      "2212": "proton",
+      "1000020040": "alpha"
+    },
+    "simple_plane_dict": {
+      "-1": "Total",
+      "0": "APA"
+    },
+    "plane_dict": {
+      "-1": "Total",
+      "0": "Cathode",
+      "1": "Left Membrane",
+      "2": "Right Membrane",
+      "3": "FrontCap",
+      "4": "EndCap"
+    },
+    "config_order": [
+      "HD Signal",
+      "HD Lateral",
+      "HD Central",
+      "VD Signal",
+      "VD Top",
+      "VD Bottom"
+    ],
+    "particle_order": [
+      "marley",
+      "neutrino",
+      "alpha",
+      "gamma",
+      "neutron"
+    ],
+    "interaction_names": {
+      "xs_nue_Ar40": "CC: $\\nu_e$ Ar40",
+      "xs_nue_e": "ES: $\\nu_e$ e",
+      "xs_nc_nue_Ar40": "NC: $\\nu_e$ Ar40"
+    }
+  }
+}

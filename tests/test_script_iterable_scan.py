@@ -5,45 +5,41 @@ from types import SimpleNamespace
 
 import numpy as np
 import pandas as pd
+import pytest
 
 
 def _load_module_and_main(monkeypatch):
     monkeypatch.setattr(
         sys,
         "argv",
-        ["script_compare_reduction.py", "--datafile", "mock", "-x", "X", "-y", "Y"],
+        [
+            "script_iterable_scan.py",
+            "--datafile",
+            "mock",
+            "--iterable",
+            "Label",
+            "-x",
+            "Values",
+            "-y",
+            "Counts",
+        ],
     )
 
     repo_root = Path(__file__).resolve().parents[1]
     scripts_dir = repo_root / "scripts"
+    src_dir = repo_root / "src"
     monkeypatch.syspath_prepend(str(scripts_dir))
+    monkeypatch.syspath_prepend(str(src_dir))
     monkeypatch.syspath_prepend(str(repo_root))
 
-    module = importlib.import_module("scripts.script_compare_reduction")
+    module = importlib.import_module("scripts.script_iterable_scan")
     module = importlib.reload(module)
-    from scripts.script_compare_reduction import main
+    from scripts.script_iterable_scan import main
 
     return module, main
 
 
 class _DummyAxis:
-    def __init__(self):
-        self.scatter_calls = []
-
-    def scatter(self, x, y, **kwargs):
-        self.scatter_calls.append(
-            {"x": np.asarray(x, dtype=float), "y": np.asarray(y, dtype=float), **kwargs}
-        )
-
-    def boxplot(self, *args, **kwargs):
-        pass
-
-    def get_xticks(self):
-        return np.array([0, 1, 2, 3])
-
-    def set_xticks(self, *args, **kwargs):
-        pass
-
     def set_title(self, *args, **kwargs):
         pass
 
@@ -59,10 +55,16 @@ class _DummyAxis:
     def set_ylim(self, *args, **kwargs):
         pass
 
-    def semilogy(self, *args, **kwargs):
+    def set_xscale(self, *args, **kwargs):
         pass
 
-    def semilogx(self, *args, **kwargs):
+    def set_yscale(self, *args, **kwargs):
+        pass
+
+    def plot(self, *args, **kwargs):
+        pass
+
+    def scatter(self, *args, **kwargs):
         pass
 
     def legend(self, *args, **kwargs):
@@ -74,56 +76,54 @@ class _DummyFig:
         pass
 
 
-def test_main_reduces_points_into_binned_means(monkeypatch, plot_artifact_dir):
+def test_main_plots_iterable_scan(monkeypatch, plot_artifact_dir):
     module, main = _load_module_and_main(monkeypatch)
 
     args = SimpleNamespace(
         datafile="mock",
-        configs=["cfg_a"],
-        names=["sample_a"],
+        configs=["hd_cfg_a"],
+        names=["name_a"],
         variables=None,
-        x="X",
-        y="Y",
-        iterable=None,
-        operation="mean",
-        threshold=False,
-        boxplot=False,
-        reduce=False,
+        iterable="Label",
         select=None,
         save_values=None,
-        bins=4,
-        percentile=(0, 100),
-        labelx="X",
-        labely="Y",
+        x="Values",
+        y="Counts",
+        reduce=False,
+        labelx="X Axis",
+        labely="Y Axis",
+        labelz=None,
         logx=False,
         logy=False,
         rangex=None,
         rangey=None,
+        plot_style="-",
+        plot_type="plot",
         title=None,
-        output=str(plot_artifact_dir / "artifact-root"),
+        output=str(plot_artifact_dir / "out"),
+        horizontal=None,
+        horizontal_label=None,
+        vertical=None,
+        vertical_label=None,
+        point=None,
+        point_label=None,
+        errorx=False,
+        stacked=False,
+        connect=False,
         debug=False,
     )
 
-    x_values = np.repeat(np.arange(4), 40)
-    y_values = np.concatenate(
-        [
-            np.linspace(9.0, 15.0, 40),
-            np.linspace(18.0, 26.0, 40),
-            np.linspace(28.0, 36.0, 40),
-            np.linspace(39.0, 47.0, 40),
-        ]
-    )
-
-    df = pd.DataFrame(
-        [
-            {
-                "Config": "cfg_a",
-                "Name": "sample_a",
-                "X": x_values.astype(int),
-                "Y": y_values.astype(float),
-            }
-        ]
-    )
+    # Create sample data
+    x_vals = np.linspace(0, 10, 50)
+    y_vals = np.sin(x_vals)
+    
+    df = pd.DataFrame({
+        "Config": ["hd_cfg_a"] * 50,
+        "Name": ["name_a"] * 50,
+        "Label": ["iter_1"] * 50,
+        "Values": x_vals,
+        "Counts": y_vals,
+    })
 
     monkeypatch.setattr(module, "args", args, raising=False)
     monkeypatch.setattr(module, "import_data", lambda _args: df)
@@ -134,12 +134,10 @@ def test_main_reduces_points_into_binned_means(monkeypatch, plot_artifact_dir):
     monkeypatch.setattr(
         module,
         "make_name_from_args",
-        lambda _args, _idx, prefix, suffix: "test_script_compare_reduction.png",
+        lambda _args, idx=None, prefix=None, suffix=None: "test_script_iterable_scan.png",
     )
     monkeypatch.setattr(module, "rprint", lambda *a, **k: None)
+    monkeypatch.setattr(module, "save_figure_to_paths", lambda *args, **kwargs: None)
 
     main()
-
-    output_file = plot_artifact_dir / "test_script_compare_reduction.png"
-    assert output_file.exists()
-    assert output_file.stat().st_size > 0
+    # Test passes if main() completes without error

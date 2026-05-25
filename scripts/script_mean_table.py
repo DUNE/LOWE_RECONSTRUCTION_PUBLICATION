@@ -16,48 +16,47 @@ from lib.selection import prepare_selection, filter_dataframe
 from lib.imports import import_data
 from lib.format import format_with_error
 from lib.exports import make_name_from_args
+from lib.plot import apply_note_to_figure
+from common_args import add_common_args
 
 # Import with args parser
 parser = argparse.ArgumentParser(
     description="Plot the energy distribution of the particles"
 )
 
-parser.add_argument(
-    "--datafile",
-    type=str,
-    default="Vertex_Reconstruction_Efficiency",
-    help="Path to the input data file (pkl format)",
-)
-
-parser.add_argument(
-    "--configs",
-    nargs="+",
-    type=str,
-    default=[
-        "hd_1x2x6",
-        "hd_1x2x6_centralAPA",
-        "hd_1x2x6_lateralAPA",
-        "vd_1x8x14_3view_30deg",
-        "vd_1x8x14_3view_30deg_nominal",
+add_common_args(
+    parser,
+    [
+        "datafile",
+        "configs",
+        "names",
+        "variables",
+        "iterable",
+        "select",
+        "save_values",
+        "x",
+        "rangex",
+        "y",
+        "output",
+        "note",
+        "debug",
     ],
-    help="DUNE detector configuration(s) to include in the plot (e.g. hd_1x2x6_centralAPA, hd_1x2x6, etc.)",
-)
-
-parser.add_argument(
-    "--names",
-    nargs="+",
-    type=str,
-    default=None,
-    help="Name of the simulation configuration (e.g. marley_official, marley, etc.)",
-)
-
-parser.add_argument(
-    "--variables",
-    "-v",
-    nargs="+",
-    type=str,
-    default=None,
-    help="Filter variable name",
+    overrides={
+        "datafile": {"default": "Vertex_Reconstruction_Efficiency"},
+        "configs": {
+            "default": [
+                "hd_1x2x6",
+                "hd_1x2x6_centralAPA",
+                "hd_1x2x6_lateralAPA",
+                "vd_1x8x14_3view_30deg",
+                "vd_1x8x14_3view_30deg_nominal",
+            ]
+        },
+        "names": {"flags": ["--names"]},
+        "variables": {"help": "Filter variable name"},
+        "output": {"help": "Output filepath for the plot"},
+        "debug": {"flags": ["--debug"]},
+    },
 )
 
 parser.add_argument(
@@ -76,51 +75,6 @@ parser.add_argument(
     help="Title for the variable on the table",
 )
 
-parser.add_argument(
-    "--iterable",
-    "-i",
-    type=str,
-    default=None,
-    help="Iterable column to produce plots",
-)
-
-parser.add_argument(
-    "--select",
-    nargs="+",
-    type=str,
-    default=None,
-    help="List of columns to filter the iterable or variables",
-)
-
-parser.add_argument(
-    "--save_values",
-    "-s",
-    nargs="+",
-    default=None,
-    help="If iterable value is provided, save plots for which iterable equals this value",
-)
-
-parser.add_argument(
-    "-x",
-    type=str,
-    default=None,
-    help="Column name for x-axis values",
-)
-
-parser.add_argument(
-    "--rangex",
-    nargs=2,
-    type=float,
-    default=None,
-    help="Range for x-axis values as (min, max)",
-)
-
-parser.add_argument(
-    "-y",
-    type=str,
-    default=None,
-    help="Column name for y-axis values",
-),
 
 parser.add_argument(
     "--emph",
@@ -136,19 +90,6 @@ parser.add_argument(
     help="Index of the columns to italicize in the table",
 ),
 
-parser.add_argument(
-    "--output",
-    "-o",
-    type=str,
-    default=None,
-    help="Output filepath for the plot",
-)
-
-parser.add_argument(
-    "--debug",
-    action="store_true",
-    help="Enable debug mode",
-)
 
 args = parser.parse_args()
 
@@ -316,6 +257,57 @@ def main():
     )
 
     print(f"Saving table to {os.path.join(output_dir, output_filename)}")
+
+    # Export to HTML as well
+    output_html_filename = make_name_from_args(args, prefix=None, suffix="table.html")
+    html_output_path = os.path.join(output_dir, output_html_filename)
+    
+    # Create a styled HTML table
+    html_content = """
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <meta charset="UTF-8">
+        <style>
+            body {
+                font-family: Arial, sans-serif;
+                margin: 20px;
+            }
+            table {
+                border-collapse: collapse;
+                margin-top: 20px;
+            }
+            th, td {
+                border: 1px solid #ddd;
+                padding: 8px;
+                text-align: center;
+            }
+            th {
+                background-color: #4CAF50;
+                color: white;
+            }
+            tr:nth-child(even) {
+                background-color: #f2f2f2;
+            }
+            tr:hover {
+                background-color: #ddd;
+            }
+            td:first-child, th:first-child {
+                text-align: left;
+            }
+        </style>
+    </head>
+    <body>
+        <h1>Mean Table Data</h1>
+    """ + df_table.to_html(index=False, border=0) + """
+    </body>
+    </html>
+    """
+    
+    with open(html_output_path, "w") as f:
+        f.write(html_content)
+    
+    print(f"Saving HTML table to {html_output_path}")
 
 
 if __name__ == "__main__":

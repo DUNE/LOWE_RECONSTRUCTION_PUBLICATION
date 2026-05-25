@@ -125,13 +125,16 @@ def test_main_plots_2d_histogram_and_sets_colorbar_label(monkeypatch, plot_artif
         debug=False,
     )
 
+    time = np.linspace(0.0, 6.0, 420)
+    charge = 1.4 + 0.35 * time + 0.4 * np.sin(2.2 * time)
+
     df = pd.DataFrame(
         [
             {
                 "Config": "cfg_a",
                 "Name": "sample_a",
-                "Time": np.array([0.0, 1.0, 2.0, 3.0]),
-                "ChargePerEnergy": np.array([1.0, 1.5, 2.0, 2.5]),
+                "Time": time,
+                "ChargePerEnergy": charge,
             }
         ]
     )

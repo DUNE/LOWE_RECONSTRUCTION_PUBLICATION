@@ -117,7 +117,7 @@ def test_main_plots_fit_and_zero_residuals_for_matching_data(monkeypatch, plot_a
     )
 
     linear = lambda x, slope, intercept: slope * x + intercept
-    x = np.array([1.0, 2.0, 3.0])
+    x = np.linspace(0.5, 12.0, 120)
     y = linear(x, 2.0, 1.0)
 
     df = pd.DataFrame(
@@ -129,8 +129,9 @@ def test_main_plots_fit_and_zero_residuals_for_matching_data(monkeypatch, plot_a
                 "Density": y,
                 "Params": np.array([2.0, 1.0]),
                 "ParamsFormat": [".2f", ".2f"],
-                "ParamsLabels": ["m", "b"],
+                "ParamsLabel": ["m", "b"],
                 "ParamsError": np.array([0.1, 0.1]),
+                "ParamsUnit": ["", ""],
                 "FitFunction": linear,
                 "FitFunctionLabel": "Linear",
             }
