@@ -82,7 +82,6 @@ add_common_args(
         },
         "x": {"required": True},
         "y": {"required": True},
-        "labelx": {"default": "True Neutrino Energy (MeV)"},
         "plot_style": {
             "help": "Plot line style for connected plots (options: -, --, :, -., solid, dashed, dotted, dashdot, none)",
         },
@@ -108,9 +107,31 @@ parser.add_argument(
 )
 
 parser.add_argument(
+    "--comparable",
+    "-c",
+    type=str,
+    default=None,
+    help=(
+        "Optional DataFrame column to overlay as a secondary line dimension. "
+        "Each unique value in this column gets a distinct linestyle."
+    ),
+)
+
+parser.add_argument(
+    "--comparable_linestyles",
+    nargs="+",
+    type=str,
+    default=None,
+    help=(
+        "Linestyles to cycle through for comparable values (e.g. solid dashed dotted). "
+        "Defaults to cycling through [-, --, :, -.]."
+    ),
+)
+
+parser.add_argument(
     "--connect",
     action="store_true",
-    help="Connect data points with lines",
+    help="(Deprecated) Connect data points with lines; use `--plot_type line` instead",
     default=False,
 )
 
@@ -138,12 +159,28 @@ args = parser.parse_args()
 
 _MISSING_ITERABLE_MAPPING_WARNING_SHOWN = False
 
+_COMPARABLE_LINESTYLES = ["-", "--", ":", "-."]
+
+
+def _resolve_comparable_linestyle(index, args):
+    user_styles = getattr(args, "comparable_linestyles", None)
+    if user_styles:
+        return user_styles[index % len(user_styles)]
+    return _COMPARABLE_LINESTYLES[index % len(_COMPARABLE_LINESTYLES)]
+
 def main():
     # For each configuration provided combine the data files and plot the results
     df = import_data(args)
 
     if df.empty:
         rprint("[yellow]Warning:[/yellow] No datafiles found. Exiting...")
+        return
+
+    if args.iterable not in df.columns:
+        available_columns = ", ".join(map(str, df.columns.tolist()))
+        rprint(
+            f"[red]Error:[/red] Iterable column '{args.iterable}' was not found in the imported data. Available columns: {available_columns}"
+        )
         return
 
     # Select the entries in the dataframe with with name matching args.names and nake a plot for each iterable
@@ -183,8 +220,10 @@ def main():
         )
         bottom = None
         variables = args.variables if args.variables is not None else [None]
+        last_x = np.array([])
         # Drop None values from df in iterable column
-        df_config = df_config.dropna(subset=[args.iterable])
+        iterable_column = str(args.iterable)
+        df_config = df_config[df_config[iterable_column].notna()]
         iterable_values = df_config[args.iterable].unique()
         two_line_mode = iterable_values.size == 2
 
@@ -225,6 +264,183 @@ def main():
             else:
                 df_iterable = df_config.copy()
 
+            comparable_col = getattr(args, "comparable", None)
+            comparable_mode = False
+            comparable_values = np.array([])
+            if comparable_col is not None:
+                if comparable_col not in df_iterable.columns:
+                    if args.debug:
+                        rprint(
+                            f"[yellow]Warning:[/yellow] Comparable column '{comparable_col}' not found. Falling back to a single line."
+                        )
+                else:
+                    comparable_values = df_iterable[comparable_col].dropna().unique()
+                    comparable_mode = comparable_values.size > 0
+
+            if comparable_mode:
+                for sdx, comparable_value in enumerate(comparable_values):
+                    df_iterable_comparable = df_iterable[
+                        df_iterable[comparable_col] == comparable_value
+                    ]
+
+                    if args.debug:
+                        rprint(
+                            f"[blue]Info:[/blue] Filtering for comparable: {comparable_col}={comparable_value}"
+                        )
+
+                    subset = filter_dataframe(df_iterable_comparable, args)
+
+                    subset = subset.explode(
+                        column=(
+                            [args.x, args.y, "Error"]
+                            if "Error" in subset.columns
+                            else [args.x, args.y]
+                        )
+                    )
+                    if subset.empty:
+                        rprint(
+                            f"[yellow]Warning:[/yellow] No data for iterable {args.iterable}={iterable}, {comparable_col}={comparable_value}, Variable={variable}. Skipping."
+                        )
+                        continue
+
+                    y = subset[args.y].astype(float).to_numpy()
+                    x_edges = None
+                    x = np.array([])
+                    try:
+                        x = subset[args.x].astype(float).to_numpy()
+                        x_bin = x[1] - x[0] if len(x) > 1 else 1
+                        x_edges = np.linspace(x[0] - x_bin / 2, x[-1] + x_bin / 2, len(x) + 1)
+                        x_error = (
+                            subset[f"Error"].astype(float).to_numpy()
+                            if f"Error" in subset.columns
+                            else None
+                        )
+                        mask = ~np.isnan(x) & ~np.isnan(y)
+                        x = x[mask]
+                        y = y[mask]
+                        x_edges = x_edges[np.append(mask, True) | np.append(True, mask)]
+                        if x_error is not None:
+                            x_error = x_error[mask]
+
+                    except ValueError:
+                        x = subset[args.x].astype(str)
+                        x_error = None
+
+                    last_x = x
+
+                    if bottom is None:
+                        bottom = np.zeros(len(x)) if args.stacked else None
+
+                    iterable_label = map_iterable_label(
+                        iterable,
+                        args.iterable,
+                        getattr(args, "iterable_mapping", None),
+                        len(iterable_values),
+                    )
+                    comparable_label = str(comparable_value)
+                    if len(comparable_values) > 1:
+                        iterable_label = f"{iterable_label} ({comparable_col}={comparable_label})"
+
+                    iterable_color = (
+                        f"C{jdx}"
+                        if two_line_mode
+                        else map_iterable_color(iterable, getattr(args, "iterable_color_mapping", None))
+                    )
+                    comparable_linestyle = _resolve_comparable_linestyle(sdx, args)
+
+                    if args.plot_type is not None:
+                        rprint(
+                            f"\tPlotting {len(x)} points with explicit plot_type={args.plot_type} for {args.iterable}={iterable} ({comparable_col}={comparable_label}), Variable={variable}"
+                        )
+
+                        plot_label = iterable_label if idx == ncols - 1 else None
+
+                        if args.plot_type == "line":
+                            plot_data(
+                                args,
+                                ax_current,
+                                x,
+                                y=y,
+                                errory=x_error,
+                                label=plot_label,
+                                color=iterable_color,
+                                plot_type="line",
+                                linestyle=comparable_linestyle,
+                            )
+                        else:
+                            plot_data(
+                                args,
+                                ax_current,
+                                x,
+                                y=y,
+                                label=plot_label,
+                                color=iterable_color,
+                                plot_type=args.plot_type,
+                                linestyle=comparable_linestyle,
+                            )
+
+                        continue
+
+                    if x_error is not None and args.errorx:
+                        rprint(
+                            f"\tPlotting {len(x)} points with error bars for {args.iterable}={iterable_label}, Variable={variable}"
+                        )
+                        if args.stacked:
+                            plot_data(
+                                args,
+                                ax_current,
+                                x,
+                                y=y,
+                                errory=x_error,
+                                label=iterable_label if idx == ncols - 1 else None,
+                                color=iterable_color,
+                                plot_type="bar",
+                                bottom=bottom,
+                            )
+                            bottom += y
+                        else:
+                            plot_data(
+                                args,
+                                ax_current,
+                                x,
+                                y=y,
+                                errory=x_error,
+                                label=iterable_label if idx == ncols - 1 else None,
+                                color=iterable_color,
+                                plot_type="errorbar",
+                                fmt="o",
+                            )
+
+                    else:
+                        rprint(
+                            f"\tPlotting {len(x)} points for {args.iterable}={iterable_label}, Variable={variable}"
+                        )
+                        if args.stacked:
+                            plot_data(
+                                args,
+                                ax_current,
+                                x,
+                                y=y,
+                                label=iterable_label if idx == ncols - 1 else None,
+                                color=iterable_color,
+                                plot_type="bar",
+                                bottom=bottom,
+                            )
+                            bottom += y
+                        else:
+                            plot_data(
+                                args,
+                                ax_current,
+                                x,
+                                y=y,
+                                label=iterable_label if idx == ncols - 1 else None,
+                                color=iterable_color,
+                                plot_type="line",
+                                linestyle=comparable_linestyle,
+                            )
+
+                continue
+
             subset = filter_dataframe(df_iterable, args)
 
             subset = subset.explode(
@@ -242,6 +458,7 @@ def main():
 
             y = subset[args.y].astype(float).to_numpy()
             x_edges = None
+            x = np.array([])
             try:
                 x = subset[args.x].astype(float).to_numpy()
                 x_bin = x[1] - x[0] if len(x) > 1 else 1
@@ -264,6 +481,8 @@ def main():
             except ValueError:
                 x = subset[args.x].astype(str)
                 x_error = None
+
+            last_x = x
 
             if bottom is None:
                 bottom = np.zeros(len(x)) if args.stacked else None
@@ -386,7 +605,7 @@ def main():
                     bottom += y
 
                 else:
-                    if args.connect:
+                    if args.connect or getattr(args, 'plot_type', None) == 'line':
                         plot_data(
                             args,
                             ax_current,
@@ -427,7 +646,7 @@ def main():
                     )
                     bottom += y
                 else:
-                    if args.connect:
+                    if args.connect or getattr(args, 'plot_type', None) == 'line':
                         plot_data(
                             args,
                             ax_current,
@@ -469,7 +688,7 @@ def main():
                 args.labelx if args.labelx is not None else f"{args.x}"
             )
             # If x are of string type, rotate x-axis labels for better readability
-            if 'x' in locals() and isinstance(x, np.ndarray) and x.dtype.kind in ('U', 'S', 'O'):
+            if isinstance(last_x, np.ndarray) and last_x.dtype.kind in ('U', 'S', 'O'):
                 plt.setp(ax_current.get_xticklabels(), rotation=45, ha="right")
 
             (

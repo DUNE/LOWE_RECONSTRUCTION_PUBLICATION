@@ -66,7 +66,7 @@ add_common_args(
                 "vd_1x8x14_3view_30deg_nominal",
             ]
         },
-        "names": {"flags": ["--names"], "default": ["marley_official"]},
+        "names": {"flags": ["--names"]},
         "x": {"default": "Values"},
         "plot_type": {"default": "step", "choices": ["scatter", "line", "step"], "help": "Style of errors."},
         "labelx": {"nargs": "+"},
@@ -203,6 +203,33 @@ _MISSING_ITERABLE_MAPPING_WARNING_SHOWN = False
 _MISSING_MAPPING_WARNINGS_SHOWN = set()
 _MISSING_MAPPING_ENTRY_WARNINGS_SHOWN = set()
 
+
+def _format_empty_result_context(args, configs, names):
+    context_parts = []
+
+    if getattr(args, "iterable", None) is not None:
+        context_parts.append(f"iterable={args.iterable}")
+
+    if getattr(args, "x", None) is not None and getattr(args, "y", None) is not None:
+        context_parts.append(f"axes={args.x}/{args.y}")
+
+    if configs:
+        context_parts.append(f"configs={', '.join(map(str, configs))}")
+
+    if names and any(name is not None for name in names):
+        context_parts.append(f"names={', '.join(map(str, names))}")
+
+    select = getattr(args, "select", None)
+    save_values = getattr(args, "save_values", None)
+    if select is not None and save_values is not None:
+        selection_parts = []
+        for save_key, save_value in zip(select, save_values):
+            selection_parts.append(f"{save_key}={save_value}")
+        if selection_parts:
+            context_parts.append(f"select={'; '.join(selection_parts)}")
+
+    return "; ".join(context_parts)
+
 def _coerce_numeric_array(value):
     arr = np.asarray(value)
     if arr.ndim == 0:
@@ -262,13 +289,26 @@ def _concat_numeric_cells(values):
         return None
     return np.concatenate(arrays)
 
+
+def _subset_for_config_name(subset, config, name):
+    if name is None or "Name" not in subset.columns:
+        return subset[(subset["Config"] == config)]
+
+    return subset[(subset["Config"] == config) & (subset["Name"] == name)]
+
+
+def _format_config_name_context(config, name):
+    if name is None:
+        return f"Config: {config}"
+    return f"Config: {config}, Name: {name}"
+
 def _build_geometry_combined_subset(subset, configs, names, args):
     combine_operation = getattr(args, "combine_operation", None) or "mean"
     grouped = {}
 
     for config, name in zip(configs, names):
         geom = str(config).split("_")[0]
-        df_config = subset[(subset["Config"] == config) & (subset["Name"] == name)]
+        df_config = _subset_for_config_name(subset, config, name)
         if df_config.empty:
             continue
 
@@ -321,6 +361,7 @@ def main():
     and generate plots based on the provided arguments.
     """
     df = import_data(args)
+    plotted_geoms = set()
 
     # Check if the DataFrame is empty
     if df.empty:
@@ -381,18 +422,20 @@ def main():
         single_loaded_file = len(configs) == 1 and len(names) == 1
         geoms = [str(geom).split("_")[0] if geom is not None else "" for geom in configs]
         two_line_mode = len(configs) == 2 and len(names) == 2
+        plotted_geoms = set()
 
         combinedy = None
         combined_errory = None
         for ldx, (geom, config, name) in enumerate(zip(geoms, configs, names)):
-            rprint(
-                f"[blue]Info:[/blue] Processing Geometry: {geom}, Config: {config}, Name: {name}"
-            )
-            df_config = subset[(subset["Config"] == config) & (subset["Name"] == name)]
+            if args.debug:
+                rprint(
+                    f"[blue]Info:[/blue] Processing Geometry: {geom}, {_format_config_name_context(config, name)}"
+                )
+            df_config = _subset_for_config_name(subset, config, name)
 
             if df_config.empty:
                 rprint(
-                    f"[yellow]Warning:[/yellow] No data for Config: {config}, Name: {name}. Skipping..."
+                    f"[yellow]Warning:[/yellow] No data for {_format_config_name_context(config, name)}. Skipping..."
                 )
                 continue
 
@@ -464,6 +507,8 @@ def main():
                     f"[yellow]Warning:[/yellow] Could not parse x/y for Config: {config}, Name: {name}. Skipping..."
                 )
                 continue
+
+            plotted_geoms.add(str(geom))
 
             if args.errory:
                 if errory_sym == "asymmetric":
@@ -843,9 +888,23 @@ def main():
 
     apply_note_to_figure(fig, getattr(args, "note", None))
 
+    if not plotted_geoms:
+        empty_context = _format_empty_result_context(args, args.configs, args.names)
+        if empty_context:
+            rprint(
+                f"[yellow]Warning:[/yellow] No data survived filtering. Active context: {empty_context}. Exiting without saving a plot."
+            )
+        else:
+            rprint(
+                "[yellow]Warning:[/yellow] No data survived filtering. Exiting without saving a plot."
+            )
+        return
+
+    output_prefix = None if len(plotted_geoms) > 1 else next(iter(plotted_geoms))
+
     output_file = make_name_from_args(
         args,
-        prefix=None if len(np.unique(geoms)) > 1 else np.unique(geoms)[0],
+        prefix=output_prefix,
         suffix="comparison.png",
     )
     default_output_dir = os.path.join(os.path.dirname(__file__), "..", "output", "plots")

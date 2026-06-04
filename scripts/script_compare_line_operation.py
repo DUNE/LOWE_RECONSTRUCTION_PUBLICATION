@@ -421,11 +421,11 @@ def _default_bottom_label(operation):
 
 def _make_output_dir(output_arg):
     if output_arg is not None:
-        out_dir = os.path.dirname(output_arg)
-        if out_dir == "":
-            out_dir = "."
-        os.makedirs(out_dir, exist_ok=True)
-        return out_dir
+        paths = output_arg if isinstance(output_arg, list) else [output_arg]
+        for path in paths:
+            out_dir = os.path.dirname(path) or "."
+            os.makedirs(out_dir, exist_ok=True)
+        return os.path.dirname(paths[0]) or "."
 
     out_dir = os.path.join(os.path.dirname(__file__), "..", "output", "plots")
     os.makedirs(out_dir, exist_ok=True)
