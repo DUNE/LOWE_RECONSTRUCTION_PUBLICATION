@@ -22,8 +22,8 @@ from lib.plot import (
     plot_data,
     create_common_subplots,
     apply_note_to_figure,
-    place_vertical_label,
-    place_horizontal_label,
+    draw_vertical_lines,
+    draw_horizontal_lines,
     place_point_label,
 )
 from common_args import add_common_args, map_iterable_label, map_iterable_color
@@ -60,8 +60,12 @@ add_common_args(
         "output",
         "horizontal",
         "horizontal_label",
+        "horizontal_style",
+        "horizontal_color",
         "vertical",
         "vertical_label",
+        "vertical_style",
+        "vertical_color",
         "point",
         "point_label",
         "note",
@@ -732,26 +736,22 @@ def main():
                         capitalize_labels=not getattr(args, "no_capitalize_legend", False),
                     )
 
-            vertical = getattr(args, "vertical", None)
-            vertical_label = getattr(args, "vertical_label", None)
-            horizontal = getattr(args, "horizontal", None)
-            horizontal_label = getattr(args, "horizontal_label", None)
-
-            if vertical is not None:
-                ax_current.axvline(vertical, color="gray", linestyle="--", linewidth=1)
-                if vertical_label is not None:
-                    # Place vertical label next to the line using content-aware helper
-                    place_vertical_label(
-                        ax_current, vertical, vertical_label, fontsize=linelabelfontsize
-                    )
-
-            if horizontal is not None:
-                ax_current.axhline(horizontal, color="gray", linestyle="--", linewidth=1)
-                if horizontal_label is not None:
-                    # Place horizontal label next to the line using content-aware helper
-                    place_horizontal_label(
-                        ax_current, horizontal, horizontal_label, fontsize=linelabelfontsize
-                    )
+            draw_horizontal_lines(
+                ax_current,
+                getattr(args, "horizontal", None),
+                labels=getattr(args, "horizontal_label", None),
+                styles=getattr(args, "horizontal_style", None),
+                colors=getattr(args, "horizontal_color", None),
+                fontsize=linelabelfontsize,
+            )
+            draw_vertical_lines(
+                ax_current,
+                getattr(args, "vertical", None),
+                labels=getattr(args, "vertical_label", None),
+                styles=getattr(args, "vertical_style", None),
+                colors=getattr(args, "vertical_color", None),
+                fontsize=linelabelfontsize,
+            )
 
             point_values = parse_point_pairs(getattr(args, "point", None))
             point_labels, point_label_warning = normalize_point_labels(

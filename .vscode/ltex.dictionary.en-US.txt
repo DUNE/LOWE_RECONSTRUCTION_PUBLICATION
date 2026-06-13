@@ -1,3 +1,12 @@
 matplotlib
 fiducialization
 Super-Kamiokande
+rebin
+Convolve
+convolved
+Fiducialization
+convolve
+NuFIT
+LArSoft
+rebinning
+fiducial

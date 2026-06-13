@@ -388,6 +388,11 @@ def plot_data(
             **kwargs,
         )
 
+    if plot_type == "image":
+        z = kwargs.pop("z", None)
+        norm = LogNorm() if getattr(args, "logz", False) else None
+        return ax.pcolormesh(x, y, z, norm=norm, shading="auto", **kwargs)
+
     raise ValueError(f"Unknown plot type: {plot_type}")
 
 
@@ -516,6 +521,72 @@ def apply_note_to_figure(fig, note_text, fontsize=None):
         return None
     
     return add_note_to_axes(main_ax, note_text, fontsize=fontsize)
+
+
+def _format_ref_value(v):
+    """Format a float reference-line value as a compact string label."""
+    if v == int(v):
+        return str(int(v))
+    return f"{v:g}"
+
+
+def _ref_line_get(seq, i, default):
+    """Index into seq by position, reusing the last element when out-of-range.
+    Returns *default* when seq is None or empty."""
+    if not seq:
+        return default
+    return seq[i] if i < len(seq) else seq[-1]
+
+
+def draw_vertical_lines(ax, values, labels=None, styles=None, colors=None, fontsize=None):
+    """Draw one or more vertical reference lines on *ax*.
+
+    Each positional list (``labels``, ``styles``, ``colors``) is matched to
+    ``values`` by index; if shorter than ``values`` the last element is reused
+    as a default.
+
+    Labels default to the numeric value of each line (e.g. "0", "800").
+    Pass ``labels=[]`` (empty list) to suppress all annotations.
+    """
+    if values is None:
+        return
+    vals = values if isinstance(values, (list, tuple)) else [values]
+
+    for i, v in enumerate(vals):
+        color = _ref_line_get(colors, i, "gray")
+        style = _ref_line_get(styles, i, "--")
+        label = _ref_line_get(labels, i, None) if labels is not None else _format_ref_value(v)
+        xlim = ax.get_xlim()
+        if v < xlim[0] or v > xlim[1]:
+            ax.set_xlim(min(xlim[0], v), max(xlim[1], v))
+        ax.axvline(v, color=color, linestyle=style, linewidth=1, zorder=5)
+        if label:
+            place_vertical_label(ax, v, label, fontsize=fontsize)
+
+
+def draw_horizontal_lines(ax, values, labels=None, styles=None, colors=None, fontsize=None):
+    """Draw one or more horizontal reference lines on *ax*.
+
+    Each positional list (``labels``, ``styles``, ``colors``) is matched to
+    ``values`` by index; if shorter than ``values`` the last element is reused
+    as a default.
+
+    Annotations are suppressed by default. Pass ``labels`` explicitly to show them.
+    """
+    if values is None:
+        return
+    vals = values if isinstance(values, (list, tuple)) else [values]
+
+    for i, v in enumerate(vals):
+        color = _ref_line_get(colors, i, "gray")
+        style = _ref_line_get(styles, i, "--")
+        label = _ref_line_get(labels, i, None) if labels is not None else None
+        ylim = ax.get_ylim()
+        if v < ylim[0] or v > ylim[1]:
+            ax.set_ylim(min(ylim[0], v), max(ylim[1], v))
+        ax.axhline(v, color=color, linestyle=style, linewidth=1, zorder=5)
+        if label is not None and label:
+            place_horizontal_label(ax, v, label, fontsize=fontsize)
 
 
 def place_vertical_label(ax, x_value, label_text, fontsize=None, pad_fraction=0.02):

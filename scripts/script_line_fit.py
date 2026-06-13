@@ -25,7 +25,7 @@ from lib.functions import (
     quadratic_cut,
     quadratic_function,
 )
-from lib.plot import apply_legend_style, plot_data, create_common_subplots, create_common_two_panel_figure, apply_note_to_figure, place_vertical_label, place_horizontal_label, place_point_label
+from lib.plot import apply_legend_style, plot_data, create_common_subplots, create_common_two_panel_figure, apply_note_to_figure, draw_vertical_lines, draw_horizontal_lines, place_point_label
 
 from common_args import add_common_args
 
@@ -61,8 +61,12 @@ add_common_args(
         "output",
         "horizontal",
         "horizontal_label",
+        "horizontal_style",
+        "horizontal_color",
         "vertical",
         "vertical_label",
+        "vertical_style",
+        "vertical_color",
         "point",
         "point_label",
         "note",
@@ -438,22 +442,28 @@ def main():
                 fontsize=xlabelfontsize,
             )
 
-        vertical = getattr(args, "vertical", None)
-        vertical_label = getattr(args, "vertical_label", None)
-        horizontal = getattr(args, "horizontal", None)
-        horizontal_label = getattr(args, "horizontal_label", None)
-
-        if vertical is not None:
-            ax_top.axvline(vertical, color="gray", linestyle="--", linewidth=1)
-            if ax_bottom is not None:
-                ax_bottom.axvline(vertical, color="gray", linestyle="--", linewidth=1)
-            if vertical_label is not None:
-                place_vertical_label(ax_top, vertical, vertical_label, fontsize=linelabelfontsize)
-
-        if horizontal is not None:
-            ax_top.axhline(horizontal, color="gray", linestyle="--", linewidth=1)
-            if horizontal_label is not None:
-                place_horizontal_label(ax_top, horizontal, horizontal_label, fontsize=linelabelfontsize)
+        draw_vertical_lines(
+            ax_top,
+            getattr(args, "vertical", None),
+            labels=getattr(args, "vertical_label", None),
+            styles=getattr(args, "vertical_style", None),
+            colors=getattr(args, "vertical_color", None),
+            fontsize=linelabelfontsize,
+        )
+        if ax_bottom is not None:
+            draw_vertical_lines(
+                ax_bottom,
+                getattr(args, "vertical", None),
+                fontsize=linelabelfontsize,
+            )
+        draw_horizontal_lines(
+            ax_top,
+            getattr(args, "horizontal", None),
+            labels=getattr(args, "horizontal_label", None),
+            styles=getattr(args, "horizontal_style", None),
+            colors=getattr(args, "horizontal_color", None),
+            fontsize=linelabelfontsize,
+        )
 
         point_values = parse_point_pairs(getattr(args, "point", None))
         point_labels, point_label_warning = normalize_point_labels(

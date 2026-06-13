@@ -306,32 +306,72 @@ COMMON_ARG_SPECS = {
         "flags": ["--horizontal"],
         "kwargs": {
             "type": float,
+            "nargs": "+",
             "default": None,
-            "help": "Draw horizontal line at specified y value",
+            "help": "Draw horizontal line(s) at specified y value(s)",
         },
     },
     "horizontal_label": {
         "flags": ["--horizontal_label"],
         "kwargs": {
             "type": str,
+            "nargs": "+",
             "default": None,
-            "help": "Label for horizontal line",
+            "help": "Label(s) for horizontal line(s), one per line",
+        },
+    },
+    "horizontal_style": {
+        "flags": ["--horizontal_style"],
+        "kwargs": {
+            "type": str,
+            "nargs": "+",
+            "default": None,
+            "help": "Linestyle(s) for horizontal line(s) (e.g. -- : -. -), one per line",
+        },
+    },
+    "horizontal_color": {
+        "flags": ["--horizontal_color"],
+        "kwargs": {
+            "type": str,
+            "nargs": "+",
+            "default": None,
+            "help": "Color(s) for horizontal line(s) (e.g. gray red C0), one per line",
         },
     },
     "vertical": {
         "flags": ["--vertical"],
         "kwargs": {
             "type": float,
+            "nargs": "+",
             "default": None,
-            "help": "Draw vertical line at specified x value",
+            "help": "Draw vertical line(s) at specified x value(s)",
         },
     },
     "vertical_label": {
         "flags": ["--vertical_label"],
         "kwargs": {
             "type": str,
+            "nargs": "+",
             "default": None,
-            "help": "Label for vertical line",
+            "help": "Label(s) for vertical line(s), one per line",
+        },
+    },
+    "vertical_style": {
+        "flags": ["--vertical_style"],
+        "kwargs": {
+            "type": str,
+            "nargs": "+",
+            "default": None,
+            "help": "Linestyle(s) for vertical line(s) (e.g. -- : -. -), one per line",
+        },
+    },
+    "vertical_color": {
+        "flags": ["--vertical_color"],
+        "kwargs": {
+            "type": str,
+            "nargs": "+",
+            "default": None,
+            "help": "Color(s) for vertical line(s) (e.g. gray red C0), one per line",
         },
     },
     "point": {

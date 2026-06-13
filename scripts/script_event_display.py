@@ -81,6 +81,20 @@ parser.add_argument(
 )
 
 parser.add_argument(
+    "--sizeby",
+    type=str,
+    default=None,
+    help="Column to scale dot size by (e.g. E for energy). Values are normalised to [marker_size/4, marker_size*4].",
+)
+
+parser.add_argument(
+    "--labelsize",
+    type=str,
+    default=None,
+    help="Title label for the size legend (defaults to the column name given to --sizeby).",
+)
+
+parser.add_argument(
     "--iterable_mapping",
     type=str,
     default=None,
@@ -121,6 +135,42 @@ def _load_display_df(args):
 
     # Fall back to import_data convention
     return import_data(args)
+
+
+def _size_scale(base_size):
+    return base_size / 4, base_size * 4
+
+
+def _resolve_sizes(df_subset, sizeby_col, base_size, vmin=None, vmax=None):
+    """Return a per-point size array scaled to [base/4, base*4], or a scalar if no column.
+
+    Pass vmin/vmax to normalise against a global range (required for consistency across groups).
+    """
+    if sizeby_col is None or sizeby_col not in df_subset.columns:
+        return base_size
+    vals = df_subset[sizeby_col].astype(float).to_numpy()
+    if vmin is None:
+        vmin = vals.min()
+    if vmax is None:
+        vmax = vals.max()
+    if vmax == vmin:
+        return base_size
+    normed = (vals - vmin) / (vmax - vmin)
+    s_min, s_max = _size_scale(base_size)
+    return s_min + normed * (s_max - s_min)
+
+
+def _add_size_legend(ax, label, vmin, vmax, base_size, n_levels=4):
+    """Add a legend on ax showing how dot area maps to column values."""
+    levels = np.linspace(vmin, vmax, n_levels)
+    s_min, s_max = _size_scale(base_size)
+    sizes = s_min + (levels - vmin) / (vmax - vmin) * (s_max - s_min) if vmax != vmin else np.full(n_levels, base_size)
+    handles = [
+        plt.scatter([], [], s=s, color="gray", alpha=0.85, linewidths=0)
+        for s in sizes
+    ]
+    labels = [f"{v:.2e}" for v in levels]
+    apply_legend_style(ax, title=label, handles=handles, labels=labels, capitalize_labels=False, scatterpoints=1)
 
 
 def _scatter_group(ax, x_vals, y_vals, color, label, size, alpha=0.85, zorder=3):
@@ -182,6 +232,13 @@ def main():
 
         use_colorby = args.colorby is not None and args.colorby in df_config.columns
 
+        sizeby = getattr(args, "sizeby", None)
+        size_vmin = size_vmax = None
+        if sizeby and sizeby in df_config.columns:
+            size_vmin = df_config[sizeby].astype(float).min()
+            size_vmax = df_config[sizeby].astype(float).max()
+        sizes = _resolve_sizes(df_config, sizeby, args.marker_size, size_vmin, size_vmax)
+
         if use_colorby:
             c_vals = df_config[args.colorby].astype(float).to_numpy()
             norm = LogNorm(vmin=c_vals[c_vals > 0].min(), vmax=c_vals.max()) if args.logz else None
@@ -190,7 +247,7 @@ def main():
                 df_config[args.x].to_numpy(),
                 df_config[args.y].to_numpy(),
                 c=c_vals,
-                s=args.marker_size,
+                s=sizes,
                 norm=norm,
                 alpha=0.85,
                 linewidths=0,
@@ -199,7 +256,7 @@ def main():
                 df_config[args.x].to_numpy(),
                 df_config[args.z].to_numpy(),
                 c=c_vals,
-                s=args.marker_size,
+                s=sizes,
                 norm=norm,
                 alpha=0.85,
                 linewidths=0,
@@ -234,13 +291,14 @@ def main():
                     if args.debug:
                         rprint(f"[blue]Debug:[/blue] {args.iterable}={iterable} -> label={iterable_label}, color={iterable_color}, n={len(subset)}")
 
+                    subset_sizes = _resolve_sizes(subset, sizeby, args.marker_size, size_vmin, size_vmax)
                     _scatter_group(
                         ax_left,
                         subset[args.x].to_numpy(),
                         subset[args.y].to_numpy(),
                         iterable_color,
                         iterable_label,
-                        args.marker_size,
+                        subset_sizes,
                     )
                     _scatter_group(
                         ax_right,
@@ -248,7 +306,7 @@ def main():
                         subset[args.z].to_numpy(),
                         iterable_color,
                         None,
-                        args.marker_size,
+                        subset_sizes,
                     )
 
                 legend_title = args.labelz if args.labelz is not None else args.iterable
@@ -265,7 +323,7 @@ def main():
                     df_config[args.y].to_numpy(),
                     "C0",
                     None,
-                    args.marker_size,
+                    sizes,
                 )
                 _scatter_group(
                     ax_right,
@@ -273,8 +331,12 @@ def main():
                     df_config[args.z].to_numpy(),
                     "C0",
                     None,
-                    args.marker_size,
+                    sizes,
                 )
+
+        if sizeby and size_vmin is not None and size_vmin != size_vmax:
+            size_legend_label = getattr(args, "labelsize", None) or sizeby
+            _add_size_legend(ax_right, size_legend_label, size_vmin, size_vmax, args.marker_size)
 
         ax_left.set_xlabel(label_x, fontsize=xlabelfontsize)
         ax_left.set_ylabel(label_y, fontsize=ylabelfontsize)

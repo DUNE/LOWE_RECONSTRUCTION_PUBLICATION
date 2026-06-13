@@ -16,7 +16,7 @@ from lib.selection import filter_dataframe
 from lib.exports import make_name_from_args, save_figure_to_paths
 from lib.format import make_title_from_args, make_subtitle_from_args
 from lib.imports import import_data, prepare_import
-from lib.plot import apply_scientific_threshold_formatter, plot_data, create_common_subplots, apply_note_to_figure, place_vertical_label, place_horizontal_label, place_point_label
+from lib.plot import apply_scientific_threshold_formatter, plot_data, create_common_subplots, apply_note_to_figure, draw_vertical_lines, draw_horizontal_lines, place_point_label
 
 from common_args import add_common_args
 
@@ -34,6 +34,7 @@ add_common_args(
         "variables",
         "x",
         "y",
+        "z",
         "percentile",
         "iterable",
         "select",
@@ -41,6 +42,7 @@ add_common_args(
         "bins",
         "labelx",
         "labely",
+        "labelz",
         "rangex",
         "rangey",
         "logz",
@@ -49,11 +51,15 @@ add_common_args(
         "matchx",
         "matchy",
         "horizontal",
+        "horizontal_label",
+        "horizontal_style",
+        "horizontal_color",
         "vertical",
+        "vertical_label",
+        "vertical_style",
+        "vertical_color",
         "title",
         "output",
-        "horizontal_label",
-        "vertical_label",
         "point",
         "point_label",
         "note",
@@ -163,6 +169,7 @@ def main():
 
             x = np.array(subset[args.x].values[0])
             y = np.array(subset[args.y].values[0])
+            z = np.array(subset[args.z].values[0]) if args.z is not None else None
 
             x_range = [
                 np.percentile(x, args.percentile[0]),
@@ -190,14 +197,36 @@ def main():
             else:
                 ax_current = ax[idx if args.variables is not None else jdx]
 
-            hist2d = plot_data(
-                args,
-                ax_current,
-                x,
-                y=y,
-                plot_type="hist2d",
-                range=(x_range, y_range),
-            )
+            if z is not None:
+                mappable = plot_data(
+                    args,
+                    ax_current,
+                    x,
+                    y=y,
+                    plot_type="image",
+                    z=z,
+                )
+                cbar = fig.colorbar(mappable, ax=ax_current)
+                z_label = args.labelz if args.labelz is not None else args.z
+                cbar.set_label(z_label if not args.logz else f"{z_label} (log scale)")
+            else:
+                hist2d = plot_data(
+                    args,
+                    ax_current,
+                    x,
+                    y=y,
+                    plot_type="hist2d",
+                    range=(x_range, y_range),
+                )
+                if not args.logz:
+                    hist2d[3].set_array(
+                        np.ma.masked_where(
+                            hist2d[3].get_array() == 0, hist2d[3].get_array()
+                        )
+                    )
+                    hist2d[3].set_clim(0, hist2d[3].get_array().max())
+                cbar = fig.colorbar(hist2d[3], ax=ax_current)
+
             if args.diagonal:
                 ax_current.plot(
                     x_range,
@@ -205,30 +234,18 @@ def main():
                     color="k" if args.logz else "white",
                     linestyle="--",
                 )
-                ax_current.set_xlim(
-                    ranges[0]
-                )  # Set x limits to match the heatmap range
-                ax_current.set_ylim(
-                    ranges[0]
-                )  # Set y limits to match the heatmap range
+                ax_current.set_xlim(ranges[0])
+                ax_current.set_ylim(ranges[0])
             if args.horizontal is not None:
                 ax_current.axhline(
                     args.horizontal, color="k" if args.logz else "white", linestyle="--"
                 )
 
-            cbar = fig.colorbar(hist2d[3], ax=ax_current)
-            if not args.logz:
-                hist2d[3].set_array(
-                    np.ma.masked_where(
-                        hist2d[3].get_array() == 0, hist2d[3].get_array()
-                    )
-                )  # Mask zero values
-                hist2d[3].set_clim(0, hist2d[3].get_array().max())  # Set color limits
-
-        if args.density:
-            cbar.set_label("Density" if not args.logz else "Density (log scale)")
-        else:
-            cbar.set_label("Counts" if not args.logz else "Counts (log scale)")
+        if z is None:
+            if args.density:
+                cbar.set_label("Density" if not args.logz else "Density (log scale)")
+            else:
+                cbar.set_label("Counts" if not args.logz else "Counts (log scale)")
         cbar.ax.yaxis.set_label_position("right")  # Move label to the left
 
         for (idx, variable), (jdx, iterable) in product(
@@ -266,20 +283,22 @@ def main():
 
             apply_scientific_threshold_formatter(ax_current, threshold=0.1, axis="both")
 
-            vertical = getattr(args, "vertical", None)
-            vertical_label = getattr(args, "vertical_label", None)
-            horizontal = getattr(args, "horizontal", None)
-            horizontal_label = getattr(args, "horizontal_label", None)
-
-            if vertical is not None:
-                ax_current.axvline(vertical, color="gray", linestyle="--", linewidth=1)
-                if vertical_label is not None:
-                    place_vertical_label(ax_current, vertical, vertical_label, fontsize=linelabelfontsize)
-
-            if horizontal is not None:
-                ax_current.axhline(horizontal, color="gray", linestyle="--", linewidth=1)
-                if horizontal_label is not None:
-                    place_horizontal_label(ax_current, horizontal, horizontal_label, fontsize=linelabelfontsize)
+            draw_horizontal_lines(
+                ax_current,
+                getattr(args, "horizontal", None),
+                labels=getattr(args, "horizontal_label", None),
+                styles=getattr(args, "horizontal_style", None),
+                colors=getattr(args, "horizontal_color", None),
+                fontsize=linelabelfontsize,
+            )
+            draw_vertical_lines(
+                ax_current,
+                getattr(args, "vertical", None),
+                labels=getattr(args, "vertical_label", None),
+                styles=getattr(args, "vertical_style", None),
+                colors=getattr(args, "vertical_color", None),
+                fontsize=linelabelfontsize,
+            )
 
             point_values = parse_point_pairs(getattr(args, "point", None))
             point_labels, point_label_warning = normalize_point_labels(

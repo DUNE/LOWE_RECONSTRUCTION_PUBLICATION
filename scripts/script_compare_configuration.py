@@ -14,7 +14,7 @@ from lib.exports import make_name_from_args, save_figure_to_paths
 from lib.format import make_subtitle_from_args, make_title_from_args, make_config_label_from_args, make_config_color_and_style_from_args
 from lib.functions import resolution, gaussian
 from lib.imports import import_data, prepare_import
-from lib.plot import apply_scientific_threshold_formatter, apply_legend_style, plot_data, create_common_subplots, apply_note_to_figure
+from lib.plot import apply_scientific_threshold_formatter, apply_legend_style, plot_data, create_common_subplots, apply_note_to_figure, draw_vertical_lines, draw_horizontal_lines
 from lib.selection import prepare_selection, filter_dataframe
 from common_args import add_common_args, map_iterable_label, map_iterable_color
 
@@ -46,9 +46,13 @@ add_common_args(
         "labelx",
         "labely",
         "horizontal",
+        "horizontal_label",
+        "horizontal_style",
+        "horizontal_color",
         "vertical",
         "vertical_label",
-        "horizontal_label",
+        "vertical_style",
+        "vertical_color",
         "point",
         "point_label",
         "note",
@@ -110,6 +114,21 @@ parser.add_argument(
     type=str,
     default="mid",
     help="Alignment of histogram bars (e.g. mid, left, right)",
+)
+
+parser.add_argument(
+    "--combine",
+    type=str,
+    default=None,
+    help="Combine configurations by a key (e.g. Geometry)",
+)
+
+parser.add_argument(
+    "--combine_operation",
+    type=str,
+    default="mean",
+    choices=["mean", "sum"],
+    help="Operation used when combining configurations (default: mean)",
 )
 
 parser.add_argument(
@@ -670,10 +689,14 @@ def main():
                 continue
 
             if config == args.mirror:
-                # Add extension to the data by mirroring the y values and adding the same amount of bins to the right
-                x = np.concatenate((x, x + (x[-1] - x[0]) + x_bin))
+                # Mirror around the last bin without duplicating it at the join.
+                # Skip x[-1] and y[-1] so the boundary bin appears once and the
+                # reflected spectrum starts from y[-2] at (x[-1] + x_bin).
+                x_mirror = x[:-1] + (x[-1] - x[0]) + x_bin
+                y_mirror = y[-2::-1]
+                x = np.concatenate((x, x_mirror))
                 x_edges = np.linspace(x[0] - x_bin / 2, x[-1] + x_bin / 2, len(x) + 1)
-                y = np.concatenate((y, y[::-1]))
+                y = np.concatenate((y, y_mirror))
                 # rprint(f"[blue]Info:[/blue] Mirroring data for configuration: {config}")
 
             offset = 0
@@ -836,23 +859,22 @@ def main():
         apply_scientific_threshold_formatter(ax_current, threshold=0.1, axis="both")
 
         # Add horizontal line if specified
-        horizontal = getattr(args, "horizontal", None)
-        horizontal_label = getattr(args, "horizontal_label", None)
-        vertical = getattr(args, "vertical", None)
-        vertical_label = getattr(args, "vertical_label", None)
-
-        if horizontal is not None:
-            ax_current.axhline(
-                horizontal, color="gray", linestyle="--", linewidth=1
-            )
-            if horizontal_label is not None:
-                place_horizontal_label(ax_current, horizontal, horizontal_label, fontsize=linelabelfontsize)
-
-        # Add vertical line if specified
-        if vertical is not None:
-            ax_current.axvline(vertical, color="gray", linestyle="--", linewidth=1)
-            if vertical_label is not None:
-                place_vertical_label(ax_current, vertical, vertical_label, fontsize=linelabelfontsize)
+        draw_horizontal_lines(
+            ax_current,
+            getattr(args, "horizontal", None),
+            labels=getattr(args, "horizontal_label", None),
+            styles=getattr(args, "horizontal_style", None),
+            colors=getattr(args, "horizontal_color", None),
+            fontsize=linelabelfontsize,
+        )
+        draw_vertical_lines(
+            ax_current,
+            getattr(args, "vertical", None),
+            labels=getattr(args, "vertical_label", None),
+            styles=getattr(args, "vertical_style", None),
+            colors=getattr(args, "vertical_color", None),
+            fontsize=linelabelfontsize,
+        )
 
         point_values = parse_point_pairs(getattr(args, "point", None))
         point_labels, point_label_warning = normalize_point_labels(

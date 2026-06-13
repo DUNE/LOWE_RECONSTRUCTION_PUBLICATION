@@ -9,6 +9,7 @@ import os
 import argparse
 import json
 import shlex
+import subprocess
 
 from rich import print as rprint
 
@@ -42,8 +43,19 @@ def load_output_paths(kind):
 def run_script(script_name):
     script_name = " ".join(script_name.split())  # Remove extra spaces
     rprint(f"\n[cyan]Running[/cyan] {script_name}")
-    result = os.system(f"{shlex.quote(sys.executable)} {script_name}")
-    return result
+    captured_lines = []
+    proc = subprocess.Popen(
+        [sys.executable] + shlex.split(script_name),
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+    )
+    for line in proc.stdout:
+        sys.stdout.write(line)
+        captured_lines.append(line)
+    proc.wait()
+    captured_output = "".join(captured_lines).strip()
+    return proc.returncode, captured_output
 
 
 if __name__ == "__main__":
@@ -60,36 +72,41 @@ if __name__ == "__main__":
         rprint(f"[red]Error:[/red] Script file {script_file} not found.")
         sys.exit(1)
 
-    all_results = []
+    # Each entry: (original_script_line, exit_code, captured_output)
+    run_records = []
     for script_name in scripts:
         external_outputs = output_paths.get(args.scripts) or []
         # Ensure external_outputs is a list
         if not isinstance(external_outputs, list):
             external_outputs = [external_outputs]
-        
+
+        full_script = script_name
         if (
             external_outputs
-            and " -o " not in script_name
-            and " --output " not in script_name
+            and " -o " not in full_script
+            and " --output " not in full_script
         ):
             output_args = " ".join([shlex.quote(path) for path in external_outputs])
-            script_name += f" -o {output_args}"
+            full_script += f" -o {output_args}"
         if args.plot:
-            script_name += " -p"
+            full_script += " -p"
         if args.debug:
-            script_name += " -d"
+            full_script += " -d"
 
-        this_result = run_script(script_name)
+        exit_code, captured_output = run_script(full_script)
 
-        if this_result != 0:
-            script_name = " ".join(script_name.split())  # Remove extra spaces
-            rprint(f"Script {script_name} failed. Exiting.")
+        if exit_code != 0:
+            rprint(f"[yellow]Script failed (exit {exit_code}):[/yellow] {' '.join(script_name.split())}")
 
-        all_results.append(this_result)
+        run_records.append((script_name, exit_code, captured_output))
 
-    if sum(all_results) == 0:
+    if all(r[1] == 0 for r in run_records):
         rprint("\n[green]All scripts executed successfully![/green]")
     else:
-        for i, result in enumerate(all_results):
+        rprint("\n[red]--- Failed scripts summary ---[/red]")
+        for original_cmd, result, output in run_records:
             if result != 0:
-                rprint(f"[red]Error:[/red] {' '.join(scripts[i].split())}")
+                rprint(f"\n[red]Error (exit {result}):[/red] {' '.join(original_cmd.split())}")
+                if output:
+                    last_lines = "\n".join(output.splitlines()[-10:])
+                    rprint(f"[dim]{last_lines}[/dim]")

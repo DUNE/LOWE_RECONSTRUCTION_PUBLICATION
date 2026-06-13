@@ -61,7 +61,7 @@ from lib import *
 from lib.exports import make_name_from_args, save_figure_to_paths
 from lib.format import make_subtitle_from_args, make_title_from_args
 from lib.imports import import_data, prepare_import
-from lib.plot import apply_scientific_threshold_formatter, apply_legend_style, create_common_subplots, apply_note_to_figure, place_vertical_label, place_horizontal_label, place_point_label
+from lib.plot import apply_scientific_threshold_formatter, apply_legend_style, create_common_subplots, apply_note_to_figure, draw_vertical_lines, draw_horizontal_lines, place_point_label
 
 from lib.selection import filter_dataframe
 from common_args import add_common_args
@@ -96,7 +96,13 @@ add_common_args(
         "matchx",
         "matchy",
         "horizontal",
+        "horizontal_label",
+        "horizontal_style",
+        "horizontal_color",
         "vertical",
+        "vertical_label",
+        "vertical_style",
+        "vertical_color",
         "point",
         "point_label",
         "note",
@@ -911,19 +917,23 @@ def main():
                 linestyle="--",
             )
 
-        if args.horizontal is not None:
-            ax_current.axhline(
-                args.horizontal,
-                color="k" if args.logz else "white",
-                linestyle="--",
-            )
-
-        if args.vertical is not None:
-            ax_current.axvline(
-                args.vertical,
-                color="k" if args.logz else "white",
-                linestyle="--",
-            )
+        _contour_line_color = "k" if args.logz else "white"
+        draw_horizontal_lines(
+            ax_current,
+            getattr(args, "horizontal", None),
+            labels=getattr(args, "horizontal_label", None),
+            styles=getattr(args, "horizontal_style", None),
+            colors=getattr(args, "horizontal_color", None) or [_contour_line_color],
+            fontsize=linelabelfontsize,
+        )
+        draw_vertical_lines(
+            ax_current,
+            getattr(args, "vertical", None),
+            labels=getattr(args, "vertical_label", None),
+            styles=getattr(args, "vertical_style", None),
+            colors=getattr(args, "vertical_color", None) or [_contour_line_color],
+            fontsize=linelabelfontsize,
+        )
 
         if ncols > 1:
             plot_subtitle = make_subtitle_from_args(

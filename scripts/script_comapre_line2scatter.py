@@ -17,7 +17,7 @@ from common_args import add_common_args
 from lib import titlefontsize, xlabelfontsize, ysublabelfontsize, linelabelfontsize
 from lib.format import make_title_from_args
 from lib.selection import filter_dataframe
-from lib.plot import apply_legend_style, plot_data, create_common_subplots, create_common_two_panel_figure, apply_note_to_figure, apply_common_figure_margins, place_vertical_label, place_horizontal_label, place_point_label
+from lib.plot import apply_legend_style, plot_data, create_common_subplots, create_common_two_panel_figure, apply_note_to_figure, apply_common_figure_margins, draw_vertical_lines, draw_horizontal_lines, place_point_label
 
 
 
@@ -48,8 +48,12 @@ def parse_args():
             "logy",
             "horizontal",
             "horizontal_label",
+            "horizontal_style",
+            "horizontal_color",
             "vertical",
             "vertical_label",
+            "vertical_style",
+            "vertical_color",
             "plot_style",
             "title",
             "output",
@@ -468,7 +472,8 @@ def _resolve_output_path(args, row):
         if args.iterable is not None and args.iterable in row and pd.notna(row[args.iterable])
         else "data"
     )
-    safe_parts = [datafile_name, iterable_value, args.lower_series, "line_scatter_panel"]
+    variables_part = "_".join(args.variables) if getattr(args, "variables", None) else None
+    safe_parts = [datafile_name, iterable_value, args.lower_series, variables_part, args.lower_plot_style, "line_scatter_panel"]
     file_name = "_".join(
         part.replace(" ", "_").replace("/", "_") for part in safe_parts if part
     )
@@ -591,22 +596,28 @@ def main():
     ax_top.set_ylabel(args.labely, fontsize=ysublabelfontsize)
     ax_top.grid(alpha=0.25)
 
-    vertical = getattr(args, "vertical", None)
-    vertical_label = getattr(args, "vertical_label", None)
-    horizontal = getattr(args, "horizontal", None)
-    horizontal_label = getattr(args, "horizontal_label", None)
-
-    if vertical is not None:
-        ax_top.axvline(vertical, color="gray", linestyle="--", linewidth=1)
-        if ax_bottom is not None:
-            ax_bottom.axvline(vertical, color="gray", linestyle="--", linewidth=1)
-        if vertical_label is not None:
-            place_vertical_label(ax_top, vertical, vertical_label, fontsize=linelabelfontsize)
-
-    if horizontal is not None:
-        ax_top.axhline(horizontal, color="gray", linestyle="--", linewidth=1)
-        if horizontal_label is not None:
-            place_horizontal_label(ax_top, horizontal, horizontal_label, fontsize=linelabelfontsize)
+    draw_vertical_lines(
+        ax_top,
+        getattr(args, "vertical", None),
+        labels=getattr(args, "vertical_label", None),
+        styles=getattr(args, "vertical_style", None),
+        colors=getattr(args, "vertical_color", None),
+        fontsize=linelabelfontsize,
+    )
+    if ax_bottom is not None:
+        draw_vertical_lines(
+            ax_bottom,
+            getattr(args, "vertical", None),
+            fontsize=linelabelfontsize,
+        )
+    draw_horizontal_lines(
+        ax_top,
+        getattr(args, "horizontal", None),
+        labels=getattr(args, "horizontal_label", None),
+        styles=getattr(args, "horizontal_style", None),
+        colors=getattr(args, "horizontal_color", None),
+        fontsize=linelabelfontsize,
+    )
 
     apply_legend_style(
         ax_top,
@@ -667,9 +678,14 @@ def main():
             ax_bottom.set_ylim(0.0, bottom_max)
         else:
             bottom_min, bottom_max = ax_bottom.get_ylim()
-            radius = max(abs(bottom_max - 1.0), abs(1.0 - bottom_min))
-            if radius > 0:
-                ax_bottom.set_ylim(1.0 - radius, 1.0 + radius)
+            data_span = bottom_max - bottom_min
+            if data_span < 1.0:
+                # 1D scatter: all y-values are effectively the same (e.g. zero)
+                mid = (bottom_min + bottom_max) / 2.0
+                ax_bottom.set_ylim(mid - 0.5, mid + 1.5)
+            else:
+                margin = 0.15 * data_span
+                ax_bottom.set_ylim(bottom_min - margin, bottom_max + margin)
 
     if args.logx:
         ax_top.set_xscale("log")
