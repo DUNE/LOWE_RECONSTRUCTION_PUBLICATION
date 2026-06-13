@@ -18,7 +18,7 @@ from lib.format import make_title_from_args
 from lib.exports import make_name_from_args, save_figure_to_paths
 from lib.selection import filter_dataframe
 from lib.imports import import_data, prepare_import
-from common_args import add_common_args, map_iterable_label, map_iterable_color
+from common_args import add_common_args, map_iterable_label, map_iterable_color, resolve_axis_label
 
 parser = argparse.ArgumentParser(
     description="Plot side-by-side 2D projections of a 3D event display"
@@ -219,10 +219,10 @@ def main():
         fig, axes = create_common_subplots(nrows=1, ncols=2)
         ax_left, ax_right = axes[0], axes[1]
 
-        label_x = args.labelx if args.labelx is not None else args.x
+        label_x = resolve_axis_label(args.labelx, args.x, df_config)
         if args.labely is None:
-            label_y = args.y
-            label_z_axis = args.z
+            label_y = resolve_axis_label(None, args.y, df_config)
+            label_z_axis = resolve_axis_label(None, args.z, df_config)
         elif len(args.labely) == 1:
             label_y = args.labely[0]
             label_z_axis = args.labely[0]

@@ -18,7 +18,7 @@ from lib.format import make_title_from_args, make_subtitle_from_args
 from lib.imports import import_data, prepare_import
 from lib.plot import apply_scientific_threshold_formatter, plot_data, create_common_subplots, apply_note_to_figure, draw_vertical_lines, draw_horizontal_lines, place_point_label
 
-from common_args import add_common_args
+from common_args import add_common_args, resolve_axis_label
 
 # Import with args parser
 parser = argparse.ArgumentParser(
@@ -207,7 +207,7 @@ def main():
                     z=z,
                 )
                 cbar = fig.colorbar(mappable, ax=ax_current)
-                z_label = args.labelz if args.labelz is not None else args.z
+                z_label = resolve_axis_label(args.labelz, args.z, df)
                 cbar.set_label(z_label if not args.logz else f"{z_label} (log scale)")
             else:
                 hist2d = plot_data(
@@ -266,12 +266,11 @@ def main():
                     fontsize=subtitlefontsize,
                 )
 
-            ax_current.set_xlabel(
-                args.labelx
-                if args.labelx is not None
-                else f"{args.x}" if args.x != "Time" else r"Time ($\mu$s)"
-            )
-            ax_current.set_ylabel(args.labely) if idx == 0 else None
+            _xlabel = resolve_axis_label(args.labelx, args.x, df)
+            if args.x == "Time" and args.labelx is None and f"{args.x}Unit" not in df.columns:
+                _xlabel = r"Time ($\mu$s)"
+            ax_current.set_xlabel(_xlabel)
+            ax_current.set_ylabel(resolve_axis_label(args.labely, args.y, df)) if idx == 0 else None
             if args.matchx:
                 ax_current.set_xlim(ranges[0])
             if args.matchy:

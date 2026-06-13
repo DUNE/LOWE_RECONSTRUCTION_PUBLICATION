@@ -64,7 +64,7 @@ from lib.imports import import_data, prepare_import
 from lib.plot import apply_scientific_threshold_formatter, apply_legend_style, create_common_subplots, apply_note_to_figure, draw_vertical_lines, draw_horizontal_lines, place_point_label
 
 from lib.selection import filter_dataframe
-from common_args import add_common_args
+from common_args import add_common_args, resolve_axis_label
 
 
 parser = argparse.ArgumentParser(
@@ -545,7 +545,7 @@ def aggregate_config_grid(df_config):
     return {"x": reference_grid[0], "y": reference_grid[1], "z": summed_z}
 
 
-def draw_image_background(ax, fig, x, y, z):
+def draw_image_background(ax, fig, x, y, z, df=None):
     positive = smooth_background_image(z)
     if args.logz:
         positive = np.ma.masked_less_equal(positive, 0)
@@ -558,11 +558,13 @@ def draw_image_background(ax, fig, x, y, z):
         norm=LogNorm() if args.logz else None,
     )
     cbar = fig.colorbar(mesh, ax=ax)
-    cbar.set_label(
-        args.labelz
-        if args.labelz is not None
-        else ("Density" if args.density else args.z)
-    )
+    if args.labelz is not None:
+        z_label = args.labelz
+    elif args.density:
+        z_label = "Density"
+    else:
+        z_label = resolve_axis_label(None, args.z, df)
+    cbar.set_label(z_label)
     cbar.ax.yaxis.set_label_position("right")
     return mesh
 
@@ -780,7 +782,7 @@ def main():
 
         background_x, background_y = reference_grid
         if args.background == "all":
-            draw_image_background(ax_current, fig, background_x, background_y, sum_background)
+            draw_image_background(ax_current, fig, background_x, background_y, sum_background, df=df)
         elif args.background == "first":
             draw_image_background(
                 ax_current,
@@ -788,9 +790,10 @@ def main():
                 payloads[0]["x"],
                 payloads[0]["y"],
                 payloads[0]["z"],
+                df=df,
             )
         elif args.background == "combined":
-            draw_image_background(ax_current, fig, background_x, background_y, combined_z)
+            draw_image_background(ax_current, fig, background_x, background_y, combined_z, df=df)
 
         legend_handles = []
         if not args.combined_contours_only:
@@ -941,9 +944,9 @@ def main():
             )
             ax_current.set_title(plot_subtitle, fontsize=subtitlefontsize)
 
-        ax_current.set_xlabel(args.labelx if args.labelx is not None else args.x)
+        ax_current.set_xlabel(resolve_axis_label(args.labelx, args.x, df))
         if idx == 0:
-            ax_current.set_ylabel(args.labely if args.labely is not None else args.y)
+            ax_current.set_ylabel(resolve_axis_label(args.labely, args.y, df))
 
         if args.matchx and matched_ranges[0] is not None:
             ax_current.set_xlim(matched_ranges[0])

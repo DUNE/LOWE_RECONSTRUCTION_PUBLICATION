@@ -26,7 +26,7 @@ from lib.plot import (
     draw_horizontal_lines,
     place_point_label,
 )
-from common_args import add_common_args, map_iterable_label, map_iterable_color
+from common_args import add_common_args, map_iterable_label, map_iterable_color, resolve_axis_label
 
 
 # Import with args parser
@@ -688,17 +688,13 @@ def main():
                     fontsize=subtitlefontsize,
                 )
 
-            ax_current.set_xlabel(
-                args.labelx if args.labelx is not None else f"{args.x}"
-            )
+            ax_current.set_xlabel(resolve_axis_label(args.labelx, args.x, df))
             # If x are of string type, rotate x-axis labels for better readability
             if isinstance(last_x, np.ndarray) and last_x.dtype.kind in ('U', 'S', 'O'):
                 plt.setp(ax_current.get_xticklabels(), rotation=45, ha="right")
 
             (
-                ax_current.set_ylabel(
-                    args.labely if args.labely is not None else f"{args.y}"
-                )
+                ax_current.set_ylabel(resolve_axis_label(args.labely, args.y, df))
                 if idx == 0
                 else None
             )

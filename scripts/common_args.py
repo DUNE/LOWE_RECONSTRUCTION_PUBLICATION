@@ -585,6 +585,23 @@ def map_iterable_color(iterable_value, mapping_name):
     return None
 
 
+def resolve_axis_label(explicit_label, col_name, df=None):
+    """Return axis label, appending unit from a *Unit column if no explicit label given."""
+    if explicit_label is not None:
+        return explicit_label
+    if col_name is None:
+        return ""
+    if df is not None:
+        unit_col = f"{col_name}Unit"
+        if unit_col in df.columns:
+            units = df[unit_col].dropna()
+            if not units.empty:
+                unit = str(units.iloc[0]).strip()
+                if unit:
+                    return f"{col_name} ({unit})"
+    return col_name
+
+
 def resolve_plot_kwargs(selected_plot_type):
     """Resolve plot type to plot_type and drawstyle kwargs.
 

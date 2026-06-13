@@ -18,7 +18,7 @@ from lib.exports import make_name_from_args, save_figure_to_paths
 from lib.format import make_title_from_args
 from lib.imports import import_data, prepare_import
 from lib.plot import apply_legend_style, plot_data, create_common_subplots, create_common_two_panel_figure, apply_note_to_figure, draw_vertical_lines, draw_horizontal_lines, place_point_label
-from common_args import add_common_args, load_computation_settings, map_iterable_label, map_iterable_color, resolve_plot_kwargs
+from common_args import add_common_args, load_computation_settings, map_iterable_label, map_iterable_color, resolve_plot_kwargs, resolve_axis_label
 
 import matplotlib.lines as mlines
 
@@ -884,7 +884,7 @@ def main():
             ax_bottom.axhline(y=0, color="r", zorder=-1)
 
         ax_top.set_ylabel(
-            args.labely if args.labely is not None else f"{args.y}",
+            resolve_axis_label(args.labely, args.y, df),
             fontsize=ysublabelfontsize,
         )
         if ax_bottom is not None:
@@ -898,12 +898,12 @@ def main():
                 fontsize=ysublabelfontsize,
             )
             ax_bottom.set_xlabel(
-                args.labelx if args.labelx is not None else f"{args.x}",
+                resolve_axis_label(args.labelx, args.x, df),
                 fontsize=xlabelfontsize,
             )
         else:
             ax_top.set_xlabel(
-                args.labelx if args.labelx is not None else f"{args.x}",
+                resolve_axis_label(args.labelx, args.x, df),
                 fontsize=xlabelfontsize,
             )
 

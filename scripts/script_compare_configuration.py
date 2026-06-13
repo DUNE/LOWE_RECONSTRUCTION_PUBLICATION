@@ -16,7 +16,7 @@ from lib.functions import resolution, gaussian
 from lib.imports import import_data, prepare_import
 from lib.plot import apply_scientific_threshold_formatter, apply_legend_style, plot_data, create_common_subplots, apply_note_to_figure, draw_vertical_lines, draw_horizontal_lines
 from lib.selection import prepare_selection, filter_dataframe
-from common_args import add_common_args, map_iterable_label, map_iterable_color
+from common_args import add_common_args, map_iterable_label, map_iterable_color, resolve_axis_label
 
 
 from rich import print as rprint
@@ -837,10 +837,10 @@ def main():
         ax_current.set_xlabel(
             args.labelx[idx]
             if args.labelx and len(args.labelx) == ncols
-            else args.labelx[0] if args.labelx else args.x
+            else args.labelx[0] if args.labelx else resolve_axis_label(None, args.x, df)
         )
         if idx == 0:
-            ax_current.set_ylabel(args.labely if args.labely else args.y)
+            ax_current.set_ylabel(args.labely if args.labely else resolve_axis_label(None, args.y, df))
 
         # Set y-axis limits based on the y variable
         if args.rangex is not None:

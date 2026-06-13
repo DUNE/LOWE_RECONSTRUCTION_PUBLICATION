@@ -27,7 +27,7 @@ from lib.functions import (
 )
 from lib.plot import apply_legend_style, plot_data, create_common_subplots, create_common_two_panel_figure, apply_note_to_figure, draw_vertical_lines, draw_horizontal_lines, place_point_label
 
-from common_args import add_common_args
+from common_args import add_common_args, resolve_axis_label
 
 # Remove RuntimeWarning: overflow encountered in divide
 warnings.filterwarnings("ignore", category=RuntimeWarning)
@@ -377,7 +377,7 @@ def main():
             continue
 
         ax_top.set_ylabel(
-            args.labely if args.labely is not None else f"{args.y}",
+            resolve_axis_label(args.labely, args.y, df),
             fontsize=ysublabelfontsize,
         )
 
@@ -428,7 +428,7 @@ def main():
                 ax_bottom.set_xlim(args.rangex)
 
             ax_bottom.set_xlabel(
-                args.labelx if args.labelx is not None else f"{args.x}",
+                resolve_axis_label(args.labelx, args.x, df),
                 fontsize=xlabelfontsize,
             )
             if args.logx:
@@ -438,7 +438,7 @@ def main():
             ax_bottom.set_ylabel("(Data - Fit)/Fit", fontsize=ysublabelfontsize)
         else:
             ax_top.set_xlabel(
-                args.labelx if args.labelx is not None else f"{args.x}",
+                resolve_axis_label(args.labelx, args.x, df),
                 fontsize=xlabelfontsize,
             )
 

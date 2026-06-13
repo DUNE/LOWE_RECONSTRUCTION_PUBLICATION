@@ -18,7 +18,7 @@ from lib.exports import make_name_from_args, save_figure_to_paths
 from lib.format import make_title_from_args, make_subtitle_from_args
 from lib.imports import import_data, prepare_import
 from lib.plot import apply_scientific_threshold_formatter, apply_legend_style, plot_data, create_common_subplots, apply_note_to_figure, draw_vertical_lines, draw_horizontal_lines, place_point_label
-from common_args import add_common_args, load_computation_settings, resolve_plot_kwargs
+from common_args import add_common_args, load_computation_settings, resolve_plot_kwargs, resolve_axis_label
 
 
 # Import with args parser
@@ -328,13 +328,9 @@ def main():
                     fontsize=subtitlefontsize,
                 )
 
-            ax_current.set_xlabel(
-                args.labelx if args.labelx is not None else f"{args.x}"
-            )
+            ax_current.set_xlabel(resolve_axis_label(args.labelx, args.x, df))
             (
-                ax_current.set_ylabel(
-                    args.labely if args.labely is not None else f"{args.y}"
-                )
+                ax_current.set_ylabel(resolve_axis_label(args.labely, args.y, df))
                 if idx == 0
                 else None
             )
