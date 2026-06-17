@@ -2,7 +2,8 @@
   "plots": {
     "reco": ["/home/smanthey/Code/LOWE_RECONSTRUCTION_TECHNOTE/Images/Reco/", "/home/smanthey/Code/THESIS/figures/reco/"],
     "lowe": ["/home/smanthey/Code/LOWE_RECONSTRUCTION_TECHNOTE/Images/LowE/", "/home/smanthey/Code/THESIS/figures/lowe/"],
-    "thesis": ["/home/smanthey/Code/THESIS/figures/exclusive/"]
+    "thesis": ["/home/smanthey/Code/THESIS/figures/exclusive/"],
+    "solar": ["/home/smanthey/Code/THESIS/figures/solar/"]
   },
   "tables": {
     "reco": ["/home/smanthey/Code/LOWE_RECONSTRUCTION_TECHNOTE/Tables/", "/home/smanthey/Code/THESIS/tables/"]

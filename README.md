@@ -105,10 +105,10 @@ For [`script_compare_configuration.py`](scripts/script_compare_configuration.py)
 - `--combine <criterion>` where criterion is `Geometry`, `Config`, or `Name`
 - `--combine_operation <mode>` where mode is `mean`, `sum`, or `squared_sum`
 
-Example (combine HD and VD families into two lines, summing each group):
+Example (combine two config families into summary lines):
 
 ```bash
-python3 scripts/script_compare_configuration.py --datafile TPC_Cluster_Efficiency_Drift_Scan --configs hd_1x2x6_centralAPA hd_1x2x6_lateralAPA vd_1x8x14_3view_30deg_nominal vd_1x8x14_3view_30deg_shielded -y Efficiency -x Coordinate -v X --select Energy -s 10 --title 'Signal + Background Productions' --labelx 'Drift Coordinate (cm)' --labely 'TPC-PDS Matching Efficiency (%)' --combine Geometry --combine_operation sum
+python3 scripts/script_compare_configuration.py --datafile Example_Efficiency --configs config_a config_b -y Efficiency -x Coordinate -v X --combine Geometry --combine_operation sum
 ```
 
 Generated artifacts are written by default to:
@@ -194,7 +194,6 @@ Behavior:
 
 To avoid duplicating upstream documentation, refer directly to:
 
-- Official DUNE plot style: https://github.com/DUNE/dune_plot_style
 - Matplotlib documentation: https://matplotlib.org/stable/
 - NumPy documentation: https://numpy.org/doc/stable/
 - pandas documentation: https://pandas.pydata.org/docs/

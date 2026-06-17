@@ -92,7 +92,7 @@ echo -e "\e[35m -> Installing required Python packages from src/requirements.txt
 python3 -m pip install -r src/requirements.txt pytest
 
 echo -e "\e[35m -> Running plotting test workflow and generating visual artifacts\n\e[0m"
-python3 -m pytest \
+python3 -m pytest -c tests/pytest.ini \
     tests/test_script_compare_configuration.py \
     tests/test_script_compare_hist1d.py \
     tests/test_script_compare_hist2d.py \

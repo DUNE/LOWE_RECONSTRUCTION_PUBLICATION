@@ -231,8 +231,9 @@ output/tables/*.tsv
 output/tables/*.xlsx
 output/tables/*.tex
 
-# Generated test reports (keep directory structure)
+# Generated test reports
 styles/*/examples/images/*.png
-tests/output/plots/*.png
-tests/output/*.xml
-tests/output/*.html
+tests/output/
+
+# Temporary files
+tmp*/

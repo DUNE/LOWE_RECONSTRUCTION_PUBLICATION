@@ -1,3 +1,3 @@
 module.exports = {
-  themeSet: ['./themes/dune.css'],
+  themeSet: ['./styles/themes/dune.css'],
 };
