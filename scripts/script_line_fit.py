@@ -9,6 +9,7 @@ from _bootstrap import ensure_src_path
 
 ensure_src_path()
 
+import re
 import warnings
 
 from rich import print as rprint
@@ -27,7 +28,7 @@ from lib.functions import (
 )
 from lib.plot import apply_legend_style, plot_data, create_common_subplots, create_common_two_panel_figure, apply_note_to_figure, draw_vertical_lines, draw_horizontal_lines, place_point_label
 
-from common_args import add_common_args, resolve_axis_label
+from common_args import add_common_args, resolve_axis_label, resolve_plot_kwargs
 
 # Remove RuntimeWarning: overflow encountered in divide
 warnings.filterwarnings("ignore", category=RuntimeWarning)
@@ -70,6 +71,7 @@ add_common_args(
         "point",
         "point_label",
         "note",
+        "plot_type",
         "debug",
     ],
     overrides={
@@ -77,10 +79,13 @@ add_common_args(
         "names": {"flags": ["--names"]},
         "x": {"default": "Values"},
         "y": {"default": "Density"},
-        "labelx": {"default": "True Neutrino Energy (MeV)"},
         "labelz": {"help": "Title for legend on plot (if applicable)"},
         "reduce": {
             "help": "Reduce the number of plotted lines by only plotting every other line for cases with many unique iterables"
+        },
+        "plot_type": {
+            "choices": ["scatter", "line", "step", "plot", "errorbar", "bar"],
+            "help": "Explicit plot type override for the data/residual points (default: unconnected markers, or errorbar style if --errory is set)",
         },
     },
 )
@@ -93,10 +98,33 @@ parser.add_argument(
 )
 
 parser.add_argument(
+    "--fit_errors",
+    action=argparse.BooleanOptionalAction,
+    help="Display the fit parameter errors in the Fit Parameters legend",
+    default=True,
+)
+
+parser.add_argument(
     "--fitindex",
     type=int,
     default=0,
     help="Index of the fit to plot (if multiple fits are available in the data)",
+)
+
+parser.add_argument(
+    "--fit_rangex",
+    nargs=2,
+    type=float,
+    default=None,
+    help="Restrict the x-range over which the fit curve is drawn (min max); defaults to the data range",
+)
+
+parser.add_argument(
+    "--max_fit_params",
+    type=int,
+    default=None,
+    help="Limit the number of fit parameters shown in the Fit Parameters legend "
+    "(useful for fits with a variable number of components, e.g. a Gaussian train)",
 )
 
 parser.add_argument(
@@ -132,6 +160,60 @@ parser.add_argument(
 args = parser.parse_args()
 
 
+def _resolve_decimal_places(error):
+    """Number of decimal places (plain notation) needed to show `error` to
+    1 significant figure, or 2 if its leading digit is 1 (PDG rounding rule).
+    Can be negative for errors coarser than the ones place (e.g. an error of
+    ~20000 resolves to -3, i.e. round to the nearest thousand).
+    Returns None if the error can't be used to resolve a precision.
+    """
+    if error is None or not np.isfinite(error) or error <= 0:
+        return None
+
+    exponent = int(np.floor(np.log10(abs(error))))
+    leading_digit = int(abs(error) / 10**exponent + 1e-9)
+    sig_figs = 2 if leading_digit == 1 else 1
+    return sig_figs - 1 - exponent
+
+
+def _format_value_with_paren_error(base_format, value, error):
+    """Format `value +/- error` in compact parenthetical notation (e.g.
+    "1.35(6)e-08" instead of "1.35e-08 +/- 6e-09"), the standard convention
+    used in PDG/CODATA tables: the digits in parentheses are the error rounded
+    to the value's last significant decimal place, in units of that place.
+    Falls back to a plain formatted value if the error can't resolve a precision.
+    """
+    decimals = _resolve_decimal_places(error)
+    if decimals is None:
+        return format(value, base_format)
+
+    match = re.match(r"^\.?\d*([a-zA-Z%])$", base_format)
+    type_char = match.group(1) if match else "f"
+
+    if type_char in "fF%":
+        error_digits = int(round(abs(error) * 10**decimals))
+        if decimals >= 0:
+            value_str = format(value, f".{decimals}{type_char}")
+        else:
+            # format() can't take negative precision; pre-round to the
+            # resolved place (e.g. nearest thousand) and show 0 decimals
+            value_str = format(round(value, decimals), f".0{type_char}")
+        return f"{value_str}({error_digits})"
+
+    if type_char in "eEgG":
+        value_exponent = (
+            int(np.floor(np.log10(abs(value)))) if value != 0 and np.isfinite(value) else 0
+        )
+        mantissa_decimals = max(decimals + value_exponent, 0)
+        mantissa_part, _, exponent_part = format(
+            value, f".{mantissa_decimals}{type_char}"
+        ).partition("e")
+        error_digits = int(round(abs(error) / 10 ** (value_exponent - mantissa_decimals)))
+        return f"{mantissa_part}({error_digits})e{exponent_part}"
+
+    return format(value, base_format)
+
+
 def main():
     # For each configuration provided combine the data files and plot the results
     df = import_data(args)
@@ -160,6 +242,11 @@ def main():
             )
             ax_top = fig.add_subplot(gs[0])
             ax_bottom = fig.add_subplot(gs[1], sharex=ax_top)
+            # Hide x-axis tick labels on the upper panel when a lower panel exists
+            ax_top.tick_params(labelbottom=False)
+            # tick_params only hides the tick labels; the scientific-notation
+            # offset text is a separate artist and must be hidden explicitly
+            ax_top.xaxis.get_offset_text().set_visible(False)
         else:
             fig, ax_top = create_common_subplots(nrows=1, ncols=1)
             ax_bottom = None
@@ -227,6 +314,19 @@ def main():
             elif len(params_units) > len(params):
                 params_units = params_units[: len(params)]
 
+            selected_plot_type = (
+                args.plot_type
+                if args.plot_type is not None
+                else ("errorbar" if args.errory else "plot")
+            )
+            # "step" is purely cosmetic here: draw a stepped line via ax.plot's
+            # drawstyle, not a histogram (which would rebin x and distort the y-axis)
+            resolved_plot_kwargs = resolve_plot_kwargs(selected_plot_type)
+            data_plot_type = resolved_plot_kwargs.pop("plot_type")
+            data_plot_kwargs = resolved_plot_kwargs
+            if selected_plot_type == "plot":
+                data_plot_kwargs = {**data_plot_kwargs, "marker": "o", "linestyle": "None"}
+
             if args.errory == True:
                 y_error = subset[f"{args.y}Error"].values[0]
                 plot_data(
@@ -240,8 +340,8 @@ def main():
                         if args.iterable is not None
                         else f"Data"
                     ),
-                    plot_type="errorbar",
-                    fmt="o",
+                    plot_type=data_plot_type,
+                    **data_plot_kwargs,
                 )
 
             else:
@@ -250,14 +350,13 @@ def main():
                     ax_top,
                     x,
                     y=y,
-                    plot_type="plot",
-                    marker="o",
-                    linestyle="None",
+                    plot_type=data_plot_type,
                     label=(
                         subset[args.iterable].iloc[0]
                         if args.iterable is not None
                         else f"Data"
                     ),
+                    **data_plot_kwargs,
                 )
 
             if (
@@ -265,7 +364,10 @@ def main():
             ):  # Only add legend for the first iterable to avoid duplicates
 
                 # Draw the fit line
-                fit_x = np.linspace(np.min(x), np.max(x), 1000)
+                fit_x_min, fit_x_max = (
+                    args.fit_rangex if args.fit_rangex is not None else (np.min(x), np.max(x))
+                )
+                fit_x = np.linspace(fit_x_min, fit_x_max, 1000)
                 plot_data(
                     args,
                     ax_top,
@@ -277,9 +379,11 @@ def main():
                     linestyle="-",
                 )
 
-                # Compute residuals only for valid (finite, nonzero fit) points
+                # Compute residuals only for valid (finite, nonzero fit) points within --fit_rangex
                 diff = y - fit
                 mask = np.isfinite(fit) & (fit != 0) & np.isfinite(diff)
+                if args.fit_rangex is not None:
+                    mask = mask & (x >= fit_x_min) & (x <= fit_x_max)
                 residuals = np.full_like(diff, np.nan)
                 residuals[mask] = diff[mask] / fit[mask]
 
@@ -316,8 +420,8 @@ def main():
                             y=residuals,
                             errory=residuals_error,
                             color="black",
-                            plot_type="errorbar",
-                            fmt="o",
+                            plot_type=data_plot_type,
+                            **data_plot_kwargs,
                         )
                     else:
                         plot_data(
@@ -326,9 +430,8 @@ def main():
                             x,
                             y=residuals,
                             color="black",
-                            plot_type="plot",
-                            marker="o",
-                            linestyle="None",
+                            plot_type=data_plot_type,
+                            **data_plot_kwargs,
                         )
                     # Set the limits for the residuals plot based on the central 90% of finite residuals to avoid outliers dominating the scale
                     ax_bottom.set_ylim(-limit, limit)
@@ -337,9 +440,18 @@ def main():
                     (diff[mask] ** 2 / fit[mask]).sum() if fit[mask].size > 0 else 0
                 )  # Avoid division by zero
 
+                displayed_param_count = (
+                    len(params)
+                    if args.max_fit_params is None
+                    else min(args.max_fit_params, len(params))
+                )
+
                 for ldx, (param_label, param_format, param, param_error, param_unit) in enumerate(
                     zip(params_labels, params_format, params, params_error, params_units)
                 ):
+                    if ldx >= displayed_param_count:
+                        break
+
                     unit_text = str(param_unit).strip()
                     param_display = param
                     param_error_display = param_error
@@ -348,25 +460,61 @@ def main():
                         param_error_display = param_error * 100
 
                     unit_suffix = f" {unit_text}" if unit_text else ""
-                    ax_top.text(
-                        args.fitlegendposition[0],
-                        args.fitlegendposition[1] - 0.08 - 0.06 * ldx,
-                        r"{0} = {1:{2}} $\pm$ {3:{2}}{4}".format(
+                    if args.fit_errors:
+                        # Compact parenthetical notation (e.g. "1.35(6)e-08") instead of
+                        # "1.35e-08 +/- 6e-09": the error digits are rounded to the value's
+                        # last significant decimal, avoiding non-resolvable digits.
+                        param_text = r"{0} = {1}{2}".format(
+                            param_label,
+                            _format_value_with_paren_error(
+                                param_format, param_display, param_error_display
+                            ),
+                            unit_suffix,
+                        )
+                    else:
+                        param_text = r"{0} = {1:{2}}{3}".format(
                             param_label,
                             param_display,
                             param_format,
-                            param_error_display,
                             unit_suffix,
-                        ),
+                        )
+                    ax_top.text(
+                        args.fitlegendposition[0],
+                        args.fitlegendposition[1] - 0.08 - 0.06 * ldx,
+                        param_text,
                         fontdict={"size": legendfontsize},
                         transform=ax_top.transAxes,
                     )
 
-                if args.chi2:
+                # Track how many legend rows were actually drawn, so later entries
+                # (the truncation note, chi2) are positioned right below them
+                # instead of leaving a gap sized for the full, untruncated param count.
+                next_row = displayed_param_count
+                if displayed_param_count < len(params):
                     ax_top.text(
                         args.fitlegendposition[0],
-                        args.fitlegendposition[1] - 0.08 - 0.06 * (len(params)),
-                        r"$\chi^2$/ndof = {0:0.2f}/{1:d}".format(chi2, len(params)),
+                        args.fitlegendposition[1] - 0.08 - 0.06 * next_row,
+                        f"+ {len(params) - displayed_param_count} more",
+                        fontdict={"size": legendfontsize, "style": "italic"},
+                        transform=ax_top.transAxes,
+                    )
+                    next_row += 1
+
+                if args.chi2 and args.y == "Density":
+                    rprint(
+                        "[yellow]Warning:[/yellow] Skipping chi2/ndof legend: the Pearson "
+                        "chi2 formula assumes raw event counts (variance ~ count), which is "
+                        "not valid for normalized Density data (use --y Counts instead)."
+                    )
+                elif args.chi2:
+                    # ndof = number of data points entering the chi2 sum minus the number of
+                    # free parameters (the actual fit, not the truncated legend display)
+                    ndof = max(int(mask.sum()) - len(params), 0)
+                    reduced_chi2 = chi2 / ndof if ndof > 0 else float("nan")
+                    ax_top.text(
+                        args.fitlegendposition[0],
+                        args.fitlegendposition[1] - 0.08 - 0.06 * next_row,
+                        r"$\chi^2$/ndof = {0:0.2f}".format(reduced_chi2),
                         fontdict={"size": legendfontsize},
                         transform=ax_top.transAxes,
                     )
@@ -423,9 +571,31 @@ def main():
         )
 
         if ax_bottom is not None:
-            ax_bottom.axhline(y=0, color="r", zorder=-1)
             if args.rangex is not None:
                 ax_bottom.set_xlim(args.rangex)
+
+            if args.fit_rangex is not None:
+                # Solid within the fitted range, dashed outside it (masked region)
+                fit_lo, fit_hi = args.fit_rangex
+                axis_xmin, axis_xmax = ax_bottom.get_xlim()
+                if axis_xmin < fit_lo:
+                    ax_bottom.plot(
+                        [axis_xmin, fit_lo], [0, 0], color="r", linestyle="--", zorder=-1
+                    )
+                ax_bottom.plot(
+                    [max(axis_xmin, fit_lo), min(axis_xmax, fit_hi)],
+                    [0, 0],
+                    color="r",
+                    linestyle="-",
+                    zorder=-1,
+                )
+                if axis_xmax > fit_hi:
+                    ax_bottom.plot(
+                        [fit_hi, axis_xmax], [0, 0], color="r", linestyle="--", zorder=-1
+                    )
+                ax_bottom.set_xlim(axis_xmin, axis_xmax)
+            else:
+                ax_bottom.axhline(y=0, color="r", zorder=-1)
 
             ax_bottom.set_xlabel(
                 resolve_axis_label(args.labelx, args.x, df),
@@ -479,7 +649,11 @@ def main():
                     place_point_label(ax_top, point_x, point_y, point_labels[point_idx], fontsize=linelabelfontsize)
 
         figure_title = make_title_from_args(args)
-        fig.suptitle(figure_title, fontsize=titlefontsize)
+        # Center the suptitle on the axes area (not the full figure canvas), so it
+        # lines up with ax_top's own title despite the asymmetric left/right margins
+        axes_position = ax_top.get_position()
+        title_x = (axes_position.x0 + axes_position.x1) / 2
+        fig.suptitle(figure_title, x=title_x, fontsize=titlefontsize)
 
         # dunestyle.WIP()
 

@@ -30,10 +30,11 @@ PLOT_STYLE_OPTIONS = {
 }
 
 
-def get_common_figsize(ncols=1):
+def get_common_figsize(ncols=1, nrows=1):
     panel_count = max(1, int(ncols))
     width = figure_base_width + figure_panel_width * (panel_count - 1)
-    return (float(width), float(figure_height))
+    height = figure_height * max(1, int(nrows))
+    return (float(width), float(height))
 
 
 def apply_common_figure_margins(fig, hspace=None):
@@ -77,7 +78,7 @@ def create_common_subplots(nrows=1, ncols=1, **kwargs) -> tuple[Any, Any]:
     fig, ax = plt.subplots(
         nrows=nrows,
         ncols=ncols,
-        figsize=get_common_figsize(ncols=ncols),
+        figsize=get_common_figsize(ncols=ncols, nrows=nrows),
         constrained_layout=False,
         **kwargs,
     )
@@ -589,6 +590,190 @@ def draw_horizontal_lines(ax, values, labels=None, styles=None, colors=None, fon
             place_horizontal_label(ax, v, label, fontsize=fontsize)
 
 
+def _label_data_halfwidth(ax, axis, label, fontsize):
+    """Estimate half the on-screen width/height of *label* in data units.
+
+    Used to displace nearby automatic ticks so a custom tick label doesn't
+    visually collide with its neighbors. Returns None if it cannot be
+    measured (e.g. no renderer available yet), in which case callers should
+    fall back to a coarser heuristic.
+    """
+    fig = ax.figure
+    try:
+        renderer = fig.canvas.get_renderer()
+    except AttributeError:
+        try:
+            fig.canvas.draw()
+            renderer = fig.canvas.get_renderer()
+        except Exception:
+            return None
+    except Exception:
+        return None
+
+    text = ax.text(0, 0, str(label), fontsize=fontsize, alpha=0)
+    try:
+        bbox = text.get_window_extent(renderer=renderer)
+    except Exception:
+        return None
+    finally:
+        text.remove()
+
+    inv = ax.transData.inverted()
+    p0 = inv.transform((0, 0))
+    if axis == "x":
+        p1 = inv.transform((bbox.width, 0))
+        return abs(p1[0] - p0[0]) / 2.0
+    p1 = inv.transform((0, bbox.height))
+    return abs(p1[1] - p0[1]) / 2.0
+
+
+def _draw_pointer_tick_label(
+    ax, axis, position, label, fontsize=None, length=0.06, label_gap=0.02, color="black"
+):
+    """Draw a long tick-like arrow at `position` pointing at the axis, with
+    `label` placed beyond its tail (further out than a normal tick label)."""
+    if axis == "x":
+        trans = ax.get_xaxis_transform()
+        tail = (position, -(length + label_gap))
+        head = (position, 0.0)
+        text_xy = (position, -(length + label_gap))
+        ha, va = "center", "top"
+    else:
+        trans = ax.get_yaxis_transform()
+        tail = (-(length + label_gap), position)
+        head = (0.0, position)
+        text_xy = (-(length + label_gap), position)
+        ha, va = "right", "center"
+
+    arrow = ax.annotate(
+        "",
+        xy=head,
+        xycoords=trans,
+        xytext=tail,
+        textcoords=trans,
+        arrowprops=dict(arrowstyle="-|>", color=color, lw=1, shrinkA=0, shrinkB=0),
+        annotation_clip=False,
+    )
+    text = ax.text(
+        *text_xy,
+        str(label),
+        transform=trans,
+        ha=ha,
+        va=va,
+        fontsize=fontsize,
+        clip_on=False,
+    )
+    return arrow, text
+
+
+def _expand_margins_for_artists(fig, artists, pad_px=4):
+    """Grow the figure's subplot margins just enough that *artists* aren't
+    clipped by the figure edge (used for pointer tick labels that sit
+    outside the normal tick-label margin)."""
+    try:
+        renderer = fig.canvas.get_renderer()
+    except Exception:
+        return
+
+    fig_w, fig_h = fig.bbox.width, fig.bbox.height
+    min_x0, max_x1, min_y0, max_y1 = 0.0, fig_w, 0.0, fig_h
+    for artist in artists:
+        if artist is None:
+            continue
+        try:
+            bbox = artist.get_window_extent(renderer=renderer)
+        except Exception:
+            continue
+        min_x0 = min(min_x0, bbox.x0)
+        max_x1 = max(max_x1, bbox.x1)
+        min_y0 = min(min_y0, bbox.y0)
+        max_y1 = max(max_y1, bbox.y1)
+
+    left_deficit = (-min_x0 + pad_px) if min_x0 < 0 else 0
+    right_deficit = (max_x1 - fig_w + pad_px) if max_x1 > fig_w else 0
+    bottom_deficit = (-min_y0 + pad_px) if min_y0 < 0 else 0
+    top_deficit = (max_y1 - fig_h + pad_px) if max_y1 > fig_h else 0
+
+    if not (left_deficit or right_deficit or bottom_deficit or top_deficit):
+        return
+
+    params = fig.subplotpars
+    fig.subplots_adjust(
+        left=params.left + left_deficit / fig_w if left_deficit else params.left,
+        right=params.right - right_deficit / fig_w if right_deficit else params.right,
+        bottom=params.bottom + bottom_deficit / fig_h if bottom_deficit else params.bottom,
+        top=params.top - top_deficit / fig_h if top_deficit else params.top,
+    )
+
+
+def set_axis_tick_labels(ax, axis, values, labels, fontsize=None, length=0.06, label_gap=0.02):
+    """Mark specific ``values`` on *axis* ("x" or "y") with a long pointer
+    tick and a label placed beyond it, further out than the regular tick
+    labels. Nearby automatic ticks that would visually collide with the new
+    label are dropped; all other automatic ticks are left untouched.
+    """
+    if values is None or labels is None:
+        return
+
+    vals = values if isinstance(values, (list, tuple)) else [values]
+    labs = labels if isinstance(labels, (list, tuple)) else [labels]
+
+    get_lim = ax.get_xlim if axis == "x" else ax.get_ylim
+    get_ticks = ax.get_xticks if axis == "x" else ax.get_yticks
+    set_ticks = ax.set_xticks if axis == "x" else ax.set_yticks
+
+    ax.figure.canvas.draw()
+    get_ticklabels = ax.get_xticklabels if axis == "x" else ax.get_yticklabels
+
+    lim = get_lim()
+    tick_range = lim[1] - lim[0] if lim[1] != lim[0] else 1.0
+    tol = abs(tick_range) * 1e-6
+    fallback_gap = abs(tick_range) * 0.09
+    padding = 1.5
+
+    existing = [
+        (float(t), text.get_text())
+        for t, text in zip(get_ticks(), get_ticklabels())
+        if min(lim) - tol <= t <= max(lim) + tol
+    ]
+
+    for v, label in zip(vals, labs):
+        v = float(v)
+        label = str(label)
+        halfwidth_new = _label_data_halfwidth(ax, axis, label, fontsize)
+
+        def _too_close(t, l):
+            halfwidth_existing = _label_data_halfwidth(ax, axis, l, fontsize)
+            if halfwidth_new is not None and halfwidth_existing is not None:
+                gap = (halfwidth_new + halfwidth_existing) * padding
+            else:
+                gap = fallback_gap
+            return abs(t - v) <= max(gap, tol)
+
+        existing = [(t, l) for t, l in existing if not _too_close(t, l)]
+        if v < min(lim) or v > max(lim):
+            lim = (min(lim[0], v), max(lim[1], v))
+
+    remaining_ticks = sorted(t for t, _ in existing)
+
+    if axis == "x":
+        ax.set_xlim(lim)
+    else:
+        ax.set_ylim(lim)
+
+    set_ticks(remaining_ticks)
+
+    drawn_artists = []
+    for v, label in zip(vals, labs):
+        drawn_artists.extend(
+            _draw_pointer_tick_label(
+                ax, axis, float(v), str(label), fontsize=fontsize, length=length, label_gap=label_gap
+            )
+        )
+
+    _expand_margins_for_artists(ax.figure, drawn_artists)
+
+
 def place_vertical_label(ax, x_value, label_text, fontsize=None, pad_fraction=0.02):
     """Place a label next to a vertical line at `x_value` in the least-populated vertical gap.
 
@@ -732,6 +917,16 @@ def place_vertical_label(ax, x_value, label_text, fontsize=None, pad_fraction=0.
         y_text = (ylim[0] + ylim[1]) / 2.0
     else:
         y_text = best_candidate[0]
+
+    # Clamp y_text to stay between the outermost visible tick marks (not just ylim,
+    # which extends beyond the ticks due to axis padding), with an extra margin for
+    # the text box height so it does not overlap the frame or tick labels.
+    margin = text_height_est / 2.0 if text_height_est > 0 else 0.03 * y_range
+    yticks = np.asarray(ax.get_yticks())
+    yticks_visible = yticks[(yticks >= ylim[0]) & (yticks <= ylim[1])]
+    inner_min = float(yticks_visible.min()) if len(yticks_visible) > 0 else ylim[0]
+    inner_max = float(yticks_visible.max()) if len(yticks_visible) > 0 else ylim[1]
+    y_text = float(np.clip(y_text, inner_min + margin, inner_max - margin))
 
     # Horizontal offset: place label on side with more space (left/right)
     x_mid = (xlim[0] + xlim[1]) / 2.0

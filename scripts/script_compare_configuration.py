@@ -14,7 +14,7 @@ from lib.exports import make_name_from_args, save_figure_to_paths
 from lib.format import make_subtitle_from_args, make_title_from_args, make_config_label_from_args, make_config_color_and_style_from_args
 from lib.functions import resolution, gaussian
 from lib.imports import import_data, prepare_import
-from lib.plot import apply_scientific_threshold_formatter, apply_legend_style, plot_data, create_common_subplots, apply_note_to_figure, draw_vertical_lines, draw_horizontal_lines
+from lib.plot import apply_scientific_threshold_formatter, apply_legend_style, plot_data, create_common_subplots, apply_note_to_figure, draw_vertical_lines, draw_horizontal_lines, set_axis_tick_labels
 from lib.selection import prepare_selection, filter_dataframe
 from common_args import add_common_args, map_iterable_label, map_iterable_color, resolve_axis_label
 
@@ -53,6 +53,10 @@ add_common_args(
         "vertical_label",
         "vertical_style",
         "vertical_color",
+        "xtick",
+        "xtick_label",
+        "ytick",
+        "ytick_label",
         "point",
         "point_label",
         "note",
@@ -834,13 +838,10 @@ def main():
             plot_subtitle = make_subtitle_from_args(args, idx)
             ax_current.set_title(plot_subtitle, fontsize=subtitlefontsize)
 
-        ax_current.set_xlabel(
-            args.labelx[idx]
-            if args.labelx and len(args.labelx) == ncols
-            else args.labelx[0] if args.labelx else resolve_axis_label(None, args.x, df)
-        )
+        _explicit_x = args.labelx[idx] if args.labelx and len(args.labelx) == ncols else (args.labelx[0] if args.labelx else None)
+        ax_current.set_xlabel(resolve_axis_label(_explicit_x, args.x, df))
         if idx == 0:
-            ax_current.set_ylabel(args.labely if args.labely else resolve_axis_label(None, args.y, df))
+            ax_current.set_ylabel(resolve_axis_label(args.labely or None, args.y, df))
 
         # Set y-axis limits based on the y variable
         if args.rangex is not None:
@@ -874,6 +875,13 @@ def main():
             styles=getattr(args, "vertical_style", None),
             colors=getattr(args, "vertical_color", None),
             fontsize=linelabelfontsize,
+        )
+
+        set_axis_tick_labels(
+            ax_current, "x", getattr(args, "xtick", None), getattr(args, "xtick_label", None)
+        )
+        set_axis_tick_labels(
+            ax_current, "y", getattr(args, "ytick", None), getattr(args, "ytick_label", None)
         )
 
         point_values = parse_point_pairs(getattr(args, "point", None))

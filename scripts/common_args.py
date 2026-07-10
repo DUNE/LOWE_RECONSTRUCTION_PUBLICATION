@@ -77,6 +77,10 @@ def parse_plot_label(value):
     if not text:
         return value
 
+    # Treat the literal string "None" as an explicit request for no label.
+    if text.lower() == "none":
+        return ""
+
     if text.startswith(("r'", 'r"', "R'", 'R"')):
         try:
             text = ast.literal_eval(text)
@@ -270,6 +274,15 @@ COMMON_ARG_SPECS = {
             "help": "Range for y-axis (min max)",
         },
     },
+    "rangez": {
+        "flags": ["--rangez"],
+        "kwargs": {
+            "nargs": 2,
+            "type": float,
+            "default": None,
+            "help": "Range for z-axis/colorbar (min max)",
+        },
+    },
     "density": {
         "flags": ["--density"],
         "kwargs": {
@@ -374,6 +387,42 @@ COMMON_ARG_SPECS = {
             "help": "Color(s) for vertical line(s) (e.g. gray red C0), one per line",
         },
     },
+    "xtick": {
+        "flags": ["--xtick"],
+        "kwargs": {
+            "type": float,
+            "nargs": "+",
+            "default": None,
+            "help": "X-axis position(s) at which to place a custom tick label",
+        },
+    },
+    "xtick_label": {
+        "flags": ["--xtick_label"],
+        "kwargs": {
+            "type": str,
+            "nargs": "+",
+            "default": None,
+            "help": "Label(s) for custom x-axis tick(s), one per --xtick value",
+        },
+    },
+    "ytick": {
+        "flags": ["--ytick"],
+        "kwargs": {
+            "type": float,
+            "nargs": "+",
+            "default": None,
+            "help": "Y-axis position(s) at which to place a custom tick label",
+        },
+    },
+    "ytick_label": {
+        "flags": ["--ytick_label"],
+        "kwargs": {
+            "type": str,
+            "nargs": "+",
+            "default": None,
+            "help": "Label(s) for custom y-axis tick(s), one per --ytick value",
+        },
+    },
     "point": {
         "flags": ["--point"],
         "kwargs": {
@@ -414,9 +463,9 @@ COMMON_ARG_SPECS = {
     "title": {
         "flags": ["--title"],
         "kwargs": {
-            "type": str,
+            "type": parse_plot_label,
             "default": None,
-            "help": "Title for the plot",
+            "help": "Title for the plot. Pass None to suppress the title entirely.",
         },
     },
     "output": {
@@ -585,21 +634,39 @@ def map_iterable_color(iterable_value, mapping_name):
     return None
 
 
+def _format_unit(unit):
+    """Wrap unit in math-mode delimiters if it contains LaTeX commands."""
+    if not unit:
+        return unit
+    if unit.startswith("$") and unit.endswith("$"):
+        return unit
+    if re.search(r"\\[a-zA-Z]+|[\^_]\{", unit):
+        return f"${unit}$"
+    return unit
+
+
 def resolve_axis_label(explicit_label, col_name, df=None):
-    """Return axis label, appending unit from a *Unit column if no explicit label given."""
-    if explicit_label is not None:
-        return explicit_label
-    if col_name is None:
+    """Return axis label with unit from a *Unit column appended when available.
+
+    The unit is always appended to the base label (explicit or derived from col_name)
+    unless the unit string already appears in parentheses in the label.
+    Units containing LaTeX commands (e.g. \\sigma) are automatically wrapped in math mode.
+    Pass --labelx None (or --labely None) to suppress the axis label entirely.
+    """
+    if explicit_label == "":
         return ""
-    if df is not None:
+    base = explicit_label if explicit_label is not None else (col_name or "")
+    if df is not None and col_name is not None:
         unit_col = f"{col_name}Unit"
         if unit_col in df.columns:
             units = df[unit_col].dropna()
             if not units.empty:
                 unit = str(units.iloc[0]).strip()
                 if unit:
-                    return f"{col_name} ({unit})"
-    return col_name
+                    formatted = _format_unit(unit)
+                    if f"({formatted})" not in base and f"({unit})" not in base:
+                        return f"{base} ({formatted})"
+    return base
 
 
 def resolve_plot_kwargs(selected_plot_type):

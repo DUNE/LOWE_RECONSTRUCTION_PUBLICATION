@@ -77,6 +77,14 @@ parser.add_argument(
 
 
 parser.add_argument(
+    "--variable_units",
+    nargs="+",
+    type=str,
+    default=None,
+    help="Units for each entry in --variables, appended to the matching column title as ' (unit)'",
+)
+
+parser.add_argument(
     "--emph",
     type=int,
     default=None,
@@ -226,6 +234,21 @@ def main():
         # pass
     if len(args.configs) > 2 and len(args.names) == 1:
         df_table = df_table.reindex(config_order, level="Configuration")
+
+    # Append units to the column titles, matching --variable_units to --variables by position
+    if args.variable_units is not None and args.variables is not None:
+        unit_map = dict(zip(args.variables, args.variable_units))
+        df_table.columns = pd.MultiIndex.from_tuples(
+            [
+                (
+                    col[0],
+                    f"{col[1]} ({unit_map[col[1]]})"
+                    if unit_map.get(col[1])
+                    else col[1],
+                )
+                for col in df_table.columns
+            ]
+        )
 
     # Drop rows with all NaN values
     df_table = df_table.dropna(how="all")

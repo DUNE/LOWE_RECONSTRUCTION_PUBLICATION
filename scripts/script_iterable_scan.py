@@ -17,6 +17,9 @@ from lib.exports import make_name_from_args, save_figure_to_paths
 from lib.format import make_title_from_args, make_subtitle_from_args
 from lib.imports import import_data, prepare_import
 from lib.functions import resolution
+import matplotlib.lines as mlines
+import math
+
 from lib.plot import (
     apply_legend_style,
     plot_data,
@@ -140,6 +143,13 @@ parser.add_argument(
 )
 
 parser.add_argument(
+    "--extrapolate",
+    action="store_true",
+    help="Show extrapolated data (marked by an '{y}Extrapolated' column) as a dashed continuation of the line",
+    default=False,
+)
+
+parser.add_argument(
     "--iterable_mapping",
     type=str,
     default=None,
@@ -165,6 +175,45 @@ _MISSING_ITERABLE_MAPPING_WARNING_SHOWN = False
 
 _COMPARABLE_LINESTYLES = ["-", "--", ":", "-."]
 
+_EXTRAPOLATED_LINESTYLE = "--"
+
+
+def _build_extrapolated_segments(x, y, extrapolated_mask):
+    """Return (x_norm, y_norm, x_ext, y_ext) where x_ext/y_ext is ready to plot
+    as a single call with NaN breaks between disconnected extrapolated groups.
+    Each group is padded with the adjacent non-extrapolated point on both sides
+    so the dashed segment visually touches the solid segment.
+    """
+    x_norm = x[~extrapolated_mask]
+    y_norm = y[~extrapolated_mask]
+
+    ext_indices = np.where(extrapolated_mask)[0]
+    breaks = np.where(np.diff(ext_indices) > 1)[0] + 1
+    groups = np.split(ext_indices, breaks)
+
+    parts_x, parts_y = [], []
+    for grp in groups:
+        xi = list(x[grp])
+        yi = list(y[grp])
+        # prepend last adjacent normal point
+        i0 = grp[0]
+        if i0 > 0 and not extrapolated_mask[i0 - 1]:
+            xi = [x[i0 - 1]] + xi
+            yi = [y[i0 - 1]] + yi
+        # append first adjacent normal point
+        i1 = grp[-1]
+        if i1 + 1 < len(x) and not extrapolated_mask[i1 + 1]:
+            xi = xi + [x[i1 + 1]]
+            yi = yi + [y[i1 + 1]]
+        parts_x.append(np.array(xi))
+        parts_y.append(np.array(yi))
+
+    nan_sep = np.array([np.nan])
+    x_ext = np.concatenate([v for p in parts_x for v in (p, nan_sep)][:-1]) if parts_x else np.array([])
+    y_ext = np.concatenate([v for p in parts_y for v in (p, nan_sep)][:-1]) if parts_y else np.array([])
+
+    return x_norm, y_norm, x_ext, y_ext
+
 
 def _resolve_comparable_linestyle(index, args):
     user_styles = getattr(args, "comparable_linestyles", None)
@@ -189,11 +238,16 @@ def main():
 
     # Select the entries in the dataframe with with name matching args.names and nake a plot for each iterable
     if args.variables is None:
-        ncols = 1
+        n_vars, nrows, ncols = 1, 1, 1
     else:
-        ncols = len(args.variables)
+        n_vars = len(args.variables)
+        if n_vars <= 3:
+            nrows, ncols = 1, n_vars
+        else:
+            ncols = math.ceil(math.sqrt(n_vars))
+            nrows = math.ceil(n_vars / ncols)
 
-    rprint(f"Number of unique variables for plotting: {ncols}")
+    rprint(f"Number of unique variables for plotting: {n_vars} ({nrows}x{ncols} grid)")
 
     configs, names = prepare_import(args)
     configs = configs if configs is not None else [None]
@@ -203,9 +257,10 @@ def main():
         rprint(f"Plotting for Config: {config}, Name: {name}")
 
         fig, ax = create_common_subplots(
-            nrows=1,
+            nrows=nrows,
             ncols=ncols,
         )
+        ax_flat = np.asarray(ax).flatten()
 
         if config is not None and name is None:
             df_config = df[(df["Config"] == config)]
@@ -225,6 +280,7 @@ def main():
         bottom = None
         variables = args.variables if args.variables is not None else [None]
         last_x = np.array([])
+        axes_with_extrapolated = {}  # ax -> [(iterable_label, color), ...]
         # Drop None values from df in iterable column
         iterable_column = str(args.iterable)
         df_config = df_config[df_config[iterable_column].notna()]
@@ -241,10 +297,7 @@ def main():
                     )
                     continue
 
-            if ncols == 1:
-                ax_current = ax
-            else:
-                ax_current = ax[idx]
+            ax_current = ax_flat[idx]
 
             if variable is not None and iterable is None:
                 if args.debug:
@@ -307,9 +360,12 @@ def main():
                         )
                         continue
 
+                    extrap_col_name = f"{args.y}Extrapolated"
+                    extrap_raw_c = subset[extrap_col_name].to_numpy() if extrap_col_name in subset.columns else None
                     y = subset[args.y].astype(float).to_numpy()
                     x_edges = None
                     x = np.array([])
+                    extrapolated_mask = np.zeros(0, dtype=bool)
                     try:
                         x = subset[args.x].astype(float).to_numpy()
                         x_bin = x[1] - x[0] if len(x) > 1 else 1
@@ -325,10 +381,20 @@ def main():
                         x_edges = x_edges[np.append(mask, True) | np.append(True, mask)]
                         if x_error is not None:
                             x_error = x_error[mask]
+                        extrapolated_mask = pd.array(extrap_raw_c[mask], dtype="boolean").fillna(False).astype(bool).__array__() if extrap_raw_c is not None else np.zeros(len(x), dtype=bool)
 
                     except ValueError:
                         x = subset[args.x].astype(str)
                         x_error = None
+                        extrapolated_mask = np.zeros(len(x), dtype=bool)
+
+                    if extrapolated_mask.any() and not args.extrapolate:
+                        keep = ~extrapolated_mask
+                        x = x[keep]
+                        y = y[keep]
+                        if isinstance(x_error, np.ndarray):
+                            x_error = x_error[keep]
+                        extrapolated_mask = np.zeros(len(x), dtype=bool)
 
                     last_x = x
 
@@ -357,20 +423,26 @@ def main():
                             f"\tPlotting {len(x)} points with explicit plot_type={args.plot_type} for {args.iterable}={iterable} ({comparable_col}={comparable_label}), Variable={variable}"
                         )
 
-                        plot_label = iterable_label if idx == ncols - 1 else None
+                        plot_label = iterable_label if idx == n_vars - 1 else None
 
                         if args.plot_type == "line":
-                            plot_data(
-                                args,
-                                ax_current,
-                                x,
-                                y=y,
-                                errory=x_error,
-                                label=plot_label,
-                                color=iterable_color,
-                                plot_type="line",
-                                linestyle=comparable_linestyle,
-                            )
+                            if extrapolated_mask.any():
+                                x_norm, y_norm, x_ext, y_ext = _build_extrapolated_segments(x, y, extrapolated_mask)
+                                plot_data(args, ax_current, x_norm, y=y_norm, label=plot_label, color=iterable_color, plot_type="line", linestyle=comparable_linestyle)
+                                plot_data(args, ax_current, x_ext, y=y_ext, label=None, color=iterable_color, plot_type="line", linestyle=_EXTRAPOLATED_LINESTYLE)
+                                axes_with_extrapolated.setdefault(ax_current, []).append((iterable_label, iterable_color))
+                            else:
+                                plot_data(
+                                    args,
+                                    ax_current,
+                                    x,
+                                    y=y,
+                                    errory=x_error,
+                                    label=plot_label,
+                                    color=iterable_color,
+                                    plot_type="line",
+                                    linestyle=comparable_linestyle,
+                                )
                         else:
                             plot_data(
                                 args,
@@ -396,7 +468,7 @@ def main():
                                 x,
                                 y=y,
                                 errory=x_error,
-                                label=iterable_label if idx == ncols - 1 else None,
+                                label=iterable_label if idx == n_vars - 1 else None,
                                 color=iterable_color,
                                 plot_type="bar",
                                 bottom=bottom,
@@ -409,7 +481,7 @@ def main():
                                 x,
                                 y=y,
                                 errory=x_error,
-                                label=iterable_label if idx == ncols - 1 else None,
+                                label=iterable_label if idx == n_vars - 1 else None,
                                 color=iterable_color,
                                 plot_type="errorbar",
                                 fmt="o",
@@ -425,7 +497,7 @@ def main():
                                 ax_current,
                                 x,
                                 y=y,
-                                label=iterable_label if idx == ncols - 1 else None,
+                                label=iterable_label if idx == n_vars - 1 else None,
                                 color=iterable_color,
                                 plot_type="bar",
                                 bottom=bottom,
@@ -437,7 +509,7 @@ def main():
                                 ax_current,
                                 x,
                                 y=y,
-                                label=iterable_label if idx == ncols - 1 else None,
+                                label=iterable_label if idx == n_vars - 1 else None,
                                 color=iterable_color,
                                 plot_type="line",
                                 linestyle=comparable_linestyle,
@@ -460,9 +532,12 @@ def main():
                 )
                 continue
 
+            extrap_col_name = f"{args.y}Extrapolated"
+            extrap_raw = subset[extrap_col_name].to_numpy() if extrap_col_name in subset.columns else None
             y = subset[args.y].astype(float).to_numpy()
             x_edges = None
             x = np.array([])
+            extrapolated_mask = np.zeros(0, dtype=bool)
             try:
                 x = subset[args.x].astype(float).to_numpy()
                 x_bin = x[1] - x[0] if len(x) > 1 else 1
@@ -481,10 +556,20 @@ def main():
                 ]  # Keep edges corresponding to valid x values
                 if x_error is not None:
                     x_error = x_error[mask]
+                extrapolated_mask = pd.array(extrap_raw[mask], dtype="boolean").fillna(False).astype(bool).__array__() if extrap_raw is not None else np.zeros(len(x), dtype=bool)
 
             except ValueError:
                 x = subset[args.x].astype(str)
                 x_error = None
+                extrapolated_mask = np.zeros(len(x), dtype=bool)
+
+            if extrapolated_mask.any() and not args.extrapolate:
+                keep = ~extrapolated_mask
+                x = x[keep]
+                y = y[keep]
+                if isinstance(x_error, np.ndarray):
+                    x_error = x_error[keep]
+                extrapolated_mask = np.zeros(len(x), dtype=bool)
 
             last_x = x
 
@@ -508,7 +593,7 @@ def main():
                     f"\tPlotting {len(x)} points with explicit plot_type={args.plot_type} for {args.iterable}={iterable} (legend={iterable_label}), Variable={variable}"
                 )
 
-                plot_label = iterable_label if idx == ncols - 1 else None
+                plot_label = iterable_label if idx == n_vars - 1 else None
 
                 if args.plot_type == "bar":
                     plot_data(
@@ -552,16 +637,22 @@ def main():
                     )
 
                 elif args.plot_type == "line":
-                    plot_data(
-                        args,
-                        ax_current,
-                        x,
-                        y=y,
-                        label=plot_label,
-                        color=iterable_color,
-                        plot_type="line",
-                        linestyle=args.plot_style,
-                    )
+                    if extrapolated_mask.any():
+                        x_norm, y_norm, x_ext, y_ext = _build_extrapolated_segments(x, y, extrapolated_mask)
+                        plot_data(args, ax_current, x_norm, y=y_norm, label=plot_label, color=iterable_color, plot_type="line", linestyle=args.plot_style)
+                        plot_data(args, ax_current, x_ext, y=y_ext, label=None, color=iterable_color, plot_type="line", linestyle=_EXTRAPOLATED_LINESTYLE)
+                        axes_with_extrapolated.setdefault(ax_current, []).append((iterable_label, iterable_color))
+                    else:
+                        plot_data(
+                            args,
+                            ax_current,
+                            x,
+                            y=y,
+                            label=plot_label,
+                            color=iterable_color,
+                            plot_type="line",
+                            linestyle=args.plot_style,
+                        )
 
                 elif args.plot_type == "scatter":
                     plot_data(
@@ -601,7 +692,7 @@ def main():
                         x,
                         y=y,
                         errory=x_error,
-                        label=iterable_label if idx == ncols - 1 else None,
+                        label=iterable_label if idx == n_vars - 1 else None,
                         color=iterable_color,
                         plot_type="bar",
                         bottom=bottom,
@@ -627,7 +718,7 @@ def main():
                             x,
                             y=y,
                             errory=x_error,
-                            label=iterable_label if idx == ncols - 1 else None,
+                            label=iterable_label if idx == n_vars - 1 else None,
                             color=iterable_color,
                             plot_type="errorbar",
                             fmt="o",
@@ -643,7 +734,7 @@ def main():
                         ax_current,
                         x,
                         y=y,
-                        label=iterable_label if idx == ncols - 1 else None,
+                        label=iterable_label if idx == n_vars - 1 else None,
                         color=iterable_color,
                         plot_type="bar",
                         bottom=bottom,
@@ -657,7 +748,7 @@ def main():
                             x,
                             x_edges=x_edges,
                             y=y,
-                            label=iterable_label if idx == ncols - 1 else None,
+                            label=iterable_label if idx == n_vars - 1 else None,
                             color=iterable_color,
                             plot_type="step",
                             linestyle=args.plot_style,
@@ -668,34 +759,36 @@ def main():
                             ax_current,
                             x,
                             y=y,
-                            label=iterable_label if idx == ncols - 1 else None,
+                            label=iterable_label if idx == n_vars - 1 else None,
                             color=iterable_color,
                             plot_type="plot",
                             marker="o",
                             linestyle="None",
                         )
 
+        _has_rotated_xlabels = False
         for idx, variable in enumerate(variables):
-            if ncols == 1:
-                ax_current = ax
-            else:
-                ax_current = ax[idx]
+            ax_current = ax_flat[idx]
 
-            if ncols > 1:
-                plot_subtitle = make_subtitle_from_args(args, idx)
+            if n_vars > 1:
                 ax_current.set_title(
-                    plot_subtitle,
+                    variable if variable is not None else "",
                     fontsize=subtitlefontsize,
                 )
 
             ax_current.set_xlabel(resolve_axis_label(args.labelx, args.x, df))
-            # If x are of string type, rotate x-axis labels for better readability
-            if isinstance(last_x, np.ndarray) and last_x.dtype.kind in ('U', 'S', 'O'):
-                plt.setp(ax_current.get_xticklabels(), rotation=45, ha="right")
+            # Rotate x-axis labels for string/categorical axes to prevent overlap
+            _x_is_categorical = (
+                (isinstance(last_x, np.ndarray) and last_x.dtype.kind in ('U', 'S', 'O'))
+                or (isinstance(last_x, pd.Series) and not pd.api.types.is_numeric_dtype(last_x))
+            )
+            if _x_is_categorical:
+                ax_current.tick_params(axis='x', labelrotation=45)
+                _has_rotated_xlabels = True
 
             (
                 ax_current.set_ylabel(resolve_axis_label(args.labely, args.y, df))
-                if idx == 0
+                if idx % ncols == 0
                 else None
             )
 
@@ -714,23 +807,39 @@ def main():
             if args.logx:
                 ax_current.semilogx()
 
-            if args.stacked:
-                if idx == ncols - 1:
-                    apply_legend_style(
-                        ax_current,
-                        title=args.labelz if args.labelz is not None else args.iterable,
-                        loc="upper left",
-                        bbox_to_anchor=(0, 1),
-                        capitalize_labels=not getattr(args, "no_capitalize_legend", False),
-                    )
-
-            else:
-                if idx == ncols - 1:
-                    apply_legend_style(
-                        ax_current,
-                        title=args.labelz if args.labelz is not None else args.iterable,
-                        capitalize_labels=not getattr(args, "no_capitalize_legend", False),
-                    )
+            if iterable_values.size > 1:
+                if args.stacked:
+                    if idx == n_vars - 1:
+                        apply_legend_style(
+                            ax_current,
+                            title=args.labelz if args.labelz is not None else args.iterable,
+                            loc="upper left",
+                            bbox_to_anchor=(0, 1),
+                            capitalize_labels=not getattr(args, "no_capitalize_legend", False),
+                        )
+                else:
+                    if idx == n_vars - 1:
+                        source_legend = apply_legend_style(
+                            ax_current,
+                            title=args.labelz if args.labelz is not None else args.iterable,
+                            capitalize_labels=not getattr(args, "no_capitalize_legend", False),
+                        )
+                        if ax_current in axes_with_extrapolated:
+                            existing = ax_current.get_legend()
+                            if existing is not None:
+                                handles = list(existing.legend_handles)
+                                labels = [t.get_text() for t in existing.get_texts()]
+                                for lbl, color in axes_with_extrapolated[ax_current]:
+                                    proxy = mlines.Line2D([], [], color=color, linestyle=_EXTRAPOLATED_LINESTYLE, linewidth=1)
+                                    handles.append(proxy)
+                                    labels.append(f"{lbl} Extrapolated")
+                                apply_legend_style(
+                                    ax_current,
+                                    title=args.labelz if args.labelz is not None else args.iterable,
+                                    handles=handles,
+                                    labels=labels,
+                                    capitalize_labels=not getattr(args, "no_capitalize_legend", False),
+                                )
 
             draw_horizontal_lines(
                 ax_current,
@@ -762,8 +871,51 @@ def main():
                     if point_labels is not None:
                         place_point_label(ax_current, point_x, point_y, point_labels[point_idx], fontsize=linelabelfontsize)
 
+        # Hide any unused panels in a grid that isn't fully filled.
+        for _i in range(n_vars, nrows * ncols):
+            ax_flat[_i].set_visible(False)
+
+        # Materialise tick-label Text objects so ha can be set before layout.
+        if _has_rotated_xlabels:
+            fig.canvas.draw()
+            for _ax in fig.get_axes():
+                plt.setp(_ax.get_xticklabels(), ha='right')
+
         plot_title = make_title_from_args(args)
-        fig.suptitle(plot_title, fontsize=titlefontsize)
+        if plot_title:
+            fig.suptitle(plot_title, fontsize=titlefontsize)
+
+        if nrows > 1:
+            # For multi-row grids let tight_layout compute hspace (inter-row
+            # spacing) and the top margin so that panel titles, x-axis labels
+            # and the suptitle never overlap. When a suptitle is present reserve
+            # 5 % of figure height for it; otherwise use the full height.
+            _tl_rect = [0, 0, 1, 0.95] if plot_title else [0, 0, 1, 1.0]
+            try:
+                fig.tight_layout(rect=_tl_rect)
+            except Exception:
+                pass
+        elif _has_rotated_xlabels:
+            # For single-row plots with rotated x labels, grow the figure
+            # downward to accommodate labels without compressing the axes area.
+            _sp = fig.subplotpars
+            _left, _right, _bottom, _top = _sp.left, _sp.right, _sp.bottom, _sp.top
+            old_h = fig.get_figheight()
+            tl_bottom = _bottom
+            try:
+                fig.tight_layout()
+                tl_bottom = fig.subplotpars.bottom
+            except Exception:
+                pass
+            fig.subplots_adjust(left=_left, right=_right, bottom=_bottom, top=_top)
+            extra_in = max(0.0, (tl_bottom - _bottom) * old_h) + 0.1
+            if extra_in > 0.1:
+                new_h = old_h + extra_in
+                fig.set_figheight(new_h)
+                top_margin_in = (1.0 - _top) * old_h
+                axes_h_in    = (_top - _bottom) * old_h
+                new_top = 1.0 - top_margin_in / new_h
+                fig.subplots_adjust(bottom=new_top - axes_h_in / new_h, top=new_top)
         # dunestyle.WIP()
 
         apply_note_to_figure(fig, getattr(args, "note", None))

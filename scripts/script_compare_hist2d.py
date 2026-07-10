@@ -45,6 +45,7 @@ add_common_args(
         "labelz",
         "rangex",
         "rangey",
+        "rangez",
         "logz",
         "density",
         "zoom",
@@ -206,6 +207,8 @@ def main():
                     plot_type="image",
                     z=z,
                 )
+                if args.rangez is not None:
+                    mappable.set_clim(*args.rangez)
                 cbar = fig.colorbar(mappable, ax=ax_current)
                 z_label = resolve_axis_label(args.labelz, args.z, df)
                 cbar.set_label(z_label if not args.logz else f"{z_label} (log scale)")
@@ -225,6 +228,8 @@ def main():
                         )
                     )
                     hist2d[3].set_clim(0, hist2d[3].get_array().max())
+                if args.rangez is not None:
+                    hist2d[3].set_clim(*args.rangez)
                 cbar = fig.colorbar(hist2d[3], ax=ax_current)
 
             if args.diagonal:
@@ -267,7 +272,7 @@ def main():
                 )
 
             _xlabel = resolve_axis_label(args.labelx, args.x, df)
-            if args.x == "Time" and args.labelx is None and f"{args.x}Unit" not in df.columns:
+            if _xlabel == "Time":
                 _xlabel = r"Time ($\mu$s)"
             ax_current.set_xlabel(_xlabel)
             ax_current.set_ylabel(resolve_axis_label(args.labely, args.y, df)) if idx == 0 else None
