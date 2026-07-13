@@ -230,6 +230,7 @@ output/tables/*.csv
 output/tables/*.tsv
 output/tables/*.xlsx
 output/tables/*.tex
+output/tables/*.html
 
 # Generated test reports
 styles/*/examples/images/*.png

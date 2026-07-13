@@ -1,11 +1,13 @@
 {
   "plots": {
     "reco": ["/home/smanthey/Code/LOWE_RECONSTRUCTION_TECHNOTE/Images/Reco/", "/home/smanthey/Code/THESIS/figures/reco/"],
-    "lowe": ["/home/smanthey/Code/LOWE_RECONSTRUCTION_TECHNOTE/Images/LowE/", "/home/smanthey/Code/THESIS/figures/lowe/"],
+    "lowe": ["/home/smanthey/Code/LOWE_RECONSTRUCTION_TECHNOTE/Images/LowE/", "/home/smanthey/Code/THESIS/figures/lowe/", "/home/smanthey/Documents/lowe_reco_paper/Figures/"],
     "thesis": ["/home/smanthey/Code/THESIS/figures/exclusive/"],
-    "solar": ["/home/smanthey/Code/THESIS/figures/solar/"]
+    "solar": ["/home/smanthey/Code/THESIS/figures/solar/"],
+    "pde": ["/home/smanthey/Documents/pde_xa_vd_paper/images/"]
   },
   "tables": {
-    "reco": ["/home/smanthey/Code/LOWE_RECONSTRUCTION_TECHNOTE/Tables/", "/home/smanthey/Code/THESIS/tables/"]
+    "reco": ["/home/smanthey/Code/LOWE_RECONSTRUCTION_TECHNOTE/Tables/", "/home/smanthey/Code/THESIS/tables/"],
+    "thesis": ["/home/smanthey/Code/THESIS/tables/"]
   }
 }

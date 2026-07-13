@@ -147,7 +147,8 @@
     "interaction_names": {
       "xs_nue_Ar40": "CC: $\\nu_e$ Ar40",
       "xs_nue_e": "ES: $\\nu_e$ e",
-      "xs_nc_nue_Ar40": "NC: $\\nu_e$ Ar40"
+      "xs_nc_nue_Ar40": "NC: $\\nu_e$ Ar40",
+      "xs_nuebar_Ar40": "CC: $\\bar{\\nu}_e$ Ar40"
     }
   }
 }

@@ -55,7 +55,7 @@
 
 set -euo pipefail
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 DATA_DIR="$SCRIPT_DIR/input/data"
 MANIFEST_PATH="config/analysis/pkl_paths.json"
 
@@ -135,6 +135,7 @@ matches_filter() {
 
 # --- Setup --------------------------------------------------------------------
 TMPDIR_BASE="$(mktemp -d -p "$SCRIPT_DIR")"
+_MAIN_PID=$BASHPID
 
 # Open persistent SSH control sockets so all rsync calls share one connection
 # per host — avoids a password prompt for every source directory.
@@ -150,9 +151,10 @@ _close_ssh() {
     for host in "$REMOTE_HOST" "$PNFS_HOST"; do
         ssh -O exit -o "ControlPath=$SSH_CTL_DIR/%C" "$host" 2>/dev/null || true
     done
-    rm -rf "$TMPDIR_BASE"
+    [[ "${BASHPID}" == "${_MAIN_PID}" ]] && rm -rf "$TMPDIR_BASE"
 }
 trap '_close_ssh' EXIT
+trap 'echo "ERROR at line $LINENO: $BASH_COMMAND" >&2' ERR
 
 # --- Print active configuration -----------------------------------------------
 echo "==> Syncing SOLAR OUTPUT_ONLY plot data"
@@ -259,6 +261,20 @@ if [[ ${#SOURCE_ENTRIES[@]} -eq 0 ]]; then
     exit 1
 fi
 
+# Deduplicate: drop any source whose path is a subdirectory of another source.
+DEDUPED_ENTRIES=()
+for entry in "${SOURCE_ENTRIES[@]}"; do
+    dir="${entry#* }"
+    covered=false
+    for other in "${SOURCE_ENTRIES[@]}"; do
+        other_dir="${other#* }"
+        [[ "$other_dir" == "$dir" ]] && continue
+        [[ "$dir" == "$other_dir"/* ]] && { covered=true; break; }
+    done
+    $covered || DEDUPED_ENTRIES+=("$entry")
+done
+SOURCE_ENTRIES=("${DEDUPED_ENTRIES[@]}")
+
 echo "--> Resolved OUTPUT_ONLY source directories:"
 for entry in "${SOURCE_ENTRIES[@]}"; do
     kind="${entry%% *}"
@@ -346,45 +362,20 @@ read -r -p "Proceed with download? [y/N] " _confirm
 # --- Download each source directory -------------------------------------------
 echo "--> Downloading ${PREVIEW_COUNT} file(s) (${TOTAL_FMT})..."
 
-# Background progress bar: polls TMPDIR_BASE for .pkl files while rsync runs.
-_progress_bar() {
-    local total=$1 tmpdir=$2 bar_width=40
-    local count pct filled bar elapsed
-    local start; start=$(date +%s)
-    while true; do
-        count=$(find "$tmpdir" -name '*.pkl' 2>/dev/null | wc -l)
-        (( count > total )) && count=$total   # cap: extra files don't pass filter
-        elapsed=$(( $(date +%s) - start ))
-        pct=$(( total > 0 ? count * 100 / total : 0 ))
-        filled=$(( total > 0 ? count * bar_width / total : 0 ))
-        bar=$(printf '%*s' "$filled" '' | tr ' ' '=')
-        [[ $filled -lt $bar_width ]] && bar+=">"
-        printf '\r    [%-*s] %3d%%  %d/%d files  %ds elapsed' \
-            "$bar_width" "$bar" "$pct" "$count" "$total" "$elapsed"
-        (( count >= total )) && break
-        sleep 1
-    done
-}
-_progress_bar "$PREVIEW_COUNT" "$TMPDIR_BASE" &
-_PROG_PID=$!
-
-for entry in "${ACTIVE_SOURCES[@]}"; do   # only sources with matching files
+for entry in "${ACTIVE_SOURCES[@]}"; do
     kind="${entry%% *}"
     dir="${entry#* }"
     remote_src="${REMOTE_HOST}:${dir}/"
-
     local_tmp="$TMPDIR_BASE/$(echo "$dir" | tr '/' '_')"
     mkdir -p "$local_tmp"
-
+    echo "    rsync $remote_src"
     rsync -az "${RSYNC_E[@]}" \
         --exclude='*_calib/' \
         --include='*.pkl' --include='*/' --exclude='*' \
-        "$remote_src" "$local_tmp/" 2>/dev/null || true
+        "$remote_src" "$local_tmp/" || true
 done
 
-kill "$_PROG_PID" 2>/dev/null; wait "$_PROG_PID" 2>/dev/null || true
-TOTAL_FETCHED=$(find "$TMPDIR_BASE" -name '*.pkl' 2>/dev/null | wc -l)
-printf '\r%-80s\n' ""
+TOTAL_FETCHED=$(find "$TMPDIR_BASE" -name '*.pkl' | wc -l)
 echo "    Downloaded ${TOTAL_FETCHED} file(s)"
 echo ""
 
