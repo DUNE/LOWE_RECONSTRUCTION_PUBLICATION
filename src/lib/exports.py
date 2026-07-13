@@ -102,7 +102,9 @@ def make_name_from_args(
         name_parts.append("logy")
     if hasattr(args, "logz") and args.logz:
         name_parts.append("logz")
-
+    if hasattr(args, "no_lower_plot") and args.no_lower_plot:
+        name_parts.append("no_lower")
+    
     if suffix is not None:
         name_parts.append(suffix)
 
@@ -161,13 +163,13 @@ def export_table(df, table_name, output_dir="tables"):
     print(f"Table saved to {table_path}")
 
 
-def save_figure_to_paths(fig, output_arg, output_file, default_output_dir, rprint_func=None):
+def save_figure_to_paths(fig, output_arg, output_file, default_output_dir, rprint_func=None, subfolder=None):
     """
     Save a figure to one or multiple output paths.
-    
+
     Handles both single path (str) and multiple paths (list) via args.output.
     If output_arg is None, saves to default_output_dir.
-    
+
     Parameters:
     fig : matplotlib.figure.Figure
         The figure to save
@@ -179,12 +181,14 @@ def save_figure_to_paths(fig, output_arg, output_file, default_output_dir, rprin
         Default directory to use if output_arg is None
     rprint_func : callable, optional
         Rich print function for logging (if None, uses print)
+    subfolder : str, optional
+        Subfolder appended to each output path (default or explicit) before saving
     """
     import os
-    
+
     if rprint_func is None:
         rprint_func = print
-    
+
     # Convert output_arg to a list of paths
     output_paths = []
     if output_arg is not None:
@@ -192,18 +196,21 @@ def save_figure_to_paths(fig, output_arg, output_file, default_output_dir, rprin
             output_paths = output_arg
         else:
             output_paths = [output_arg]
-    
+
     # Save to each output path
     if output_paths:
         for output_path in output_paths:
             output_dir = os.path.dirname(output_path) if os.path.splitext(output_path)[1] else output_path
+            if subfolder:
+                output_dir = os.path.join(output_dir, subfolder)
             os.makedirs(output_dir, exist_ok=True)
             full_path = os.path.join(output_dir, output_file)
             fig.savefig(full_path)
             rprint_func(f"[green]Success:[/green] Plot saved to:\n{full_path}")
     else:
         # Use default output directory
-        os.makedirs(default_output_dir, exist_ok=True)
-        full_path = os.path.join(default_output_dir, output_file)
+        output_dir = os.path.join(default_output_dir, subfolder) if subfolder else default_output_dir
+        os.makedirs(output_dir, exist_ok=True)
+        full_path = os.path.join(output_dir, output_file)
         fig.savefig(full_path)
-        rprint_func(f"[green]Success:[/green] Plot saved to:\n{os.path.join(default_output_dir.split('..')[1], output_file)[1:]}")
+        rprint_func(f"[green]Success:[/green] Plot saved to:\n{os.path.join(output_dir.split('..')[1], output_file)[1:]}")

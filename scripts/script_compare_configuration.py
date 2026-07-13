@@ -14,9 +14,9 @@ from lib.exports import make_name_from_args, save_figure_to_paths
 from lib.format import make_subtitle_from_args, make_title_from_args, make_config_label_from_args, make_config_color_and_style_from_args
 from lib.functions import resolution, gaussian
 from lib.imports import import_data, prepare_import
-from lib.plot import apply_scientific_threshold_formatter, apply_legend_style, plot_data, create_common_subplots, apply_note_to_figure, draw_vertical_lines, draw_horizontal_lines, set_axis_tick_labels
+from lib.plot import apply_scientific_threshold_formatter, apply_legend_style, plot_data, create_common_subplots, apply_note_to_figure, add_centered_suptitle, draw_vertical_lines, draw_horizontal_lines, set_axis_tick_labels, draw_squares
 from lib.selection import prepare_selection, filter_dataframe
-from common_args import add_common_args, map_iterable_label, map_iterable_color, resolve_axis_label
+from common_args import add_common_args, map_iterable_label, map_iterable_color, map_label_key, resolve_axis_label
 
 
 from rich import print as rprint
@@ -55,13 +55,20 @@ add_common_args(
         "vertical_color",
         "xtick",
         "xtick_label",
+        "xtick_height",
         "ytick",
         "ytick_label",
+        "ytick_height",
+        "square",
+        "square_label",
+        "square_style",
+        "square_color",
         "point",
         "point_label",
         "note",
         "title",
         "output",
+        "subfolder",
         "debug",
     ],
     overrides={
@@ -877,11 +884,35 @@ def main():
             fontsize=linelabelfontsize,
         )
 
+        square_quads = parse_square_quads(getattr(args, "square", None))
+        square_labels, square_label_warning = normalize_square_labels(
+            getattr(args, "square_label", None), len(square_quads)
+        )
+        if square_label_warning is not None:
+            rprint(f"[yellow]Warning:[/yellow] {square_label_warning}")
+
+        draw_squares(
+            ax_current,
+            square_quads,
+            labels=square_labels,
+            styles=getattr(args, "square_style", None),
+            colors=getattr(args, "square_color", None),
+            fontsize=linelabelfontsize,
+        )
+
         set_axis_tick_labels(
-            ax_current, "x", getattr(args, "xtick", None), getattr(args, "xtick_label", None)
+            ax_current,
+            "x",
+            getattr(args, "xtick", None),
+            getattr(args, "xtick_label", None),
+            height=getattr(args, "xtick_height", None) or 0.09,
         )
         set_axis_tick_labels(
-            ax_current, "y", getattr(args, "ytick", None), getattr(args, "ytick_label", None)
+            ax_current,
+            "y",
+            getattr(args, "ytick", None),
+            getattr(args, "ytick_label", None),
+            height=getattr(args, "ytick_height", None) or 0.09,
         )
 
         point_values = parse_point_pairs(getattr(args, "point", None))
@@ -907,12 +938,12 @@ def main():
         if idx == ncols - 1:
             apply_legend_style(
                 ax_current,
-                capitalize_labels=not getattr(args, "no_capitalize_legend", False),
+                capitalize_labels=getattr(args, "capitalize_legend", False),
             )
 
     # Set the figure title
     figure_title = make_title_from_args(args)
-    fig.suptitle(figure_title, fontsize=titlefontsize)
+    add_centered_suptitle(fig, figure_title, fontsize=titlefontsize)
 
     # dunestyle.WIP()
 
@@ -938,7 +969,7 @@ def main():
         suffix="comparison.png",
     )
     default_output_dir = os.path.join(os.path.dirname(__file__), "..", "output", "plots")
-    save_figure_to_paths(fig, args.output, output_file, default_output_dir, rprint)
+    save_figure_to_paths(fig, args.output, output_file, default_output_dir, rprint, subfolder=args.subfolder)
 
 if __name__ == "__main__":
     main()

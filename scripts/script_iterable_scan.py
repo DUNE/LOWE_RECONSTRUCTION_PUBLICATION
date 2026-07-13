@@ -25,6 +25,7 @@ from lib.plot import (
     plot_data,
     create_common_subplots,
     apply_note_to_figure,
+    add_centered_suptitle,
     draw_vertical_lines,
     draw_horizontal_lines,
     place_point_label,
@@ -61,6 +62,7 @@ add_common_args(
         "plot_type",
         "title",
         "output",
+        "subfolder",
         "horizontal",
         "horizontal_label",
         "horizontal_style",
@@ -93,8 +95,8 @@ add_common_args(
             "help": "Plot line style for connected plots (options: -, --, :, -., solid, dashed, dotted, dashdot, none)",
         },
         "plot_type": {
-            "choices": ["scatter", "line", "bar", "step", "plot", "errorbar"],
-            "help": "Explicit plot type override (scatter, line, bar, step, plot, errorbar)",
+            "choices": ["scatter", "line", "bar", "barh", "step", "plot", "errorbar"],
+            "help": "Explicit plot type override (scatter, line, bar, barh, step, plot, errorbar)",
         },
     },
 )
@@ -606,6 +608,17 @@ def main():
                         plot_type="bar",
                         bottom=bottom if args.stacked else None,
                     )
+
+                elif args.plot_type == "barh":
+                    plot_data(
+                        args,
+                        ax_current,
+                        x,
+                        y=y,
+                        label=plot_label,
+                        color=iterable_color,
+                        plot_type="barh",
+                    )
                     if args.stacked:
                         bottom += y
 
@@ -767,6 +780,7 @@ def main():
                         )
 
         _has_rotated_xlabels = False
+        _has_categorical_ylabels = False
         for idx, variable in enumerate(variables):
             ax_current = ax_flat[idx]
 
@@ -776,18 +790,33 @@ def main():
                     fontsize=subtitlefontsize,
                 )
 
-            ax_current.set_xlabel(resolve_axis_label(args.labelx, args.x, df))
-            # Rotate x-axis labels for string/categorical axes to prevent overlap
+            # -x's values are the string/categorical ones, but which axis they're
+            # actually drawn on depends on plot orientation: barh puts them on y
+            # (category per horizontal bar), everything else puts them on x.
+            _categorical_axis = "y" if args.plot_type == "barh" else "x"
+            if args.plot_type == "barh":
+                ax_current.set_xlabel(resolve_axis_label(args.labely, args.y, df))
+            else:
+                ax_current.set_xlabel(resolve_axis_label(args.labelx, args.x, df))
             _x_is_categorical = (
                 (isinstance(last_x, np.ndarray) and last_x.dtype.kind in ('U', 'S', 'O'))
                 or (isinstance(last_x, pd.Series) and not pd.api.types.is_numeric_dtype(last_x))
             )
             if _x_is_categorical:
-                ax_current.tick_params(axis='x', labelrotation=45)
-                _has_rotated_xlabels = True
+                if _categorical_axis == "x":
+                    ax_current.tick_params(axis='x', labelrotation=45)
+                    _has_rotated_xlabels = True
+                else:
+                    # barh labels are already horizontal and don't need rotation,
+                    # but long feature names still need extra left margin below.
+                    _has_categorical_ylabels = True
 
             (
-                ax_current.set_ylabel(resolve_axis_label(args.labely, args.y, df))
+                ax_current.set_ylabel(
+                    resolve_axis_label(args.labelx, args.x, df)
+                    if args.plot_type == "barh"
+                    else resolve_axis_label(args.labely, args.y, df)
+                )
                 if idx % ncols == 0
                 else None
             )
@@ -815,14 +844,14 @@ def main():
                             title=args.labelz if args.labelz is not None else args.iterable,
                             loc="upper left",
                             bbox_to_anchor=(0, 1),
-                            capitalize_labels=not getattr(args, "no_capitalize_legend", False),
+                            capitalize_labels=getattr(args, "capitalize_legend", False),
                         )
                 else:
                     if idx == n_vars - 1:
                         source_legend = apply_legend_style(
                             ax_current,
                             title=args.labelz if args.labelz is not None else args.iterable,
-                            capitalize_labels=not getattr(args, "no_capitalize_legend", False),
+                            capitalize_labels=getattr(args, "capitalize_legend", False),
                         )
                         if ax_current in axes_with_extrapolated:
                             existing = ax_current.get_legend()
@@ -838,7 +867,7 @@ def main():
                                     title=args.labelz if args.labelz is not None else args.iterable,
                                     handles=handles,
                                     labels=labels,
-                                    capitalize_labels=not getattr(args, "no_capitalize_legend", False),
+                                    capitalize_labels=getattr(args, "capitalize_legend", False),
                                 )
 
             draw_horizontal_lines(
@@ -882,8 +911,6 @@ def main():
                 plt.setp(_ax.get_xticklabels(), ha='right')
 
         plot_title = make_title_from_args(args)
-        if plot_title:
-            fig.suptitle(plot_title, fontsize=titlefontsize)
 
         if nrows > 1:
             # For multi-row grids let tight_layout compute hspace (inter-row
@@ -895,27 +922,45 @@ def main():
                 fig.tight_layout(rect=_tl_rect)
             except Exception:
                 pass
-        elif _has_rotated_xlabels:
-            # For single-row plots with rotated x labels, grow the figure
-            # downward to accommodate labels without compressing the axes area.
+        elif _has_rotated_xlabels or _has_categorical_ylabels:
+            # For single-row plots with rotated x labels or long barh category
+            # labels, grow the figure downward/leftward to accommodate them
+            # without compressing the axes area.
             _sp = fig.subplotpars
             _left, _right, _bottom, _top = _sp.left, _sp.right, _sp.bottom, _sp.top
             old_h = fig.get_figheight()
-            tl_bottom = _bottom
+            old_w = fig.get_figwidth()
+            tl_bottom, tl_left = _bottom, _left
             try:
                 fig.tight_layout()
                 tl_bottom = fig.subplotpars.bottom
+                tl_left = fig.subplotpars.left
             except Exception:
                 pass
             fig.subplots_adjust(left=_left, right=_right, bottom=_bottom, top=_top)
-            extra_in = max(0.0, (tl_bottom - _bottom) * old_h) + 0.1
-            if extra_in > 0.1:
-                new_h = old_h + extra_in
-                fig.set_figheight(new_h)
-                top_margin_in = (1.0 - _top) * old_h
-                axes_h_in    = (_top - _bottom) * old_h
-                new_top = 1.0 - top_margin_in / new_h
-                fig.subplots_adjust(bottom=new_top - axes_h_in / new_h, top=new_top)
+
+            if _has_rotated_xlabels:
+                extra_in = max(0.0, (tl_bottom - _bottom) * old_h) + 0.1
+                if extra_in > 0.1:
+                    new_h = old_h + extra_in
+                    fig.set_figheight(new_h)
+                    top_margin_in = (1.0 - _top) * old_h
+                    axes_h_in    = (_top - _bottom) * old_h
+                    new_top = 1.0 - top_margin_in / new_h
+                    fig.subplots_adjust(bottom=new_top - axes_h_in / new_h, top=new_top)
+
+            if _has_categorical_ylabels:
+                extra_in_w = max(0.0, (tl_left - _left) * old_w) + 0.1
+                if extra_in_w > 0.1:
+                    new_w = old_w + extra_in_w
+                    fig.set_figwidth(new_w)
+                    right_margin_in = (1.0 - _right) * old_w
+                    axes_w_in       = (_right - _left) * old_w
+                    new_right = 1.0 - right_margin_in / new_w
+                    fig.subplots_adjust(left=new_right - axes_w_in / new_w, right=new_right)
+
+        if plot_title:
+            add_centered_suptitle(fig, plot_title, fontsize=titlefontsize)
         # dunestyle.WIP()
 
         apply_note_to_figure(fig, getattr(args, "note", None))
@@ -924,7 +969,7 @@ def main():
         default_output_dir = os.path.join(
             os.path.dirname(__file__), "..", "output", "plots"
         )
-        save_figure_to_paths(fig, args.output, output_file, default_output_dir, rprint)
+        save_figure_to_paths(fig, args.output, output_file, default_output_dir, rprint, subfolder=args.subfolder)
 
 if __name__ == "__main__":
     main()

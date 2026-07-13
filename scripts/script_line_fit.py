@@ -26,7 +26,7 @@ from lib.functions import (
     quadratic_cut,
     quadratic_function,
 )
-from lib.plot import apply_legend_style, plot_data, create_common_subplots, create_common_two_panel_figure, apply_note_to_figure, draw_vertical_lines, draw_horizontal_lines, place_point_label
+from lib.plot import apply_legend_style, plot_data, create_common_subplots, create_common_two_panel_figure, apply_note_to_figure, add_centered_suptitle, draw_vertical_lines, draw_horizontal_lines, place_point_label
 
 from common_args import add_common_args, resolve_axis_label, resolve_plot_kwargs
 
@@ -60,6 +60,7 @@ add_common_args(
         "rangey",
         "title",
         "output",
+        "subfolder",
         "horizontal",
         "horizontal_label",
         "horizontal_style",
@@ -176,6 +177,16 @@ def _resolve_decimal_places(error):
     return sig_figs - 1 - exponent
 
 
+def _too_many_digits(error_digits, max_digits=3):
+    """True if the parenthetical error digits have grown past what 1-2
+    significant figures should ever produce (allowing a little rounding
+    slack, e.g. 9.6 -> "10"). A large digit count means the error's own
+    magnitude is wildly different from the value's, usually an unconstrained
+    or degenerate fit parameter, where the parenthetical notation breaks down.
+    """
+    return len(str(abs(error_digits))) > max_digits
+
+
 def _format_value_with_paren_error(base_format, value, error):
     """Format `value +/- error` in compact parenthetical notation (e.g.
     "1.35(6)e-08" instead of "1.35e-08 +/- 6e-09"), the standard convention
@@ -198,6 +209,11 @@ def _format_value_with_paren_error(base_format, value, error):
             # format() can't take negative precision; pre-round to the
             # resolved place (e.g. nearest thousand) and show 0 decimals
             value_str = format(round(value, decimals), f".0{type_char}")
+        if _too_many_digits(error_digits):
+            # Error dwarfs the value (e.g. an unconstrained/degenerate fit
+            # parameter) -- parenthetical notation isn't meaningful, fall back
+            # to showing value and error independently.
+            return f"{value_str} $\\pm$ {format(error, base_format)}"
         return f"{value_str}({error_digits})"
 
     if type_char in "eEgG":
@@ -209,6 +225,8 @@ def _format_value_with_paren_error(base_format, value, error):
             value, f".{mantissa_decimals}{type_char}"
         ).partition("e")
         error_digits = int(round(abs(error) / 10 ** (value_exponent - mantissa_decimals)))
+        if _too_many_digits(error_digits):
+            return f"{format(value, base_format)} $\\pm$ {format(error, base_format)}"
         return f"{mantissa_part}({error_digits})e{exponent_part}"
 
     return format(value, base_format)
@@ -436,9 +454,23 @@ def main():
                     # Set the limits for the residuals plot based on the central 90% of finite residuals to avoid outliers dominating the scale
                     ax_bottom.set_ylim(-limit, limit)
 
-                chi2 = (
-                    (diff[mask] ** 2 / fit[mask]).sum() if fit[mask].size > 0 else 0
-                )  # Avoid division by zero
+                # Prefer a precomputed Chi2 (raw, un-reduced sum) from the datafile, since
+                # it's already computed upstream with the correct weighting for that
+                # dataset. Otherwise, the Pearson chi2 formula below (variance ~ mean)
+                # is only valid for raw event counts, so only fall back to it for
+                # args.y == "Counts"; any other y without a precomputed Chi2 skips the
+                # legend entirely (handled where args.chi2 is checked below).
+                has_precomputed_chi2 = "Chi2" in subset.columns and pd.notna(
+                    subset["Chi2"].iloc[0]
+                )
+                if has_precomputed_chi2:
+                    chi2 = float(subset["Chi2"].iloc[0])
+                elif args.y == "Counts":
+                    chi2 = (
+                        (diff[mask] ** 2 / fit[mask]).sum() if fit[mask].size > 0 else 0
+                    )  # Avoid division by zero
+                else:
+                    chi2 = None
 
                 displayed_param_count = (
                     len(params)
@@ -500,11 +532,12 @@ def main():
                     )
                     next_row += 1
 
-                if args.chi2 and args.y == "Density":
+                if args.chi2 and chi2 is None:
                     rprint(
                         "[yellow]Warning:[/yellow] Skipping chi2/ndof legend: the Pearson "
                         "chi2 formula assumes raw event counts (variance ~ count), which is "
-                        "not valid for normalized Density data (use --y Counts instead)."
+                        f"not valid for '{args.y}' data — either use --y Counts or add a "
+                        "precomputed Chi2 column to the datafile."
                     )
                 elif args.chi2:
                     # ndof = number of data points entering the chi2 sum minus the number of
@@ -567,7 +600,7 @@ def main():
             title=args.labelz if args.labelz is not None else None,
             handles=legend_handles,
             labels=legend_labels,
-            capitalize_labels=not getattr(args, "no_capitalize_legend", False),
+            capitalize_labels=getattr(args, "capitalize_legend", False),
         )
 
         if ax_bottom is not None:
@@ -649,11 +682,7 @@ def main():
                     place_point_label(ax_top, point_x, point_y, point_labels[point_idx], fontsize=linelabelfontsize)
 
         figure_title = make_title_from_args(args)
-        # Center the suptitle on the axes area (not the full figure canvas), so it
-        # lines up with ax_top's own title despite the asymmetric left/right margins
-        axes_position = ax_top.get_position()
-        title_x = (axes_position.x0 + axes_position.x1) / 2
-        fig.suptitle(figure_title, x=title_x, fontsize=titlefontsize)
+        add_centered_suptitle(fig, figure_title, fontsize=titlefontsize)
 
         # dunestyle.WIP()
 
@@ -663,7 +692,7 @@ def main():
         default_output_dir = os.path.join(
             os.path.dirname(__file__), "..", "output", "plots"
         )
-        save_figure_to_paths(fig, args.output, output_file, default_output_dir, rprint)
+        save_figure_to_paths(fig, args.output, output_file, default_output_dir, rprint, subfolder=args.subfolder)
 
 
 if __name__ == "__main__":

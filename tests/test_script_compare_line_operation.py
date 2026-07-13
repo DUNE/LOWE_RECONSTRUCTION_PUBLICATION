@@ -289,7 +289,7 @@ def test_main_warns_when_comparable_and_stacked(monkeypatch, plot_artifact_dir):
         horizontal=None,
         vertical_label=None,
         horizontal_label=None,
-        no_capitalize_legend=False,
+        capitalize_legend=False,
     )
 
     x = np.array([1.0, 2.0, 3.0, 4.0])
@@ -421,7 +421,7 @@ def test_main_uses_full_width_for_stacked_bars(monkeypatch, plot_artifact_dir):
         horizontal=None,
         vertical_label=None,
         horizontal_label=None,
-        no_capitalize_legend=False,
+        capitalize_legend=False,
     )
 
     x = np.array([1.0, 2.0, 3.0, 4.0])
@@ -524,7 +524,7 @@ def test_main_reverses_stack_order_when_requested(monkeypatch, plot_artifact_dir
         horizontal=None,
         vertical_label=None,
         horizontal_label=None,
-        no_capitalize_legend=False,
+        capitalize_legend=False,
     )
 
     x = np.array([1.0, 2.0, 3.0, 4.0])

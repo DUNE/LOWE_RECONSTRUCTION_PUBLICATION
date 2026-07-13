@@ -405,6 +405,15 @@ COMMON_ARG_SPECS = {
             "help": "Label(s) for custom x-axis tick(s), one per --xtick value",
         },
     },
+    "xtick_height": {
+        "flags": ["--xtick_height"],
+        "kwargs": {
+            "type": float,
+            "default": None,
+            "help": "How far (axes fraction) custom x-tick labels sit below the axis; "
+            "raise/lower to fit them in the space before the fixed-position x-axis title",
+        },
+    },
     "ytick": {
         "flags": ["--ytick"],
         "kwargs": {
@@ -421,6 +430,53 @@ COMMON_ARG_SPECS = {
             "nargs": "+",
             "default": None,
             "help": "Label(s) for custom y-axis tick(s), one per --ytick value",
+        },
+    },
+    "ytick_height": {
+        "flags": ["--ytick_height"],
+        "kwargs": {
+            "type": float,
+            "default": None,
+            "help": "How far (axes fraction) custom y-tick labels sit left of the axis; "
+            "raise/lower to fit them in the space before the fixed-position y-axis title",
+        },
+    },
+    "square": {
+        "flags": ["--square"],
+        "kwargs": {
+            "nargs": "+",
+            "type": float,
+            "action": "append",
+            "default": None,
+            "metavar": "SQUARE",
+            "help": "Draw rectangle(s) as float values grouped into x1 y1 x2 y2 (opposite corners); supports 4, 8, 12... values",
+        },
+    },
+    "square_label": {
+        "flags": ["--square_label"],
+        "kwargs": {
+            "nargs": "+",
+            "type": str,
+            "default": None,
+            "help": "Label(s) for square(s); one label per square",
+        },
+    },
+    "square_style": {
+        "flags": ["--square_style"],
+        "kwargs": {
+            "type": str,
+            "nargs": "+",
+            "default": None,
+            "help": "Linestyle(s) for square edge(s) (e.g. -- : -. -), one per square",
+        },
+    },
+    "square_color": {
+        "flags": ["--square_color"],
+        "kwargs": {
+            "type": str,
+            "nargs": "+",
+            "default": None,
+            "help": "Color(s) for square edge(s) (e.g. gray red C0), one per square",
         },
     },
     "point": {
@@ -477,6 +533,14 @@ COMMON_ARG_SPECS = {
             "help": "Output filepath",
         },
     },
+    "subfolder": {
+        "flags": ["--subfolder"],
+        "kwargs": {
+            "type": str,
+            "default": None,
+            "help": "Save the plot inside this subfolder of the output path(s)",
+        },
+    },
     "debug": {
         "flags": ["--debug", "-d"],
         "kwargs": {
@@ -513,12 +577,12 @@ def add_common_args(parser, arg_names, overrides=None):
         kwargs.update(override)
         parser.add_argument(*flags, **kwargs)
 
-    if "--no_capitalize_legend" not in parser._option_string_actions:
+    if "--capitalize_legend" not in parser._option_string_actions:
         parser.add_argument(
-            "--no_capitalize_legend",
+            "--capitalize_legend",
             action="store_true",
             default=False,
-            help="Disable automatic capitalization of legend entries",
+            help="Capitalize the first letter of each word in legend entries",
         )
 
 
@@ -600,6 +664,14 @@ def map_iterable_label(iterable_value, iterable_name, mapping_name=None, unique_
         return _lookup(selected_mapping, iterable_value)
 
     return str(iterable_value)
+
+
+def map_label_key(value, mapping_name, key_type):
+    """`map_iterable_label` with the (value, mapping_name, key_type) argument
+    order used by script_compare_configuration.py's per-line Geometry/Config/Name
+    label mapping (mapping_name and key_type swapped relative to
+    map_iterable_label's own (iterable_value, iterable_name, mapping_name))."""
+    return map_iterable_label(value, key_type, mapping_name)
 
 
 def map_iterable_color(iterable_value, mapping_name):

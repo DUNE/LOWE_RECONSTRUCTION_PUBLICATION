@@ -13,7 +13,7 @@ import numpy as np
 from rich import print as rprint
 
 from lib import *
-from lib.plot import apply_legend_style, create_common_subplots, apply_note_to_figure
+from lib.plot import apply_legend_style, create_common_subplots, apply_note_to_figure, add_centered_suptitle
 from lib.format import make_title_from_args
 from lib.exports import make_name_from_args, save_figure_to_paths
 from lib.selection import filter_dataframe
@@ -44,6 +44,7 @@ add_common_args(
         "logz",
         "title",
         "output",
+        "subfolder",
         "note",
         "debug",
     ],
@@ -313,7 +314,7 @@ def main():
                 apply_legend_style(
                     ax_left,
                     title=legend_title,
-                    capitalize_labels=not getattr(args, "no_capitalize_legend", False),
+                    capitalize_labels=getattr(args, "capitalize_legend", False),
                 )
 
             else:
@@ -355,7 +356,7 @@ def main():
             plot_title = str(df_config["Title"].dropna().iloc[0])
         else:
             plot_title = make_title_from_args(args)
-        fig.suptitle(plot_title, fontsize=titlefontsize)
+        add_centered_suptitle(fig, plot_title, fontsize=titlefontsize)
 
         apply_note_to_figure(fig, getattr(args, "note", None))
 
@@ -363,7 +364,7 @@ def main():
         default_output_dir = os.path.join(
             os.path.dirname(__file__), "..", "output", "plots"
         )
-        save_figure_to_paths(fig, args.output, output_file, default_output_dir, rprint)
+        save_figure_to_paths(fig, args.output, output_file, default_output_dir, rprint, subfolder=args.subfolder)
 
 
 if __name__ == "__main__":

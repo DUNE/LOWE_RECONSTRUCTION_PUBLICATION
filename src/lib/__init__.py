@@ -300,6 +300,51 @@ def normalize_point_labels(point_labels, n_points):
     return labels, None
 
 
+def parse_square_quads(square_values):
+    if square_values is None:
+        return []
+
+    if isinstance(square_values, (list, tuple)) and len(square_values) > 0 and isinstance(
+        square_values[0], (list, tuple, np.ndarray)
+    ):
+        flattened = [value for group in square_values for value in group]
+    else:
+        flattened = list(square_values)
+
+    if len(flattened) % 4 != 0:
+        raise ValueError(
+            "--square expects a multiple-of-4 number of float values (x1 y1 x2 y2 per square)."
+        )
+
+    return [
+        (
+            float(flattened[idx]),
+            float(flattened[idx + 1]),
+            float(flattened[idx + 2]),
+            float(flattened[idx + 3]),
+        )
+        for idx in range(0, len(flattened), 4)
+    ]
+
+
+def normalize_square_labels(square_labels, n_squares):
+    if square_labels is None:
+        return None, None
+
+    if isinstance(square_labels, str):
+        labels = [square_labels]
+    else:
+        labels = list(square_labels)
+
+    if len(labels) != n_squares:
+        return None, (
+            f"--square_label expects {n_squares} label(s) to match --square groups, "
+            f"but got {len(labels)}."
+        )
+
+    return labels, None
+
+
 def resolve_mapped_color(color_value):
     if color_value is None:
         return None

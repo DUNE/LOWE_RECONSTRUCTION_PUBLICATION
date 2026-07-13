@@ -16,7 +16,7 @@ from lib.selection import filter_dataframe
 from lib.exports import make_name_from_args, save_figure_to_paths
 from lib.format import make_title_from_args, make_subtitle_from_args
 from lib.imports import import_data, prepare_import
-from lib.plot import apply_scientific_threshold_formatter, plot_data, create_common_subplots, apply_note_to_figure, draw_vertical_lines, draw_horizontal_lines, place_point_label
+from lib.plot import apply_scientific_threshold_formatter, plot_data, create_common_subplots, apply_note_to_figure, add_centered_suptitle, draw_vertical_lines, draw_horizontal_lines, draw_squares, place_point_label
 
 from common_args import add_common_args, resolve_axis_label
 
@@ -59,8 +59,13 @@ add_common_args(
         "vertical_label",
         "vertical_style",
         "vertical_color",
+        "square",
+        "square_label",
+        "square_style",
+        "square_color",
         "title",
         "output",
+        "subfolder",
         "point",
         "point_label",
         "note",
@@ -241,11 +246,6 @@ def main():
                 )
                 ax_current.set_xlim(ranges[0])
                 ax_current.set_ylim(ranges[0])
-            if args.horizontal is not None:
-                ax_current.axhline(
-                    args.horizontal, color="k" if args.logz else "white", linestyle="--"
-                )
-
         if z is None:
             if args.density:
                 cbar.set_label("Density" if not args.logz else "Density (log scale)")
@@ -304,6 +304,22 @@ def main():
                 fontsize=linelabelfontsize,
             )
 
+            square_quads = parse_square_quads(getattr(args, "square", None))
+            square_labels, square_label_warning = normalize_square_labels(
+                getattr(args, "square_label", None), len(square_quads)
+            )
+            if square_label_warning is not None:
+                rprint(f"[yellow]Warning:[/yellow] {square_label_warning}")
+
+            draw_squares(
+                ax_current,
+                square_quads,
+                labels=square_labels,
+                styles=getattr(args, "square_style", None),
+                colors=getattr(args, "square_color", None),
+                fontsize=linelabelfontsize,
+            )
+
             point_values = parse_point_pairs(getattr(args, "point", None))
             point_labels, point_label_warning = normalize_point_labels(
                 getattr(args, "point_label", None), len(point_values)
@@ -322,7 +338,7 @@ def main():
 
         # Set title
         plot_title = make_title_from_args(args)
-        fig.suptitle(f"{plot_title}", fontsize=titlefontsize)
+        add_centered_suptitle(fig, f"{plot_title}", fontsize=titlefontsize)
         # dunestyle.WIP()
 
         apply_note_to_figure(fig, getattr(args, "note", None))
@@ -331,7 +347,7 @@ def main():
         default_output_dir = os.path.join(
             os.path.dirname(__file__), "..", "output", "plots"
         )
-        save_figure_to_paths(fig, args.output, output_file, default_output_dir, rprint)
+        save_figure_to_paths(fig, args.output, output_file, default_output_dir, rprint, subfolder=args.subfolder)
 
 
 if __name__ == "__main__":

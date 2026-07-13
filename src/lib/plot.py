@@ -1,5 +1,6 @@
 import numpy as np
 import matplotlib.pyplot as plt
+from matplotlib.patches import Rectangle
 from typing import Any
 
 from . import (
@@ -8,6 +9,7 @@ from . import (
     note_style,
     legendfontsize,
     legendtitlefontsize,
+    linelabelfontsize,
     figure_base_width,
     figure_panel_width,
     figure_height,
@@ -211,7 +213,7 @@ def apply_legend_style(
     title=None,
     handles=None,
     labels=None,
-    capitalize_labels=True,
+    capitalize_labels=False,
     **overrides,
 ):
     style = dict(legend_style) if isinstance(legend_style, dict) else {}
@@ -374,6 +376,17 @@ def plot_data(
             **kwargs,
         )
 
+    if plot_type == "barh":
+        kwargs.setdefault("linewidth", default_linewidth)
+        return ax.barh(
+            x,
+            y,
+            xerr=kwargs.pop("xerr", errorx),
+            label=label,
+            color=color,
+            **kwargs,
+        )
+
     if plot_type == "boxplot":
         boxplot_data = kwargs.pop("boxplot_data", y)
         return ax.boxplot(boxplot_data, label=label, **kwargs)
@@ -478,50 +491,65 @@ def add_note_to_axes(ax, note_text, fontsize=None):
     return text_obj
 
 
+def get_main_axes(fig):
+    """Return *fig*'s axes with colorbar axes filtered out.
+
+    Colorbars are skipped both by class name and by a size heuristic
+    (colorbar axes are thin slivers next to the plot they annotate).
+    """
+    main_axes = []
+    for ax in fig.get_axes():
+        if hasattr(ax, 'cbar') or 'colorbar' in str(type(ax).__name__).lower():
+            continue
+        bbox = ax.get_position()
+        if bbox.width < 0.05 or bbox.height < 0.05:
+            continue
+        main_axes.append(ax)
+
+    # Fallback: filtering removed everything (e.g. all axes are small), so
+    # just return the unfiltered list rather than reporting no axes at all.
+    return main_axes if main_axes else fig.get_axes()
+
+
+def add_centered_suptitle(fig, title, fontsize=None, **kwargs):
+    """Add a figure title centered on the main plot axes, not the full canvas.
+
+    fig.suptitle() centers on the whole figure by default, which drifts off
+    the visual center of the plot frame whenever the axes are asymmetric —
+    e.g. a colorbar occupying space on the right. This centers the title
+    over the combined bounding box of the non-colorbar axes instead.
+    """
+    main_axes = get_main_axes(fig)
+    if main_axes:
+        x0 = min(ax.get_position().x0 for ax in main_axes)
+        x1 = max(ax.get_position().x1 for ax in main_axes)
+        kwargs.setdefault("x", (x0 + x1) / 2)
+
+    return fig.suptitle(title, fontsize=fontsize, **kwargs)
+
+
 def apply_note_to_figure(fig, note_text, fontsize=None):
     """Apply a text annotation to the best position on a figure's main axes.
-    
+
     Automatically finds the first non-colorbar axes and places the note there.
     Uses note_style configuration for fontsize and styling if not explicitly provided.
-    
+
     Args:
         fig: matplotlib figure object
         note_text: Text string to display
         fontsize: Font size for the note text (uses note_style default if None)
-    
+
     Returns:
         matplotlib text object, or None if no valid axes found
     """
     if note_text is None or not str(note_text).strip():
         return None
-    
-    # Get all axes from the figure, excluding colorbars
-    axes = fig.get_axes()
-    
-    if not axes:
+
+    main_axes = get_main_axes(fig)
+    if not main_axes:
         return None
-    
-    # Filter out colorbar axes and get the first regular axis
-    main_ax = None
-    for ax in axes:
-        # Skip colorbar axes (they have specific names)
-        if hasattr(ax, 'cbar') or 'colorbar' in str(type(ax).__name__).lower():
-            continue
-        # Skip small axes that might be colorbars (width < 0.1 or height < 0.1)
-        bbox = ax.get_position()
-        if bbox.width < 0.05 or bbox.height < 0.05:
-            continue
-        main_ax = ax
-        break
-    
-    if main_ax is None and axes:
-        # Fallback: use the first axis if all filtering fails
-        main_ax = axes[0]
-    
-    if main_ax is None:
-        return None
-    
-    return add_note_to_axes(main_ax, note_text, fontsize=fontsize)
+
+    return add_note_to_axes(main_axes[0], note_text, fontsize=fontsize)
 
 
 def _format_ref_value(v):
@@ -590,6 +618,59 @@ def draw_horizontal_lines(ax, values, labels=None, styles=None, colors=None, fon
             place_horizontal_label(ax, v, label, fontsize=fontsize)
 
 
+def draw_squares(ax, quads, labels=None, styles=None, colors=None, fontsize=None, fill=False, alpha=None):
+    """Draw one or more rectangles on *ax*.
+
+    ``quads`` is a sequence of ``(x1, y1, x2, y2)`` tuples giving two opposite
+    corners of each rectangle (order-independent). Each positional list
+    (``labels``, ``styles``, ``colors``) is matched to ``quads`` by index; if
+    shorter than ``quads`` the last element is reused as a default.
+    """
+    if quads is None:
+        return
+    quads = list(quads)
+
+    for i, (x1, y1, x2, y2) in enumerate(quads):
+        color = _ref_line_get(colors, i, "gray")
+        style = _ref_line_get(styles, i, "-")
+        label = _ref_line_get(labels, i, None) if labels is not None else None
+
+        x0, x1e = min(x1, x2), max(x1, x2)
+        y0, y1e = min(y1, y2), max(y1, y2)
+
+        xlim = ax.get_xlim()
+        ylim = ax.get_ylim()
+        if x0 < xlim[0] or x1e > xlim[1]:
+            ax.set_xlim(min(xlim[0], x0), max(xlim[1], x1e))
+        if y0 < ylim[0] or y1e > ylim[1]:
+            ax.set_ylim(min(ylim[0], y0), max(ylim[1], y1e))
+
+        rect = Rectangle(
+            (x0, y0),
+            x1e - x0,
+            y1e - y0,
+            fill=fill,
+            facecolor=color if fill else "none",
+            edgecolor=color,
+            linestyle=style,
+            linewidth=1,
+            alpha=alpha,
+            zorder=5,
+        )
+        ax.add_patch(rect)
+
+        if label:
+            ax.text(
+                (x0 + x1e) / 2,
+                y1e,
+                str(label),
+                ha="center",
+                va="bottom",
+                fontsize=fontsize,
+                zorder=6,
+            )
+
+
 def _label_data_halfwidth(ax, axis, label, fontsize):
     """Estimate half the on-screen width/height of *label* in data units.
 
@@ -627,22 +708,31 @@ def _label_data_halfwidth(ax, axis, label, fontsize):
     return abs(p1[1] - p0[1]) / 2.0
 
 
-def _draw_pointer_tick_label(
-    ax, axis, position, label, fontsize=None, length=0.06, label_gap=0.02, color="black"
-):
+def _draw_pointer_tick_label(ax, axis, position, label, fontsize=None, height=0.09, color="black"):
     """Draw a long tick-like arrow at `position` pointing at the axis, with
-    `label` placed beyond its tail (further out than a normal tick label)."""
+    `label` placed just beyond its tail (further out than a normal tick
+    label). `height` is the single, user-tunable distance (axes fraction)
+    from the axis to the label -- shrink it to fit the label in the space
+    before a fixed-position axis title; the arrow tail sits just short of it,
+    with only a small fixed cosmetic gap to the text.
+    """
+    if fontsize is None:
+        fontsize = linelabelfontsize
+
+    text_gap = min(0.012, height * 0.25)
+    tail_offset = height - text_gap
+
     if axis == "x":
         trans = ax.get_xaxis_transform()
-        tail = (position, -(length + label_gap))
+        tail = (position, -tail_offset)
         head = (position, 0.0)
-        text_xy = (position, -(length + label_gap))
+        text_xy = (position, -height)
         ha, va = "center", "top"
     else:
         trans = ax.get_yaxis_transform()
-        tail = (-(length + label_gap), position)
+        tail = (-tail_offset, position)
         head = (0.0, position)
-        text_xy = (-(length + label_gap), position)
+        text_xy = (-height, position)
         ha, va = "right", "center"
 
     arrow = ax.annotate(
@@ -664,6 +754,8 @@ def _draw_pointer_tick_label(
         clip_on=False,
     )
     return arrow, text
+
+
 
 
 def _expand_margins_for_artists(fig, artists, pad_px=4):
@@ -706,14 +798,22 @@ def _expand_margins_for_artists(fig, artists, pad_px=4):
     )
 
 
-def set_axis_tick_labels(ax, axis, values, labels, fontsize=None, length=0.06, label_gap=0.02):
+def set_axis_tick_labels(ax, axis, values, labels, fontsize=None, height=0.09):
     """Mark specific ``values`` on *axis* ("x" or "y") with a long pointer
     tick and a label placed beyond it, further out than the regular tick
     labels. Nearby automatic ticks that would visually collide with the new
     label are dropped; all other automatic ticks are left untouched.
+    `height` is the distance (axes fraction) from the axis to the label --
+    the axis title's own position is never touched, so shrink `height` to
+    fit the label within the fixed space before it.
     """
     if values is None or labels is None:
         return
+
+    # Resolve once so the collision-avoidance sizing below matches the font
+    # size the label is actually drawn at.
+    if fontsize is None:
+        fontsize = linelabelfontsize
 
     vals = values if isinstance(values, (list, tuple)) else [values]
     labs = labels if isinstance(labels, (list, tuple)) else [labels]
@@ -765,12 +865,19 @@ def set_axis_tick_labels(ax, axis, values, labels, fontsize=None, length=0.06, l
 
     drawn_artists = []
     for v, label in zip(vals, labs):
-        drawn_artists.extend(
-            _draw_pointer_tick_label(
-                ax, axis, float(v), str(label), fontsize=fontsize, length=length, label_gap=label_gap
-            )
+        arrow, text = _draw_pointer_tick_label(
+            ax,
+            axis,
+            float(v),
+            str(label),
+            fontsize=fontsize,
+            height=height,
         )
+        drawn_artists.extend([arrow, text])
 
+    # The axis title's position is left untouched; `length` controls how far
+    # out the pointer label sits, so callers can tune it to fit within the
+    # space before the title rather than the title moving to make room.
     _expand_margins_for_artists(ax.figure, drawn_artists)
 
 

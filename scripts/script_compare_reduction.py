@@ -17,7 +17,7 @@ from lib.selection import filter_dataframe
 from lib.exports import make_name_from_args, save_figure_to_paths
 from lib.format import make_title_from_args, make_subtitle_from_args
 from lib.imports import import_data, prepare_import
-from lib.plot import apply_scientific_threshold_formatter, apply_legend_style, plot_data, create_common_subplots, apply_note_to_figure, draw_vertical_lines, draw_horizontal_lines, place_point_label
+from lib.plot import apply_scientific_threshold_formatter, apply_legend_style, plot_data, create_common_subplots, apply_note_to_figure, add_centered_suptitle, draw_vertical_lines, draw_horizontal_lines, place_point_label
 from common_args import add_common_args, load_computation_settings, resolve_plot_kwargs, resolve_axis_label
 
 
@@ -50,6 +50,7 @@ add_common_args(
         "plot_type",
         "title",
         "output",
+        "subfolder",
         "horizontal",
         "horizontal_label",
         "horizontal_style",
@@ -360,7 +361,7 @@ def main():
                 apply_legend_style(
                     ax_current,
                     title=args.iterable,
-                    capitalize_labels=not getattr(args, "no_capitalize_legend", False),
+                    capitalize_labels=getattr(args, "capitalize_legend", False),
                 )
 
             draw_horizontal_lines(
@@ -395,7 +396,7 @@ def main():
 
         # Set title
         plot_title = make_title_from_args(args)
-        fig.suptitle(plot_title, fontsize=titlefontsize)
+        add_centered_suptitle(fig, plot_title, fontsize=titlefontsize)
         # dunestyle.WIP()
 
         apply_note_to_figure(fig, getattr(args, "note", None))
@@ -422,7 +423,7 @@ def main():
         default_output_dir = os.path.join(
             os.path.dirname(__file__), "..", "output", "plots"
         )
-        save_figure_to_paths(fig, args.output, output_file, default_output_dir, rprint)
+        save_figure_to_paths(fig, args.output, output_file, default_output_dir, rprint, subfolder=args.subfolder)
 
 if __name__ == "__main__":
     main()

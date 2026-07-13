@@ -17,7 +17,7 @@ from common_args import add_common_args
 from lib import titlefontsize, xlabelfontsize, ysublabelfontsize, linelabelfontsize
 from lib.format import make_title_from_args
 from lib.selection import filter_dataframe
-from lib.plot import apply_legend_style, plot_data, create_common_subplots, create_common_two_panel_figure, apply_note_to_figure, apply_common_figure_margins, draw_vertical_lines, draw_horizontal_lines, place_point_label
+from lib.plot import apply_legend_style, plot_data, create_common_subplots, create_common_two_panel_figure, apply_note_to_figure, add_centered_suptitle, apply_common_figure_margins, draw_vertical_lines, draw_horizontal_lines, place_point_label
 
 
 
@@ -622,7 +622,7 @@ def main():
     apply_legend_style(
         ax_top,
         title=args.labelz if args.labelz is not None else None,
-        capitalize_labels=not getattr(args, "no_capitalize_legend", False),
+        capitalize_labels=getattr(args, "capitalize_legend", False),
     )
 
     if ax_bottom is not None:
@@ -659,7 +659,7 @@ def main():
         if bottom_handles:
             apply_legend_style(
                 ax_bottom,
-                capitalize_labels=not getattr(args, "no_capitalize_legend", False),
+                capitalize_labels=getattr(args, "capitalize_legend", False),
             )
     else:
         ax_top.set_xlabel(args.labelx, fontsize=xlabelfontsize)
@@ -697,7 +697,7 @@ def main():
         if ax_bottom is not None:
             ax_bottom.set_yscale("log")
 
-    fig.suptitle(make_title_from_args(args), fontsize=titlefontsize)
+    add_centered_suptitle(fig, make_title_from_args(args), fontsize=titlefontsize)
     apply_common_figure_margins(fig)
 
     apply_note_to_figure(fig, getattr(args, "note", None))
