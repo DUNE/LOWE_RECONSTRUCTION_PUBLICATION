@@ -46,18 +46,33 @@
 # Filter logic: all filters are matched against the full remote path and filename.
 # Include filters are OR-ed within a dimension; all dimensions must pass (AND).
 #
+# index.json theme/publication discovery (additive — does not change the
+# default OUTPUT_ONLY sync described above):
+#   --theme VALUE             Also fetch files tagged with this theme in
+#                              output/data/index.json (repeat to allow multiple;
+#                              OR-ed together). Combined with --publication, both
+#                              conditions must hold (AND).
+#   --publication              Also fetch files with publication_export=true in
+#                              output/data/index.json
+#   --list-themes              Print available themes from index.json and exit
+#                              (does not sync anything)
+#
 # Examples:
 #   ./sync_solar_data.sh
 #   ./sync_solar_data.sh --config hd_1x2x6_centralAPA --name marley
 #   ./sync_solar_data.sh --name marley --name gamma --exclude-folder Truncated
 #   ./sync_solar_data.sh --energy SolarEnergy --force
 #   ./sync_solar_data.sh --show-sources
+#   ./sync_solar_data.sh --list-themes
+#   ./sync_solar_data.sh --theme daynight --publication
 
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 DATA_DIR="$SCRIPT_DIR/input/data"
 MANIFEST_PATH="config/analysis/pkl_paths.json"
+INDEX_PATH="output/data/index.json"
+SOLAR_INDEX_PY="$SCRIPT_DIR/src/lib/solar_index.py"
 
 DEFAULT_REMOTE="gae_out:/pc/choozdsk01/users/manthey/SOLAR"
 DEFAULT_PNFS="gae_out:/pnfs/ciemat.es/data/neutrinos/DUNE/SOLAR"
@@ -77,6 +92,10 @@ EXCLUDE_FOLDERS=()
 INCLUDE_ENERGIES=()
 EXCLUDE_ENERGIES=()
 
+INCLUDE_THEMES=()
+PUBLICATION_ONLY=false
+LIST_THEMES=false
+
 # --- Argument parsing ---------------------------------------------------------
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -93,6 +112,9 @@ while [[ $# -gt 0 ]]; do
         --exclude-folder)  EXCLUDE_FOLDERS+=("$2");      shift 2 ;;
         --energy)          INCLUDE_ENERGIES+=("$2");     shift 2 ;;
         --exclude-energy)  EXCLUDE_ENERGIES+=("$2");     shift 2 ;;
+        --theme)           INCLUDE_THEMES+=("$2");       shift 2 ;;
+        --publication)     PUBLICATION_ONLY=true;        shift   ;;
+        --list-themes)     LIST_THEMES=true;             shift   ;;
         -h|--help)
             awk 'NR>1{if(/^#/){sub(/^# ?/,""); print} else if(NF){exit}}' "$0"
             exit 0 ;;
@@ -172,7 +194,37 @@ $DRY_RUN     && echo "    Mode         : dry-run (no files will be written)"
 (( ${#EXCLUDE_FOLDERS[@]}  > 0 )) && echo "    -folder      : ${EXCLUDE_FOLDERS[*]}"
 (( ${#INCLUDE_ENERGIES[@]} > 0 )) && echo "    +energy      : ${INCLUDE_ENERGIES[*]}"
 (( ${#EXCLUDE_ENERGIES[@]} > 0 )) && echo "    -energy      : ${EXCLUDE_ENERGIES[*]}"
+(( ${#INCLUDE_THEMES[@]}   > 0 )) && echo "    +theme       : ${INCLUDE_THEMES[*]}"
+$PUBLICATION_ONLY && echo "    publication  : only publication_export files"
 echo ""
+
+# --- index.json (theme/publication discovery) ---------------------------------
+# Additive to the OUTPUT_ONLY sync below: index.json is SOLAR's own file-level
+# discovery manifest (output/data/index.json), tagging each file with themes
+# and a publication_export flag. Only fetched/consulted when --theme,
+# --publication, or --list-themes is passed — default behaviour is unchanged.
+FILTERED_RELPATHS=()
+
+if $LIST_THEMES || (( ${#INCLUDE_THEMES[@]} > 0 )) || $PUBLICATION_ONLY; then
+    INDEX_LOCAL="$TMPDIR_BASE/index.json"
+    echo "--> Fetching index.json ..."
+    rsync -az "${RSYNC_E[@]}" "${REMOTE}/${INDEX_PATH}" "$INDEX_LOCAL"
+
+    if $LIST_THEMES; then
+        python3 "$SOLAR_INDEX_PY" list-themes --index "$INDEX_LOCAL"
+        exit 0
+    fi
+
+    INDEX_FILTER_ARGS=()
+    for t in "${INCLUDE_THEMES[@]}"; do INDEX_FILTER_ARGS+=(--theme "$t"); done
+    $PUBLICATION_ONLY && INDEX_FILTER_ARGS+=(--publication)
+
+    mapfile -t FILTERED_RELPATHS < <(python3 "$SOLAR_INDEX_PY" filter \
+        --index "$INDEX_LOCAL" "${INDEX_FILTER_ARGS[@]}")
+
+    echo "==> ${#FILTERED_RELPATHS[@]} file(s) in index.json matched theme/publication filters"
+    echo ""
+fi
 
 # --- Fetch manifest -----------------------------------------------------------
 MANIFEST_LOCAL="$TMPDIR_BASE/pkl_paths.json"
@@ -340,6 +392,22 @@ done
 
 printf "%-72s\r" ""   # clear last scanning line
 
+# --- Preview: index.json theme/publication-selected files --------------------
+# These are explicit output/data/-relative file paths from index.json, added
+# on top of whatever the OUTPUT_ONLY scan above already found. Byte sizes
+# aren't queried per-file here, so they're not reflected in PREVIEW_BYTES.
+INDEX_SELECTED=()
+if (( ${#FILTERED_RELPATHS[@]} > 0 )); then
+    echo "    [index] theme/publication-selected files under output/data/:"
+    for rel in "${FILTERED_RELPATHS[@]}"; do
+        matches_filter "output/data/$rel" || continue
+        INDEX_SELECTED+=("$rel")
+        printf "        %s\n" "$rel"
+    done
+    echo ""
+    PREVIEW_COUNT=$(( PREVIEW_COUNT + ${#INDEX_SELECTED[@]} ))
+fi
+
 TOTAL_FMT=$(awk -v b="$PREVIEW_BYTES" 'BEGIN{
     if     (b>=1073741824) printf "%.1f GB", b/1073741824
     else if(b>=1048576)    printf "%.1f MB", b/1048576
@@ -373,6 +441,14 @@ for entry in "${ACTIVE_SOURCES[@]}"; do
         --exclude='*_calib/' \
         --include='*.pkl' --include='*/' --exclude='*' \
         "$remote_src" "$local_tmp/" || true
+done
+
+for rel in "${INDEX_SELECTED[@]}"; do
+    remote_src="${REMOTE_HOST}:${REMOTE##*:}/output/data/${rel}"
+    local_dest="$TMPDIR_BASE/_index_selected/${rel}"
+    mkdir -p "$(dirname "$local_dest")"
+    echo "    rsync $remote_src"
+    rsync -az "${RSYNC_E[@]}" "$remote_src" "$local_dest" || true
 done
 
 TOTAL_FETCHED=$(find "$TMPDIR_BASE" -name '*.pkl' | wc -l)

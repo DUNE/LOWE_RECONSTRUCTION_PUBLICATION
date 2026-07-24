@@ -15,6 +15,10 @@
 #   --pnfs HOST:PATH             Override default PNFS root (passed to sync_solar_data.sh)
 #   --force-sync                 Overwrite existing local data files during sync
 #   --dry-run-sync               Show what sync would do without copying files
+#   --theme VALUE                 Also sync index.json files tagged with this
+#                                 theme (passed to sync_solar_data.sh; repeatable)
+#   --publication                 Also sync index.json publication_export files
+#   --list-themes                 Print available index.json themes and exit
 #   --tables                     Also run the matching table script set
 #   -h, --help                   Show this help and exit
 #
@@ -59,6 +63,9 @@ FORCE_SYNC=false
 DRY_RUN_SYNC=false
 FILTER_FLAGS=()
 FILTER_VARS=()
+SYNC_THEMES=()
+SYNC_PUBLICATION=false
+SYNC_LIST_THEMES=false
 
 # --- Argument parsing ---------------------------------------------------------
 while [[ $# -gt 0 ]]; do
@@ -69,6 +76,9 @@ while [[ $# -gt 0 ]]; do
         --pnfs)           PNFS_ARG="$2";   shift 2 ;;
         --force-sync)     FORCE_SYNC=true; shift ;;
         --dry-run-sync)   DRY_RUN_SYNC=true; shift ;;
+        --theme)          SYNC_THEMES+=("$2"); shift 2 ;;
+        --publication)    SYNC_PUBLICATION=true; shift ;;
+        --list-themes)    SYNC_LIST_THEMES=true; shift ;;
         --tables)         DO_TABLES=true; shift ;;
         --flags)
             shift
@@ -92,6 +102,13 @@ if [[ ${#FILTER_FLAGS[@]} -ne ${#FILTER_VARS[@]} ]]; then
     echo "Error: --flags and --variables must have the same number of arguments." >&2
     echo "       Got ${#FILTER_FLAGS[@]} flag(s) and ${#FILTER_VARS[@]} variable(s)." >&2
     exit 1
+fi
+
+if $SYNC_LIST_THEMES; then
+    SYNC_ARGS=(--list-themes)
+    [[ -n "$REMOTE_ARG" ]] && SYNC_ARGS+=(--remote "$REMOTE_ARG")
+    [[ -n "$PNFS_ARG"   ]] && SYNC_ARGS+=(--pnfs   "$PNFS_ARG")
+    exec bash "$SYNC_SCRIPT" "${SYNC_ARGS[@]}"
 fi
 
 if [[ -z "$SCRIPT_SET" ]]; then
@@ -125,6 +142,8 @@ if $DO_SYNC; then
     [[ -n "$PNFS_ARG"   ]] && SYNC_ARGS+=(--pnfs   "$PNFS_ARG")
     $FORCE_SYNC             && SYNC_ARGS+=(--force)
     $DRY_RUN_SYNC           && SYNC_ARGS+=(--dry-run)
+    $SYNC_PUBLICATION       && SYNC_ARGS+=(--publication)
+    for theme in "${SYNC_THEMES[@]}"; do SYNC_ARGS+=(--theme "$theme"); done
 
     # Translate --flags / --variables pairs into sync_solar_data.sh filter flags.
     # 'no-DIM' prefixes become --exclude-DIM; plain 'DIM' become --DIM.
