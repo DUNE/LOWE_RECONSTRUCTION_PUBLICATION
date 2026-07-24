@@ -79,3 +79,25 @@ def test_filter_index_tree_unknown_theme_raises_with_available_themes():
 
 def test_filter_index_tree_empty_tree_returns_empty_list():
     assert filter_index_tree({}) == []
+
+
+def test_filter_index_tree_unwraps_top_level_tree_key():
+    wrapped = {
+        "_themes": {"daynight": "Day/night asymmetry plots"},
+        "_publication_exports": ["analysis/day-night/rate_hist.pkl"],
+        "tree": {
+            "analysis": {
+                "day-night": {
+                    "rate_hist.pkl": {
+                        "themes": ["daynight"],
+                        "publication_export": True,
+                    },
+                },
+            },
+        },
+    }
+
+    result = filter_index_tree(wrapped)
+
+    assert result == ["analysis/day-night/rate_hist.pkl"]
+    assert not any(p.startswith("tree/") for p in result)

@@ -4,7 +4,9 @@ index.json is a git-tracked file published by the SOLAR repo describing every
 file under its output/data/ tree. It is a nested dict of directory names down
 to file leaves; each file leaf carries "themes" (list[str]) and
 "publication_export" (bool). Top-level keys starting with "_" are metadata
-("_themes", "_publication_exports") rather than tree nodes.
+("_themes", "_publication_exports") rather than tree nodes. The actual
+directory tree may itself be nested under a top-level "tree" key, as a
+sibling of that metadata, rather than living directly at the root.
 """
 
 from __future__ import annotations
@@ -29,6 +31,23 @@ def list_themes(index: dict) -> dict:
     if isinstance(themes, dict):
         return themes
     return {name: "" for name in themes}
+
+
+def _unwrap_tree(index: dict) -> dict:
+    """Return the dict to walk for actual directory/file nodes.
+
+    Some index.json files nest the real tree under a top-level "tree" key
+    (a sibling of "_themes"/"_publication_exports") rather than having file
+    leaves directly at the root. Unwrap that layer so callers don't get a
+    spurious leading "tree/" path segment. If there's no such wrapper —
+    including the common case where a directory happens to be named
+    "tree" but holds actual leaves rather than acting purely as a
+    container — the index is walked as-is.
+    """
+    wrapped = index.get("tree")
+    if isinstance(wrapped, dict) and not _is_file_leaf(wrapped):
+        return wrapped
+    return index
 
 
 def filter_index_tree(
@@ -70,7 +89,7 @@ def filter_index_tree(
             elif isinstance(value, dict):
                 walk(value, rel)
 
-    walk(tree, "")
+    walk(_unwrap_tree(tree), "")
     return sorted(paths)
 
 

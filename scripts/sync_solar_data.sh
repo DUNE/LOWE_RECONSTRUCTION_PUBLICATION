@@ -390,22 +390,43 @@ for entry in "${SOURCE_ENTRIES[@]}"; do
     fi
 done
 
-printf "%-72s\r" ""   # clear last scanning line
+printf "\r\033[K"   # clear last scanning line (width-independent — dir paths vary in length)
 
 # --- Preview: index.json theme/publication-selected files --------------------
-# These are explicit output/data/-relative file paths from index.json, added
-# on top of whatever the OUTPUT_ONLY scan above already found. Byte sizes
-# aren't queried per-file here, so they're not reflected in PREVIEW_BYTES.
+# These are explicit output/data/-relative file paths from index.json. Skip
+# anything already reachable through an OUTPUT_ONLY "local" source directory
+# above — otherwise the same physical file gets counted (and rsynced) twice,
+# once per discovery mechanism. Byte sizes aren't queried per-file here, so
+# surviving entries aren't reflected in PREVIEW_BYTES.
 INDEX_SELECTED=()
 if (( ${#FILTERED_RELPATHS[@]} > 0 )); then
-    echo "    [index] theme/publication-selected files under output/data/:"
+    LOCAL_SOURCE_DIRS=()
+    for entry in "${SOURCE_ENTRIES[@]}"; do
+        [[ "${entry%% *}" == "local" ]] && LOCAL_SOURCE_DIRS+=("${entry#* }")
+    done
+
     for rel in "${FILTERED_RELPATHS[@]}"; do
         matches_filter "output/data/$rel" || continue
-        INDEX_SELECTED+=("$rel")
-        printf "        %s\n" "$rel"
+
+        full_path="${REMOTE##*:}/output/data/${rel}"
+        covered=false
+        for dir in "${LOCAL_SOURCE_DIRS[@]}"; do
+            if [[ "$full_path" == "$dir" || "$full_path" == "$dir"/* ]]; then
+                covered=true
+                break
+            fi
+        done
+        $covered || INDEX_SELECTED+=("$rel")
     done
-    echo ""
-    PREVIEW_COUNT=$(( PREVIEW_COUNT + ${#INDEX_SELECTED[@]} ))
+
+    if (( ${#INDEX_SELECTED[@]} > 0 )); then
+        echo "    [index] theme/publication-selected files under output/data/ (not already covered above):"
+        for rel in "${INDEX_SELECTED[@]}"; do
+            printf "        %s\n" "$rel"
+        done
+        echo ""
+        PREVIEW_COUNT=$(( PREVIEW_COUNT + ${#INDEX_SELECTED[@]} ))
+    fi
 fi
 
 TOTAL_FMT=$(awk -v b="$PREVIEW_BYTES" 'BEGIN{
