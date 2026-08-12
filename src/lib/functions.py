@@ -18,6 +18,14 @@ def gaussian(x, a, b, c):
     return a * np.exp(-0.5 * ((x - b) / c) ** 2)
 
 
+def double_gaussian(x, a_core, mu, sigma_core, a_tail, sigma_tail):
+    """Double Gaussian: narrow core (intrinsic resolution) + broad tail component."""
+    return (
+        a_core * np.exp(-0.5 * ((x - mu) / abs(sigma_core)) ** 2)
+        + a_tail * np.exp(-0.5 * ((x - mu) / abs(sigma_tail)) ** 2)
+    )
+
+
 def gaussian_train(x, *params):
     """
     Sum of an arbitrary number of Gaussians, each described by an

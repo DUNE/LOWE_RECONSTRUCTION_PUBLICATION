@@ -48,6 +48,7 @@ add_common_args(
         "iterable",
         "select",
         "save_values",
+        "remove_value",
         "x",
         "y",
         "reduce",
@@ -138,6 +139,13 @@ parser.add_argument(
 )
 
 parser.add_argument(
+    "--comparable_reverse",
+    action="store_true",
+    default=False,
+    help="Reverse the order of linestyles assigned to comparable values.",
+)
+
+parser.add_argument(
     "--connect",
     action="store_true",
     help="(Deprecated) Connect data points with lines; use `--plot_type line` instead",
@@ -168,6 +176,17 @@ parser.add_argument(
     help=(
         "Optional mapping dictionary name from plot_params mappings used to "
         "set iterable line colors in legend/plot (supports Cn and rgb(r,g,b))"
+    ),
+)
+
+parser.add_argument(
+    "--overlay_names",
+    action="store_true",
+    default=False,
+    help=(
+        "Combine all --configs/--names combinations into a single figure "
+        "instead of producing one figure per combination. All loaded data is "
+        "treated as one dataset; use --iterable to distinguish sources by color."
     ),
 )
 
@@ -217,11 +236,63 @@ def _build_extrapolated_segments(x, y, extrapolated_mask):
     return x_norm, y_norm, x_ext, y_ext
 
 
-def _resolve_comparable_linestyle(index, args):
+def _resolve_comparable_linestyle(index, args, n_total=None):
     user_styles = getattr(args, "comparable_linestyles", None)
-    if user_styles:
-        return user_styles[index % len(user_styles)]
-    return _COMPARABLE_LINESTYLES[index % len(_COMPARABLE_LINESTYLES)]
+    styles = list(user_styles) if user_styles else list(_COMPARABLE_LINESTYLES)
+    if getattr(args, "comparable_reverse", False) and n_total is not None:
+        index = n_total - 1 - index
+    return styles[index % len(styles)]
+
+
+def _apply_iterable_legend(
+    ax,
+    iterable_title,
+    handles,
+    labels,
+    comparable_col,
+    comparable_style_map,
+    capitalize_labels,
+    **loc_kwargs,
+):
+    """Draw the iterable legend. When a comparable overlay is active, fold its
+    linestyle key into the *same* legend (as a second, bold-headed section)
+    rather than a separate legend artist, so matplotlib's own placement search
+    (loc="best") treats both as one block and every entry shares one left edge.
+    """
+    if not comparable_style_map:
+        return apply_legend_style(
+            ax,
+            title=iterable_title,
+            handles=handles,
+            labels=labels,
+            capitalize_labels=capitalize_labels,
+            **loc_kwargs,
+        )
+
+    combined_handles = (
+        [mlines.Line2D([], [], linestyle="none", marker="none")]
+        + list(handles)
+        + [mlines.Line2D([], [], linestyle="none", marker="none")]
+        + [
+            mlines.Line2D([], [], color="black", linestyle=style, linewidth=1.5)
+            for style in comparable_style_map.values()
+        ]
+    )
+    combined_labels = (
+        [str(iterable_title)]
+        + list(labels)
+        + [str(comparable_col)]
+        + list(comparable_style_map.keys())
+    )
+
+    return apply_legend_style(
+        ax,
+        title=None,
+        handles=combined_handles,
+        labels=combined_labels,
+        capitalize_labels=capitalize_labels,
+        **loc_kwargs,
+    )
 
 def main():
     # For each configuration provided combine the data files and plot the results
@@ -255,6 +326,10 @@ def main():
     configs = configs if configs is not None else [None]
     names = names if names is not None else [None]
 
+    if getattr(args, "overlay_names", False):
+        configs = [None]
+        names = [None]
+
     for kdx, (config, name) in enumerate(zip(configs, names)):
         rprint(f"Plotting for Config: {config}, Name: {name}")
 
@@ -283,16 +358,41 @@ def main():
         variables = args.variables if args.variables is not None else [None]
         last_x = np.array([])
         axes_with_extrapolated = {}  # ax -> [(iterable_label, color), ...]
+        comparable_style_map = {}  # comparable_label -> linestyle
+        subset_by_variable = {}  # variable idx -> a representative variable-filtered dataframe
         # Drop None values from df in iterable column
         iterable_column = str(args.iterable)
         df_config = df_config[df_config[iterable_column].notna()]
         iterable_values = df_config[args.iterable].unique()
-        two_line_mode = iterable_values.size == 2
+        reduce_active = iterable_values.size > 8 and args.reduce
+        color_idx_by_iterable = {
+            value: color_idx
+            for color_idx, value in enumerate(
+                v for j, v in enumerate(iterable_values) if not (reduce_active and j % 2 == 1)
+            )
+        }
+
+        comparable_col = getattr(args, "comparable", None)
+        global_comparable_values = np.array([])
+        if comparable_col is not None and comparable_col in df_config.columns:
+            # Derive legend values from the already-filtered dataframe so that
+            # any --remove_value / --select filtering (including type coercion)
+            # is applied consistently with what filter_dataframe does.
+            _df_filtered_for_legend = filter_dataframe(df_config, args)
+            global_comparable_values = (
+                _df_filtered_for_legend[comparable_col].dropna().unique()
+                if comparable_col in _df_filtered_for_legend.columns
+                else np.array([])
+            )
+
+            if len(global_comparable_values) > 1:
+                for _gidx, _gval in enumerate(global_comparable_values):
+                    comparable_style_map[str(_gval)] = _resolve_comparable_linestyle(_gidx, args, n_total=len(global_comparable_values))
 
         for (idx, variable), (jdx, iterable) in product(
             enumerate(variables), enumerate(iterable_values)
         ):
-            if iterable_values.size > 8 and args.reduce:
+            if reduce_active:
                 if jdx % 2 == 1:
                     rprint(
                         f"\tSkipping plotting for {args.iterable}={iterable} to avoid overcrowding"
@@ -323,21 +423,16 @@ def main():
             else:
                 df_iterable = df_config.copy()
 
-            comparable_col = getattr(args, "comparable", None)
-            comparable_mode = False
-            comparable_values = np.array([])
-            if comparable_col is not None:
-                if comparable_col not in df_iterable.columns:
-                    if args.debug:
-                        rprint(
-                            f"[yellow]Warning:[/yellow] Comparable column '{comparable_col}' not found. Falling back to a single line."
-                        )
-                else:
-                    comparable_values = df_iterable[comparable_col].dropna().unique()
-                    comparable_mode = comparable_values.size > 0
+            subset_by_variable.setdefault(idx, df_iterable)
+
+            comparable_mode = comparable_col is not None and global_comparable_values.size > 0
+            if comparable_col is not None and comparable_col not in df_iterable.columns and args.debug:
+                rprint(
+                    f"[yellow]Warning:[/yellow] Comparable column '{comparable_col}' not found. Falling back to a single line."
+                )
 
             if comparable_mode:
-                for sdx, comparable_value in enumerate(comparable_values):
+                for sdx, comparable_value in enumerate(global_comparable_values):
                     df_iterable_comparable = df_iterable[
                         df_iterable[comparable_col] == comparable_value
                     ]
@@ -410,22 +505,19 @@ def main():
                         len(iterable_values),
                     )
                     comparable_label = str(comparable_value)
-                    if len(comparable_values) > 1:
-                        iterable_label = f"{iterable_label} ({comparable_col}={comparable_label})"
+                    comparable_linestyle = _resolve_comparable_linestyle(sdx, args, n_total=len(global_comparable_values))
 
                     iterable_color = (
-                        f"C{jdx}"
-                        if two_line_mode
-                        else map_iterable_color(iterable, getattr(args, "iterable_color_mapping", None))
+                        map_iterable_color(iterable, getattr(args, "iterable_color_mapping", None))
+                        or f"C{color_idx_by_iterable[iterable]}"
                     )
-                    comparable_linestyle = _resolve_comparable_linestyle(sdx, args)
 
                     if args.plot_type is not None:
                         rprint(
-                            f"\tPlotting {len(x)} points with explicit plot_type={args.plot_type} for {args.iterable}={iterable} ({comparable_col}={comparable_label}), Variable={variable}"
+                            f"\tPlotting {len(x)} points with explicit plot_type={args.plot_type} for {args.iterable}={iterable} ({comparable_col}={comparable_label}), Variable={variable} | color={iterable_color}, linestyle={comparable_linestyle}"
                         )
 
-                        plot_label = iterable_label if idx == n_vars - 1 else None
+                        plot_label = iterable_label if (idx == n_vars - 1 and sdx == 0) else None
 
                         if args.plot_type == "line":
                             if extrapolated_mask.any():
@@ -470,7 +562,7 @@ def main():
                                 x,
                                 y=y,
                                 errory=x_error,
-                                label=iterable_label if idx == n_vars - 1 else None,
+                                label=iterable_label if (idx == n_vars - 1 and sdx == 0) else None,
                                 color=iterable_color,
                                 plot_type="bar",
                                 bottom=bottom,
@@ -483,7 +575,7 @@ def main():
                                 x,
                                 y=y,
                                 errory=x_error,
-                                label=iterable_label if idx == n_vars - 1 else None,
+                                label=iterable_label if (idx == n_vars - 1 and sdx == 0) else None,
                                 color=iterable_color,
                                 plot_type="errorbar",
                                 fmt="o",
@@ -499,7 +591,7 @@ def main():
                                 ax_current,
                                 x,
                                 y=y,
-                                label=iterable_label if idx == n_vars - 1 else None,
+                                label=iterable_label if (idx == n_vars - 1 and sdx == 0) else None,
                                 color=iterable_color,
                                 plot_type="bar",
                                 bottom=bottom,
@@ -511,7 +603,7 @@ def main():
                                 ax_current,
                                 x,
                                 y=y,
-                                label=iterable_label if idx == n_vars - 1 else None,
+                                label=iterable_label if (idx == n_vars - 1 and sdx == 0) else None,
                                 color=iterable_color,
                                 plot_type="line",
                                 linestyle=comparable_linestyle,
@@ -585,9 +677,8 @@ def main():
                 len(iterable_values),
             )
             iterable_color = (
-                f"C{jdx}"
-                if two_line_mode
-                else map_iterable_color(iterable, getattr(args, "iterable_color_mapping", None))
+                map_iterable_color(iterable, getattr(args, "iterable_color_mapping", None))
+                or f"C{color_idx_by_iterable[iterable]}"
             )
 
             if args.plot_type is not None:
@@ -783,6 +874,7 @@ def main():
         _has_categorical_ylabels = False
         for idx, variable in enumerate(variables):
             ax_current = ax_flat[idx]
+            label_subset = subset_by_variable.get(idx, df)
 
             if n_vars > 1:
                 ax_current.set_title(
@@ -795,9 +887,9 @@ def main():
             # (category per horizontal bar), everything else puts them on x.
             _categorical_axis = "y" if args.plot_type == "barh" else "x"
             if args.plot_type == "barh":
-                ax_current.set_xlabel(resolve_axis_label(args.labely, args.y, df))
+                ax_current.set_xlabel(resolve_axis_label(args.labely, args.y, label_subset))
             else:
-                ax_current.set_xlabel(resolve_axis_label(args.labelx, args.x, df))
+                ax_current.set_xlabel(resolve_axis_label(args.labelx, args.x, label_subset))
             _x_is_categorical = (
                 (isinstance(last_x, np.ndarray) and last_x.dtype.kind in ('U', 'S', 'O'))
                 or (isinstance(last_x, pd.Series) and not pd.api.types.is_numeric_dtype(last_x))
@@ -813,9 +905,9 @@ def main():
 
             (
                 ax_current.set_ylabel(
-                    resolve_axis_label(args.labelx, args.x, df)
+                    resolve_axis_label(args.labelx, args.x, label_subset)
                     if args.plot_type == "barh"
-                    else resolve_axis_label(args.labely, args.y, df)
+                    else resolve_axis_label(args.labely, args.y, label_subset)
                 )
                 if idx % ncols == 0
                 else None
@@ -839,36 +931,35 @@ def main():
             if iterable_values.size > 1:
                 if args.stacked:
                     if idx == n_vars - 1:
-                        apply_legend_style(
+                        main_handles, main_labels = ax_current.get_legend_handles_labels()
+                        _apply_iterable_legend(
                             ax_current,
-                            title=args.labelz if args.labelz is not None else args.iterable,
+                            args.labelz if args.labelz is not None else args.iterable,
+                            main_handles,
+                            main_labels,
+                            comparable_col,
+                            comparable_style_map,
+                            getattr(args, "capitalize_legend", False),
                             loc="upper left",
                             bbox_to_anchor=(0, 1),
-                            capitalize_labels=getattr(args, "capitalize_legend", False),
                         )
                 else:
                     if idx == n_vars - 1:
-                        source_legend = apply_legend_style(
-                            ax_current,
-                            title=args.labelz if args.labelz is not None else args.iterable,
-                            capitalize_labels=getattr(args, "capitalize_legend", False),
-                        )
+                        main_handles, main_labels = ax_current.get_legend_handles_labels()
                         if ax_current in axes_with_extrapolated:
-                            existing = ax_current.get_legend()
-                            if existing is not None:
-                                handles = list(existing.legend_handles)
-                                labels = [t.get_text() for t in existing.get_texts()]
-                                for lbl, color in axes_with_extrapolated[ax_current]:
-                                    proxy = mlines.Line2D([], [], color=color, linestyle=_EXTRAPOLATED_LINESTYLE, linewidth=1)
-                                    handles.append(proxy)
-                                    labels.append(f"{lbl} Extrapolated")
-                                apply_legend_style(
-                                    ax_current,
-                                    title=args.labelz if args.labelz is not None else args.iterable,
-                                    handles=handles,
-                                    labels=labels,
-                                    capitalize_labels=getattr(args, "capitalize_legend", False),
-                                )
+                            for lbl, color in axes_with_extrapolated[ax_current]:
+                                proxy = mlines.Line2D([], [], color=color, linestyle=_EXTRAPOLATED_LINESTYLE, linewidth=1)
+                                main_handles.append(proxy)
+                                main_labels.append(f"{lbl} Extrapolated")
+                        _apply_iterable_legend(
+                            ax_current,
+                            args.labelz if args.labelz is not None else args.iterable,
+                            main_handles,
+                            main_labels,
+                            comparable_col,
+                            comparable_style_map,
+                            getattr(args, "capitalize_legend", False),
+                        )
 
             draw_horizontal_lines(
                 ax_current,

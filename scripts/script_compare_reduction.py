@@ -39,10 +39,12 @@ add_common_args(
         "reduce",
         "select",
         "save_values",
+        "remove_value",
         "bins",
         "percentile",
         "labelx",
         "labely",
+        "labelz",
         "logx",
         "logy",
         "rangex",
@@ -170,6 +172,7 @@ def main():
         hist_range = None
         variables = args.variables if args.variables is not None else [None]
         iterables = args.iterable if args.iterable is not None else [None]
+        subset_by_variable = {}
 
         for (idx, variable), (jdx, iterable) in product(
             enumerate(variables),
@@ -207,6 +210,7 @@ def main():
                 df_iterable = df_config.copy()
 
             subset = filter_dataframe(df_iterable, args)
+            subset_by_variable.setdefault(idx, subset)
             x = subset[args.x].values[0]  # Convert to NumPy array
             y = subset[args.y].values[0]  # Convert to NumPy array
 
@@ -329,9 +333,10 @@ def main():
                     fontsize=subtitlefontsize,
                 )
 
-            ax_current.set_xlabel(resolve_axis_label(args.labelx, args.x, df))
+            label_subset = subset_by_variable.get(idx, df)
+            ax_current.set_xlabel(resolve_axis_label(args.labelx, args.x, label_subset))
             (
-                ax_current.set_ylabel(resolve_axis_label(args.labely, args.y, df))
+                ax_current.set_ylabel(resolve_axis_label(args.labely, args.y, label_subset))
                 if idx == 0
                 else None
             )
@@ -358,9 +363,10 @@ def main():
                 ax_current.semilogx()
 
             if idx == ncols - 1:
+                legend_title = args.labelz if args.labelz is not None else args.iterable
                 apply_legend_style(
                     ax_current,
-                    title=args.iterable,
+                    title=legend_title,
                     capitalize_labels=getattr(args, "capitalize_legend", False),
                 )
 

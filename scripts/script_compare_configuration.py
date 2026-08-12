@@ -36,6 +36,7 @@ add_common_args(
         "iterable",
         "select",
         "save_values",
+        "remove_value",
         "x",
         "rangex",
         "rangey",
@@ -56,9 +57,13 @@ add_common_args(
         "xtick",
         "xtick_label",
         "xtick_height",
+        "xtick_side",
+        "xtick_edge",
         "ytick",
         "ytick_label",
         "ytick_height",
+        "ytick_side",
+        "ytick_edge",
         "square",
         "square_label",
         "square_style",
@@ -83,7 +88,7 @@ add_common_args(
         },
         "names": {"flags": ["--names"]},
         "x": {"default": "Values"},
-        "plot_type": {"default": "step", "choices": ["scatter", "line", "step"], "help": "Style of errors."},
+        "plot_type": {"default": "step", "choices": ["scatter", "line", "step", "plot", "errorbar", "bar", "barh"], "help": "Plot type for data series."},
         "labelx": {"nargs": "+"},
         "output": {"help": "Output filepath for the plot"},
         "debug": {"flags": ["--debug"]},
@@ -846,9 +851,9 @@ def main():
             ax_current.set_title(plot_subtitle, fontsize=subtitlefontsize)
 
         _explicit_x = args.labelx[idx] if args.labelx and len(args.labelx) == ncols else (args.labelx[0] if args.labelx else None)
-        ax_current.set_xlabel(resolve_axis_label(_explicit_x, args.x, df))
+        ax_current.set_xlabel(resolve_axis_label(_explicit_x, args.x, subset))
         if idx == 0:
-            ax_current.set_ylabel(resolve_axis_label(args.labely or None, args.y, df))
+            ax_current.set_ylabel(resolve_axis_label(args.labely or None, args.y, subset))
 
         # Set y-axis limits based on the y variable
         if args.rangex is not None:
@@ -906,6 +911,8 @@ def main():
             getattr(args, "xtick", None),
             getattr(args, "xtick_label", None),
             height=getattr(args, "xtick_height", None) or 0.09,
+            side=getattr(args, "xtick_side", None),
+            edge=getattr(args, "xtick_edge", None),
         )
         set_axis_tick_labels(
             ax_current,
@@ -913,6 +920,8 @@ def main():
             getattr(args, "ytick", None),
             getattr(args, "ytick_label", None),
             height=getattr(args, "ytick_height", None) or 0.09,
+            side=getattr(args, "ytick_side", None),
+            edge=getattr(args, "ytick_edge", None),
         )
 
         point_values = parse_point_pairs(getattr(args, "point", None))

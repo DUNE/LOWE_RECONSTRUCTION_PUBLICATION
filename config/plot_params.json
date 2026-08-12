@@ -84,6 +84,7 @@
       "vd_1x8x14_3view_30deg_nominal": "Top",
       "vd_1x8x14_3view_30deg_shielded": "Bottom Shielded"
     },
+    
     "config_color": {
       "hd_1x2x6": "C1",
       "hd_1x2x6_lateralAPA": "C3",
@@ -92,6 +93,7 @@
       "vd_1x8x14_3view_30deg_nominal": "C2",
       "vd_1x8x14_3view_30deg_shielded": "C4"
     },
+
     "config_line": {
       "hd_1x2x6": "-",
       "hd_1x2x6_lateralAPA": "-",
@@ -100,23 +102,56 @@
       "vd_1x8x14_3view_30deg_nominal": "-",
       "vd_1x8x14_3view_30deg_shielded": "-"
     },
+
     "name_color": {
       "gamma": "C0",
-      "electron": "C1",
-      "neutron": "C2",
-      "proton": "C3",
-      "alpha": "C4",
+      "electron": "C3",
+      "neutron": "C4",
+      "proton": "C1",
+      "alpha": "C2",
+      "radiological": "C7",
       "marley": "C5",
       "marley_official": "C5",
-      "neutrino": "C6"
+      "neutrino": "C6",
+      "marley_exponent0": "C0",
+      "marley_exponent1": "C1",
+      "marley_exponent2": "C2",
+      "marley_maximum": "C3"
     },
+
+    "name_dict": {
+      "marley_exponent0": "Minimum Error ($\\alpha=0$)",
+      "marley_exponent1": "Minimum Relative Error ($\\alpha=1$)",
+      "marley_exponent2": "Weighted Relative Error ($\\alpha=2$)",
+      "marley_maximum": "Maximum PE ($\\alpha\\to\\infty$)"
+    },
+    
     "particle_dict": {
-      "11": "electron",
+      "11": "e-",
+      "-11": "e+",
+      "12": "nu(e)",
+      "-12": "nu(e)~",
+      "13": "mu-",
+      "-13": "mu+",
       "22": "gamma",
-      "2112": "neutron",
-      "2212": "proton",
-      "1000020040": "alpha"
+      "2112": "n",
+      "2212": "p",
+      "1000020040": "He4"
     },
+    
+    "particle_color": {
+      "e-": "C3",
+      "e+": "C7",
+      "nu(e)": "C5",
+      "nu(e)~": "C6",
+      "mu-": "C8",
+      "mu+": "C9",
+      "gamma": "C0",
+      "n": "C4",
+      "p": "C1",
+      "He4": "C2"
+    },
+
     "simple_plane_dict": {
       "-1": "Total",
       "0": "APA"
@@ -129,26 +164,43 @@
       "3": "FrontCap",
       "4": "EndCap"
     },
+    "background_dict": {
+      "Ar39": "Ar39",
+      "Kr85": "Kr85",
+      "Ar42": "Ar42",
+      "Rn22X": "Rn22X",
+      "CPA": "CPA",
+      "APA": "APA",
+      "Gamma": "Ext. Gamma",
+      "Neutron": "Ext. Neutron"
+    },
     "config_order": [
       "HD Signal",
       "HD Lateral",
       "HD Central",
       "VD Signal",
       "VD Top",
-      "VD Bottom"
+      "VD Bottom",
+      "VD Bottom Shielded"
     ],
     "particle_order": [
       "marley",
       "neutrino",
       "alpha",
       "gamma",
-      "neutron"
+      "neutron",
+      "radiological"
     ],
     "interaction_names": {
+      "CC": "CC: $\\nu$ Ar40",
+      "ES": "ES: $\\nu$ e",
+      "NC": "NC: $\\nu$ Ar40",
       "xs_nue_Ar40": "CC: $\\nu_e$ Ar40",
+      "xs_nuebar_Ar40": "CC: $\\bar{\\nu}_e$ Ar40",
       "xs_nue_e": "ES: $\\nu_e$ e",
-      "xs_nc_nue_Ar40": "NC: $\\nu_e$ Ar40",
-      "xs_nuebar_Ar40": "CC: $\\bar{\\nu}_e$ Ar40"
+      "xs_nuebar_e": "ES: $\\bar{\\nu}_e$ e",
+      "xs_numu_nutau_e": "ES: $\\nu_{\\mu ,\\nu_\\tau}$ e",
+      "xs_nc_nue_Ar40": "NC: $\\nu_x$ Ar40"
     }
   }
 }

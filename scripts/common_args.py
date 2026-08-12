@@ -159,6 +159,14 @@ COMMON_ARG_SPECS = {
             "help": "Values used alongside --select filtering",
         },
     },
+    "remove_value": {
+        "flags": ["--remove_value"],
+        "kwargs": {
+            "nargs": "+",
+            "default": None,
+            "help": "Values used alongside --select to remove matching rows instead of keeping them",
+        },
+    },
     "x": {
         "flags": ["-x"],
         "kwargs": {
@@ -299,6 +307,18 @@ COMMON_ARG_SPECS = {
             "help": "Enable zoom behavior",
         },
     },
+    "norm": {
+        "flags": ["--norm"],
+        "kwargs": {
+            "type": str,
+            "choices": ["global", "horizontal", "vertical", "combined"],
+            "default": None,
+            "help": "Normalize the 2D histogram: 'global' makes the whole histogram sum to 1, "
+            "'horizontal' normalizes each y-slice so it sums to 1 across x, "
+            "'vertical' normalizes each x-slice so it sums to 1 across y, "
+            "'combined' divides each bin by the sum of its own row and column totals",
+        },
+    },
     "matchx": {
         "flags": ["--matchx"],
         "kwargs": {
@@ -414,6 +434,28 @@ COMMON_ARG_SPECS = {
             "raise/lower to fit them in the space before the fixed-position x-axis title",
         },
     },
+    "xtick_side": {
+        "flags": ["--xtick_side"],
+        "kwargs": {
+            "type": str,
+            "choices": ["below", "above"],
+            "nargs": "+",
+            "default": None,
+            "help": "Place custom x-tick label(s) below or above the axis line they're anchored to "
+            "(default: below); one per --xtick value, reusing the last if shorter",
+        },
+    },
+    "xtick_edge": {
+        "flags": ["--xtick_edge"],
+        "kwargs": {
+            "type": str,
+            "choices": ["bottom", "top"],
+            "nargs": "+",
+            "default": None,
+            "help": "Anchor custom x-tick label(s) to the bottom or top axis line (default: bottom); "
+            "one per --xtick value, reusing the last if shorter",
+        },
+    },
     "ytick": {
         "flags": ["--ytick"],
         "kwargs": {
@@ -439,6 +481,28 @@ COMMON_ARG_SPECS = {
             "default": None,
             "help": "How far (axes fraction) custom y-tick labels sit left of the axis; "
             "raise/lower to fit them in the space before the fixed-position y-axis title",
+        },
+    },
+    "ytick_side": {
+        "flags": ["--ytick_side"],
+        "kwargs": {
+            "type": str,
+            "choices": ["left", "right"],
+            "nargs": "+",
+            "default": None,
+            "help": "Place custom y-tick label(s) left or right of the axis line they're anchored to "
+            "(default: left); one per --ytick value, reusing the last if shorter",
+        },
+    },
+    "ytick_edge": {
+        "flags": ["--ytick_edge"],
+        "kwargs": {
+            "type": str,
+            "choices": ["left", "right"],
+            "nargs": "+",
+            "default": None,
+            "help": "Anchor custom y-tick label(s) to the left or right axis line (default: left); "
+            "one per --ytick value, reusing the last if shorter",
         },
     },
     "square": {
@@ -477,6 +541,44 @@ COMMON_ARG_SPECS = {
             "nargs": "+",
             "default": None,
             "help": "Color(s) for square edge(s) (e.g. gray red C0), one per square",
+        },
+    },
+    "line": {
+        "flags": ["--line"],
+        "kwargs": {
+            "nargs": "+",
+            "type": float,
+            "action": "append",
+            "default": None,
+            "metavar": "LINE",
+            "help": "Draw custom line segment(s) as float values grouped into x1 y1 x2 y2 (endpoints); supports 4, 8, 12... values",
+        },
+    },
+    "line_label": {
+        "flags": ["--line_label"],
+        "kwargs": {
+            "nargs": "+",
+            "type": str,
+            "default": None,
+            "help": "Label(s) for line(s); one label per line",
+        },
+    },
+    "line_style": {
+        "flags": ["--line_style"],
+        "kwargs": {
+            "type": str,
+            "nargs": "+",
+            "default": None,
+            "help": "Linestyle(s) for line(s) (e.g. -- : -. -), one per line",
+        },
+    },
+    "line_color": {
+        "flags": ["--line_color"],
+        "kwargs": {
+            "type": str,
+            "nargs": "+",
+            "default": None,
+            "help": "Color(s) for line(s) (e.g. gray red C0), one per line",
         },
     },
     "point": {
@@ -610,6 +712,44 @@ _MISSING_ITERABLE_MAPPING_WARNING_SHOWN = False
 _MISSING_MAPPING_WARNINGS_SHOWN = set()
 
 
+_ELEMENT_SYMBOLS = {
+    1: "H", 2: "He", 3: "Li", 4: "Be", 5: "B", 6: "C", 7: "N", 8: "O", 9: "F", 10: "Ne",
+    11: "Na", 12: "Mg", 13: "Al", 14: "Si", 15: "P", 16: "S", 17: "Cl", 18: "Ar", 19: "K", 20: "Ca",
+    21: "Sc", 22: "Ti", 23: "V", 24: "Cr", 25: "Mn", 26: "Fe", 27: "Co", 28: "Ni", 29: "Cu", 30: "Zn",
+    31: "Ga", 32: "Ge", 33: "As", 34: "Se", 35: "Br", 36: "Kr",
+}
+
+
+def _decode_nuclear_pdgid(value):
+    """Decode a 10-digit nuclear/ion PDG code (format +-10LZZZAAAI) into '<Symbol><A>' (e.g. 'Ar40'),
+    or '<Symbol><A>~' for the anti-nucleus, or None.
+
+    Follows the same PDG nuclear-code convention, and the same '<Symbol><A>'/'~' naming, as the
+    `particle` package's Particle.from_pdgid().name (e.g. Particle.from_pdgid(1000180400).name ==
+    'Ar40'), which CIEMAT-Neutrino/SOLAR's lib/solar.py get_pdg_name() uses directly. Reimplemented
+    without that dependency since this repo has none installed.
+    """
+    try:
+        code = int(value)
+    except (TypeError, ValueError):
+        return None
+
+    sign = -1 if code < 0 else 1
+    code = abs(code)
+    digits = str(code)
+    if len(digits) != 10 or digits[:2] != "10":
+        return None
+
+    z = int(digits[3:6])
+    a = int(digits[6:9])
+    symbol = _ELEMENT_SYMBOLS.get(z)
+    if symbol is None or a == 0:
+        return None
+
+    label = f"{symbol}{a}"
+    return f"{label}~" if sign < 0 else label
+
+
 def map_iterable_label(iterable_value, iterable_name, mapping_name=None, unique_iterables_count=None):
     """Map iterable values to display labels.
 
@@ -654,7 +794,12 @@ def map_iterable_label(iterable_value, iterable_name, mapping_name=None, unique_
         return _lookup(mapping_dict, iterable_value)
 
     if iterable_name == "PDG":
-        return _lookup(_particle_dict, iterable_value)
+        label = _lookup(_particle_dict, iterable_value)
+        if label == str(iterable_value):
+            nuclear_label = _decode_nuclear_pdgid(iterable_value)
+            if nuclear_label is not None:
+                return nuclear_label
+        return label
 
     if iterable_name == "Plane":
         if unique_iterables_count is not None and unique_iterables_count > 2:
@@ -674,12 +819,16 @@ def map_label_key(value, mapping_name, key_type):
     return map_iterable_label(value, key_type, mapping_name)
 
 
-def map_iterable_color(iterable_value, mapping_name):
+def map_iterable_color(iterable_value, mapping_name, iterable_name=None):
     """Map iterable values to matplotlib colors.
 
     Args:
         iterable_value: Value to map
         mapping_name: Custom mapping dict name
+        iterable_name: Name of the iterable column (e.g., 'PDG'). When mapping_name is not given
+            and iterable_name == 'PDG', the value is routed through the particle_dict name lookup
+            and then particle_color, so the same PDG code always gets the same color regardless of
+            plotting order (mirrors map_iterable_label's built-in PDG handling).
 
     Returns:
         str or None: Color spec or None if not found
@@ -687,6 +836,11 @@ def map_iterable_color(iterable_value, mapping_name):
     _load_lib_imports()
 
     if mapping_name is None:
+        if iterable_name == "PDG":
+            particle_name = map_iterable_label(iterable_value, "PDG")
+            color_dict = _get_mapping_dict("particle_color")
+            if color_dict and particle_name in color_dict:
+                return _resolve_mapped_color(color_dict[particle_name])
         return None
 
     mapping_dict = _get_mapping_dict(mapping_name)
@@ -707,23 +861,33 @@ def map_iterable_color(iterable_value, mapping_name):
 
 
 def _format_unit(unit):
-    """Wrap unit in math-mode delimiters if it contains LaTeX commands."""
+    """Wrap unit in math-mode delimiters if it contains LaTeX commands.
+
+    Handles partially-math strings like ``$\\mu$s`` by extracting the content
+    of inline ``$...$`` pairs and re-wrapping the whole unit in a single block.
+    """
     if not unit:
         return unit
-    if unit.startswith("$") and unit.endswith("$"):
+    # Already a single, complete math-mode block — return as-is.
+    if re.fullmatch(r'\$[^$]+\$', unit):
         return unit
-    if re.search(r"\\[a-zA-Z]+|[\^_]\{", unit):
-        return f"${unit}$"
+    # Contains LaTeX commands or partial math delimiters — normalise and wrap.
+    if re.search(r'\\[a-zA-Z]+|[\^_]\{|\$', unit):
+        # Replace inline $...$ pairs with their content (adding a trailing space
+        # so e.g. "$\mu$s" becomes "\mu s" rather than "\mus").
+        cleaned = re.sub(r'\$([^$]*)\$', r'\1 ', unit).strip()
+        cleaned = cleaned.replace('$', '')
+        return f"${cleaned}$"
     return unit
 
 
 def resolve_axis_label(explicit_label, col_name, df=None):
     """Return axis label with unit from a *Unit column appended when available.
 
-    The unit is always appended to the base label (explicit or derived from col_name)
-    unless the unit string already appears in parentheses in the label.
-    Units containing LaTeX commands (e.g. \\sigma) are automatically wrapped in math mode.
-    Pass --labelx None (or --labely None) to suppress the axis label entirely.
+    The unit is appended unless the base label already ends with a parenthetical
+    group — which indicates the caller has already included unit information.
+    Units containing LaTeX commands (e.g. \\sigma, $\\mu$s) are normalised into
+    a single math-mode block automatically.
     """
     if explicit_label == "":
         return ""
@@ -736,7 +900,12 @@ def resolve_axis_label(explicit_label, col_name, df=None):
                 unit = str(units.iloc[0]).strip()
                 if unit:
                     formatted = _format_unit(unit)
-                    if f"({formatted})" not in base and f"({unit})" not in base:
+                    already_present = (
+                        f"({formatted})" in base
+                        or f"({unit})" in base
+                        or bool(re.search(r'\([^)]+\)\s*$', base))
+                    )
+                    if not already_present:
                         return f"{base} ({formatted})"
     return base
 

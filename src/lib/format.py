@@ -2,7 +2,7 @@ import sys
 import os
 import numpy as np
 import pandas as pd
-from . import config_dict, config_color, config_line, name_color
+from . import config_dict, config_color, config_line, name_color, name_dict
 
 
 def get_simple_title_from_script(args=None):
@@ -226,11 +226,14 @@ def make_config_label_from_args(args, config=None, name=None, iterable=None):
     
     # Get config label from dictionary
     config_label = config_dict.get(config, str(config)) if config is not None else None
-    
+
+    # Get human-readable label for name, falling back to the raw value
+    name_label = name_dict.get(name, str(name)) if name is not None else None
+
     # Get number of configs and names
     num_configs = len(args.configs) if hasattr(args, "configs") and args.configs else 0
     num_names = len(args.names) if hasattr(args, "names") and args.names else 0
-    
+
     # Apply naming logic based on number of configs and names
     if num_configs < 2 and num_names == 1:
         # Use geometry only
@@ -240,10 +243,10 @@ def make_config_label_from_args(args, config=None, name=None, iterable=None):
         geom_label = f"{geom.upper()}, {config_label}"
     elif num_configs == 1 and num_names > 1:
         # Use "GEOMETRY, NAME"
-        geom_label = f"{geom.upper()}, {name}"
+        geom_label = f"{geom.upper()}, {name_label}"
     else:
         # Use "GEOMETRY, CONFIG_LABEL, NAME"
-        geom_label = f"{geom.upper()}, {config_label}, {name}"
+        geom_label = f"{geom.upper()}, {config_label}, {name_label}"
     
     # Append iterable if provided
     if iterable is not None and hasattr(args, "iterable") and args.iterable is not None:

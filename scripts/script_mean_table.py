@@ -11,11 +11,11 @@ from _bootstrap import ensure_src_path
 ensure_src_path()
 
 from lib import *
-from lib.functions import resolution, gaussian, exponential_decay
+from lib.functions import resolution, gaussian, double_gaussian, exponential_decay
 from lib.selection import prepare_selection, filter_dataframe
 from lib.imports import import_data
 from lib.format import format_with_error
-from lib.exports import make_name_from_args
+from lib.exports import make_name_from_args, save_table_to_paths
 from lib.plot import apply_note_to_figure
 from common_args import add_common_args
 
@@ -34,6 +34,7 @@ add_common_args(
         "iterable",
         "select",
         "save_values",
+        "remove_value",
         "x",
         "rangex",
         "y",
@@ -97,6 +98,12 @@ parser.add_argument(
     default=None,
     help="Index of the columns to italicize in the table",
 ),
+
+parser.add_argument(
+    "--html",
+    action="store_true",
+    help="Also export the table as an HTML file (disabled by default)",
+)
 
 
 args = parser.parse_args()
@@ -259,8 +266,7 @@ def main():
     # Don't print the row index
     print(df_table.to_string(index=False))
 
-    output_dir = os.path.join(os.path.dirname(__file__), "..", "output", "tables")
-    os.makedirs(output_dir, exist_ok=True)
+    default_output_dir = os.path.join(os.path.dirname(__file__), "..", "output", "tables")
 
     # Italicize the specified column
     if args.it is not None and 0 <= args.it < df_table.shape[1]:
@@ -270,67 +276,70 @@ def main():
         df_table.iloc[:, args.emph] = "\\emph{" + df_table.iloc[:, args.emph] + "}"
 
     output_filename = make_name_from_args(args, prefix=None, suffix="table.tex")
-    df_table.to_latex(
-        os.path.join(output_dir, output_filename),
-        index=False,
-        column_format="l" + "c" * (df_table.shape[1] - 1),
-        multicolumn_format="c",
-        bold_rows=False,
-        escape=False,
-    )
 
-    print(f"Saving table to {os.path.join(output_dir, output_filename)}")
+    def _write_latex(path):
+        df_table.to_latex(
+            path,
+            index=False,
+            column_format="l" + "c" * (df_table.shape[1] - 1),
+            multicolumn_format="c",
+            bold_rows=False,
+            escape=False,
+        )
 
-    # Export to HTML as well
-    output_html_filename = make_name_from_args(args, prefix=None, suffix="table.html")
-    html_output_path = os.path.join(output_dir, output_html_filename)
-    
-    # Create a styled HTML table
-    html_content = """
-    <!DOCTYPE html>
-    <html>
-    <head>
-        <meta charset="UTF-8">
-        <style>
-            body {
-                font-family: Arial, sans-serif;
-                margin: 20px;
-            }
-            table {
-                border-collapse: collapse;
-                margin-top: 20px;
-            }
-            th, td {
-                border: 1px solid #ddd;
-                padding: 8px;
-                text-align: center;
-            }
-            th {
-                background-color: #4CAF50;
-                color: white;
-            }
-            tr:nth-child(even) {
-                background-color: #f2f2f2;
-            }
-            tr:hover {
-                background-color: #ddd;
-            }
-            td:first-child, th:first-child {
-                text-align: left;
-            }
-        </style>
-    </head>
-    <body>
-        <h1>Mean Table Data</h1>
-    """ + df_table.to_html(index=False, border=0) + """
-    </body>
-    </html>
-    """
-    
-    with open(html_output_path, "w") as f:
-        f.write(html_content)
-    
-    print(f"Saving HTML table to {html_output_path}")
+    save_table_to_paths(_write_latex, args.output, output_filename, default_output_dir)
+
+    # Export to HTML only if explicitly requested
+    if args.html:
+        output_html_filename = make_name_from_args(args, prefix=None, suffix="table.html")
+
+        # Create a styled HTML table
+        html_content = """
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <meta charset="UTF-8">
+            <style>
+                body {
+                    font-family: Arial, sans-serif;
+                    margin: 20px;
+                }
+                table {
+                    border-collapse: collapse;
+                    margin-top: 20px;
+                }
+                th, td {
+                    border: 1px solid #ddd;
+                    padding: 8px;
+                    text-align: center;
+                }
+                th {
+                    background-color: #4CAF50;
+                    color: white;
+                }
+                tr:nth-child(even) {
+                    background-color: #f2f2f2;
+                }
+                tr:hover {
+                    background-color: #ddd;
+                }
+                td:first-child, th:first-child {
+                    text-align: left;
+                }
+            </style>
+        </head>
+        <body>
+            <h1>Mean Table Data</h1>
+        """ + df_table.to_html(index=False, border=0) + """
+        </body>
+        </html>
+        """
+
+        def _write_html(path):
+            with open(path, "w") as f:
+                f.write(html_content)
+
+        save_table_to_paths(_write_html, args.output, output_html_filename, default_output_dir)
 
 
 if __name__ == "__main__":

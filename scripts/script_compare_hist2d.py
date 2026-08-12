@@ -16,7 +16,7 @@ from lib.selection import filter_dataframe
 from lib.exports import make_name_from_args, save_figure_to_paths
 from lib.format import make_title_from_args, make_subtitle_from_args
 from lib.imports import import_data, prepare_import
-from lib.plot import apply_scientific_threshold_formatter, plot_data, create_common_subplots, apply_note_to_figure, add_centered_suptitle, draw_vertical_lines, draw_horizontal_lines, draw_squares, place_point_label
+from lib.plot import apply_scientific_threshold_formatter, plot_data, create_common_subplots, apply_note_to_figure, add_centered_suptitle, draw_vertical_lines, draw_horizontal_lines, draw_squares, draw_lines, place_point_label
 
 from common_args import add_common_args, resolve_axis_label
 
@@ -39,6 +39,7 @@ add_common_args(
         "iterable",
         "select",
         "save_values",
+        "remove_value",
         "bins",
         "labelx",
         "labely",
@@ -48,6 +49,7 @@ add_common_args(
         "rangez",
         "logz",
         "density",
+        "norm",
         "zoom",
         "matchx",
         "matchy",
@@ -63,6 +65,10 @@ add_common_args(
         "square_label",
         "square_style",
         "square_color",
+        "line",
+        "line_label",
+        "line_style",
+        "line_color",
         "title",
         "output",
         "subfolder",
@@ -90,6 +96,56 @@ parser.add_argument(
 
 
 args = parser.parse_args()
+
+
+def normalize_hist2d(h, mode):
+    """Normalize a 2D histogram (as returned by ax.hist2d) with shape (nx, ny).
+
+    - "global": the whole histogram sums to 1.
+    - "horizontal": each y-slice sums to 1 across x (axis 0).
+    - "vertical": each x-slice sums to 1 across y (axis 1).
+    - "combined": each bin is divided by the sum of its own row total
+      (horizontal, axis 0) and column total (vertical, axis 1).
+    """
+    if mode is None:
+        return h
+
+    h = h.astype(float)
+    if mode == "global":
+        total = h.sum()
+        return h / total if total != 0 else h
+    if mode == "horizontal":
+        sums = h.sum(axis=0, keepdims=True)
+        sums[sums == 0] = 1
+        return h / sums
+    if mode == "vertical":
+        sums = h.sum(axis=1, keepdims=True)
+        sums[sums == 0] = 1
+        return h / sums
+    if mode == "combined":
+        horizontal_sums = h.sum(axis=0, keepdims=True)
+        vertical_sums = h.sum(axis=1, keepdims=True)
+        sums = horizontal_sums + vertical_sums
+        sums[sums == 0] = 1
+        return h / sums
+    raise ValueError(f"Unknown norm mode: {mode}")
+
+
+def is_integer_valued(arr):
+    """True if arr's finite entries are all whole numbers (integer dtype, or floats with no fractional part)."""
+    if np.issubdtype(arr.dtype, np.integer):
+        return arr.size > 0
+    finite = arr[np.isfinite(arr)]
+    if finite.size == 0:
+        return False
+    return np.allclose(finite, np.round(finite))
+
+
+def integer_bin_edges(vmin, vmax):
+    """Bin edges giving one bin per integer value between vmin and vmax (inclusive), i.e. integer voxels."""
+    lo = int(np.floor(vmin))
+    hi = int(np.ceil(vmax))
+    return np.arange(lo, hi + 2) - 0.5
 
 
 def main():
@@ -135,6 +191,7 @@ def main():
         iterables = (
             df_config[args.iterable].unique() if args.iterable is not None else [None]
         )
+        subset_by_idx = {}
         for (idx, variable), (jdx, iterable) in product(
             enumerate(variables),
             enumerate(iterables) if args.iterable is not None else enumerate([None]),
@@ -165,6 +222,7 @@ def main():
                 df_iterable = df_config.copy()
 
             subset = filter_dataframe(df_iterable, args)
+            subset_by_idx[(idx, jdx)] = subset
 
             ranges = []
             if len(subset[args.x].values) > 1:
@@ -176,6 +234,16 @@ def main():
             x = np.array(subset[args.x].values[0])
             y = np.array(subset[args.y].values[0])
             z = np.array(subset[args.z].values[0]) if args.z is not None else None
+
+            if z is None:
+                valid_mask = np.isfinite(x) & np.isfinite(y)
+                if not valid_mask.all():
+                    n_dropped = (~valid_mask).sum()
+                    rprint(
+                        f"[yellow]Warning:[/yellow] Dropping {n_dropped} non-finite entries out of {len(valid_mask)}"
+                    )
+                x = x[valid_mask]
+                y = y[valid_mask]
 
             x_range = [
                 np.percentile(x, args.percentile[0]),
@@ -215,17 +283,30 @@ def main():
                 if args.rangez is not None:
                     mappable.set_clim(*args.rangez)
                 cbar = fig.colorbar(mappable, ax=ax_current)
-                z_label = resolve_axis_label(args.labelz, args.z, df)
+                z_label = resolve_axis_label(args.labelz, args.z, subset)
                 cbar.set_label(z_label if not args.logz else f"{z_label} (log scale)")
             else:
+                hist2d_kwargs = {"range": (x_range, y_range)}
+                if is_integer_valued(x) and is_integer_valued(y):
+                    x_edges = integer_bin_edges(x_range[0], x_range[1])
+                    y_edges = integer_bin_edges(y_range[0], y_range[1])
+                    hist2d_kwargs["bins"] = [x_edges, y_edges]
+                    if args.debug:
+                        rprint(
+                            f"[blue]Info:[/blue] Integer-valued x/y detected; using integer-width bins "
+                            f"({len(x_edges) - 1} x {len(y_edges) - 1})"
+                        )
                 hist2d = plot_data(
                     args,
                     ax_current,
                     x,
                     y=y,
                     plot_type="hist2d",
-                    range=(x_range, y_range),
+                    **hist2d_kwargs,
                 )
+                if args.norm is not None:
+                    h_norm = normalize_hist2d(hist2d[0], args.norm)
+                    hist2d[3].set_array(h_norm.T)
                 if not args.logz:
                     hist2d[3].set_array(
                         np.ma.masked_where(
@@ -247,10 +328,19 @@ def main():
                 ax_current.set_xlim(ranges[0])
                 ax_current.set_ylim(ranges[0])
         if z is None:
-            if args.density:
-                cbar.set_label("Density" if not args.logz else "Density (log scale)")
+            if args.norm is not None:
+                norm_labels = {
+                    "global": "Normalized Counts",
+                    "horizontal": "Normalized Counts (horizontal)",
+                    "vertical": "Normalized Counts (vertical)",
+                    "combined": "Normalized Counts (combined)",
+                }
+                base_label = norm_labels[args.norm]
+            elif args.density:
+                base_label = "Density"
             else:
-                cbar.set_label("Counts" if not args.logz else "Counts (log scale)")
+                base_label = "Counts"
+            cbar.set_label(base_label if not args.logz else f"{base_label} (log scale)")
         cbar.ax.yaxis.set_label_position("right")  # Move label to the left
 
         for (idx, variable), (jdx, iterable) in product(
@@ -271,11 +361,12 @@ def main():
                     fontsize=subtitlefontsize,
                 )
 
-            _xlabel = resolve_axis_label(args.labelx, args.x, df)
+            label_subset = subset_by_idx.get((idx, jdx), df)
+            _xlabel = resolve_axis_label(args.labelx, args.x, label_subset)
             if _xlabel == "Time":
                 _xlabel = r"Time ($\mu$s)"
             ax_current.set_xlabel(_xlabel)
-            ax_current.set_ylabel(resolve_axis_label(args.labely, args.y, df)) if idx == 0 else None
+            ax_current.set_ylabel(resolve_axis_label(args.labely, args.y, label_subset)) if idx == 0 else None
             if args.matchx:
                 ax_current.set_xlim(ranges[0])
             if args.matchy:
@@ -317,6 +408,22 @@ def main():
                 labels=square_labels,
                 styles=getattr(args, "square_style", None),
                 colors=getattr(args, "square_color", None),
+                fontsize=linelabelfontsize,
+            )
+
+            line_segments = parse_line_segments(getattr(args, "line", None))
+            line_labels, line_label_warning = normalize_line_labels(
+                getattr(args, "line_label", None), len(line_segments)
+            )
+            if line_label_warning is not None:
+                rprint(f"[yellow]Warning:[/yellow] {line_label_warning}")
+
+            draw_lines(
+                ax_current,
+                line_segments,
+                labels=line_labels,
+                styles=getattr(args, "line_style", None),
+                colors=getattr(args, "line_color", None),
                 fontsize=linelabelfontsize,
             )
 

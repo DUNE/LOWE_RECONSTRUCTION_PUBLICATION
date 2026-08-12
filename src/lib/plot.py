@@ -552,8 +552,11 @@ def apply_note_to_figure(fig, note_text, fontsize=None):
     return add_note_to_axes(main_axes[0], note_text, fontsize=fontsize)
 
 
-def _format_ref_value(v):
-    """Format a float reference-line value as a compact string label."""
+def format_ref_value(v):
+    """Format a float reference-line value as a compact string label.
+    Public so callers can opt into the same default formatting used by
+    draw_vertical_lines/draw_horizontal_lines when building their own labels.
+    """
     if v == int(v):
         return str(int(v))
     return f"{v:g}"
@@ -567,6 +570,67 @@ def _ref_line_get(seq, i, default):
     return seq[i] if i < len(seq) else seq[-1]
 
 
+def _measure_text_extent_data(ax, label, fontsize):
+    """Return (width, height) of `label` in data units at the current view."""
+    fig = ax.figure
+    try:
+        renderer = fig.canvas.get_renderer()
+    except AttributeError:
+        try:
+            fig.canvas.draw()
+            renderer = fig.canvas.get_renderer()
+        except Exception:
+            return None
+    except Exception:
+        return None
+
+    text = ax.text(0, 0, str(label), fontsize=fontsize, alpha=0)
+    try:
+        bbox = text.get_window_extent(renderer=renderer)
+    except Exception:
+        return None
+    finally:
+        text.remove()
+
+    inv = ax.transData.inverted()
+    p0 = inv.transform((0, 0))
+    p1 = inv.transform((bbox.width, bbox.height))
+    return abs(p1[0] - p0[0]), abs(p1[1] - p0[1])
+
+
+def _rects_overlap(a, b):
+    ax0, ax1, ay0, ay1 = a
+    bx0, bx1, by0, by1 = b
+    return not (ax1 <= bx0 or bx1 <= ax0 or ay1 <= by0 or by1 <= ay0)
+
+
+def _label_avoid_box(text_obj, ax, fontsize):
+    """Data-space bounding box of a placed label, for later collision checks."""
+    size = _measure_text_extent_data(ax, text_obj.get_text(), fontsize)
+    if size is None:
+        return None
+    width, height = size
+    x_text, y_text = text_obj.get_position()
+    ha = text_obj.get_ha()
+    va = text_obj.get_va()
+
+    if ha == "right":
+        bx0, bx1 = x_text - width, x_text
+    elif ha == "left":
+        bx0, bx1 = x_text, x_text + width
+    else:
+        bx0, bx1 = x_text - width / 2.0, x_text + width / 2.0
+
+    if va == "top":
+        by0, by1 = y_text - height, y_text
+    elif va == "bottom":
+        by0, by1 = y_text, y_text + height
+    else:
+        by0, by1 = y_text - height / 2.0, y_text + height / 2.0
+
+    return (bx0, bx1, by0, by1)
+
+
 def draw_vertical_lines(ax, values, labels=None, styles=None, colors=None, fontsize=None):
     """Draw one or more vertical reference lines on *ax*.
 
@@ -574,23 +638,29 @@ def draw_vertical_lines(ax, values, labels=None, styles=None, colors=None, fonts
     ``values`` by index; if shorter than ``values`` the last element is reused
     as a default.
 
-    Labels default to the numeric value of each line (e.g. "0", "800").
-    Pass ``labels=[]`` (empty list) to suppress all annotations.
+    No label is shown unless ``labels`` is explicitly provided. Use
+    ``format_ref_value`` to build default numeric-value labels yourself if
+    that's what a particular caller wants.
     """
     if values is None:
         return
     vals = values if isinstance(values, (list, tuple)) else [values]
 
+    avoid_boxes = []
     for i, v in enumerate(vals):
         color = _ref_line_get(colors, i, "gray")
         style = _ref_line_get(styles, i, "--")
-        label = _ref_line_get(labels, i, None) if labels is not None else _format_ref_value(v)
+        label = _ref_line_get(labels, i, None) if labels is not None else None
         xlim = ax.get_xlim()
         if v < xlim[0] or v > xlim[1]:
             ax.set_xlim(min(xlim[0], v), max(xlim[1], v))
         ax.axvline(v, color=color, linestyle=style, linewidth=1, zorder=5)
         if label:
-            place_vertical_label(ax, v, label, fontsize=fontsize)
+            text_obj = place_vertical_label(ax, v, label, fontsize=fontsize, avoid=avoid_boxes)
+            if text_obj is not None:
+                box = _label_avoid_box(text_obj, ax, fontsize)
+                if box is not None:
+                    avoid_boxes.append(box)
 
 
 def draw_horizontal_lines(ax, values, labels=None, styles=None, colors=None, fontsize=None):
@@ -600,12 +670,15 @@ def draw_horizontal_lines(ax, values, labels=None, styles=None, colors=None, fon
     ``values`` by index; if shorter than ``values`` the last element is reused
     as a default.
 
-    Annotations are suppressed by default. Pass ``labels`` explicitly to show them.
+    No label is shown unless ``labels`` is explicitly provided. Use
+    ``format_ref_value`` to build default numeric-value labels yourself if
+    that's what a particular caller wants.
     """
     if values is None:
         return
     vals = values if isinstance(values, (list, tuple)) else [values]
 
+    avoid_boxes = []
     for i, v in enumerate(vals):
         color = _ref_line_get(colors, i, "gray")
         style = _ref_line_get(styles, i, "--")
@@ -615,7 +688,11 @@ def draw_horizontal_lines(ax, values, labels=None, styles=None, colors=None, fon
             ax.set_ylim(min(ylim[0], v), max(ylim[1], v))
         ax.axhline(v, color=color, linestyle=style, linewidth=1, zorder=5)
         if label is not None and label:
-            place_horizontal_label(ax, v, label, fontsize=fontsize)
+            text_obj = place_horizontal_label(ax, v, label, fontsize=fontsize, avoid=avoid_boxes)
+            if text_obj is not None:
+                box = _label_avoid_box(text_obj, ax, fontsize)
+                if box is not None:
+                    avoid_boxes.append(box)
 
 
 def draw_squares(ax, quads, labels=None, styles=None, colors=None, fontsize=None, fill=False, alpha=None):
@@ -671,6 +748,46 @@ def draw_squares(ax, quads, labels=None, styles=None, colors=None, fontsize=None
             )
 
 
+def draw_lines(ax, segments, labels=None, styles=None, colors=None, fontsize=None):
+    """Draw one or more custom line segments on *ax*.
+
+    ``segments`` is a sequence of ``(x1, y1, x2, y2)`` tuples giving the two
+    endpoints of each line. Each positional list (``labels``, ``styles``,
+    ``colors``) is matched to ``segments`` by index; if shorter than
+    ``segments`` the last element is reused as a default.
+    """
+    if segments is None:
+        return
+    segments = list(segments)
+
+    for i, (x1, y1, x2, y2) in enumerate(segments):
+        color = _ref_line_get(colors, i, "gray")
+        style = _ref_line_get(styles, i, "--")
+        label = _ref_line_get(labels, i, None) if labels is not None else None
+
+        xlim = ax.get_xlim()
+        ylim = ax.get_ylim()
+        x_lo, x_hi = min(x1, x2), max(x1, x2)
+        y_lo, y_hi = min(y1, y2), max(y1, y2)
+        if x_lo < xlim[0] or x_hi > xlim[1]:
+            ax.set_xlim(min(xlim[0], x_lo), max(xlim[1], x_hi))
+        if y_lo < ylim[0] or y_hi > ylim[1]:
+            ax.set_ylim(min(ylim[0], y_lo), max(ylim[1], y_hi))
+
+        ax.plot([x1, x2], [y1, y2], color=color, linestyle=style, linewidth=default_linewidth, zorder=5)
+
+        if label:
+            ax.text(
+                (x1 + x2) / 2,
+                (y1 + y2) / 2,
+                str(label),
+                ha="center",
+                va="bottom",
+                fontsize=fontsize,
+                zorder=6,
+            )
+
+
 def _label_data_halfwidth(ax, axis, label, fontsize):
     """Estimate half the on-screen width/height of *label* in data units.
 
@@ -708,13 +825,21 @@ def _label_data_halfwidth(ax, axis, label, fontsize):
     return abs(p1[1] - p0[1]) / 2.0
 
 
-def _draw_pointer_tick_label(ax, axis, position, label, fontsize=None, height=0.09, color="black"):
+def _draw_pointer_tick_label(
+    ax, axis, position, label, fontsize=None, height=0.09, color="black", side=None, edge=None
+):
     """Draw a long tick-like arrow at `position` pointing at the axis, with
     `label` placed just beyond its tail (further out than a normal tick
     label). `height` is the single, user-tunable distance (axes fraction)
     from the axis to the label -- shrink it to fit the label in the space
     before a fixed-position axis title; the arrow tail sits just short of it,
     with only a small fixed cosmetic gap to the text.
+
+    `edge` selects which of the two parallel spines to anchor the pointer to
+    ("bottom"/"top" for `axis="x"`, "left"/"right" for `axis="y"`; defaults
+    to the conventional one). `side` selects which direction the label sits
+    relative to that spine ("below"/"above" for `axis="x"`, "left"/"right"
+    for `axis="y"`; defaults to pointing away from the plot).
     """
     if fontsize is None:
         fontsize = linelabelfontsize
@@ -723,17 +848,29 @@ def _draw_pointer_tick_label(ax, axis, position, label, fontsize=None, height=0.
     tail_offset = height - text_gap
 
     if axis == "x":
+        edge = edge or "bottom"
+        side = side or "below"
+        anchor = 0.0 if edge == "bottom" else 1.0
+        direction = -1.0 if side == "below" else 1.0
+
         trans = ax.get_xaxis_transform()
-        tail = (position, -tail_offset)
-        head = (position, 0.0)
-        text_xy = (position, -height)
-        ha, va = "center", "top"
+        tail = (position, anchor + direction * tail_offset)
+        head = (position, anchor)
+        text_xy = (position, anchor + direction * height)
+        ha = "center"
+        va = "top" if side == "below" else "bottom"
     else:
+        edge = edge or "left"
+        side = side or "left"
+        anchor = 0.0 if edge == "left" else 1.0
+        direction = -1.0 if side == "left" else 1.0
+
         trans = ax.get_yaxis_transform()
-        tail = (-tail_offset, position)
-        head = (0.0, position)
-        text_xy = (-height, position)
-        ha, va = "right", "center"
+        tail = (anchor + direction * tail_offset, position)
+        head = (anchor, position)
+        text_xy = (anchor + direction * height, position)
+        ha = "right" if side == "left" else "left"
+        va = "center"
 
     arrow = ax.annotate(
         "",
@@ -759,9 +896,16 @@ def _draw_pointer_tick_label(ax, axis, position, label, fontsize=None, height=0.
 
 
 def _expand_margins_for_artists(fig, artists, pad_px=4):
-    """Grow the figure's subplot margins just enough that *artists* aren't
-    clipped by the figure edge (used for pointer tick labels that sit
-    outside the normal tick-label margin)."""
+    """Grow the figure canvas (never the Axes box itself) just enough that
+    *artists* aren't clipped by the figure edge (used for pointer tick labels
+    that sit outside the normal tick-label margin).
+
+    Shrinking the subplot margins within a fixed-size figure would eat into
+    the plotted area -- i.e. `--xtick_height` would visibly shorten/narrow
+    the plot. Instead, the figure is enlarged by exactly the overflow amount
+    and the Axes box is kept at its original absolute (inch) size and shifted
+    to make room, so only the surrounding whitespace grows.
+    """
     try:
         renderer = fig.canvas.get_renderer()
     except Exception:
@@ -789,16 +933,36 @@ def _expand_margins_for_artists(fig, artists, pad_px=4):
     if not (left_deficit or right_deficit or bottom_deficit or top_deficit):
         return
 
+    dpi = fig.dpi
+    fig_w_in, fig_h_in = fig.get_figwidth(), fig.get_figheight()
+    left_in, right_in = left_deficit / dpi, right_deficit / dpi
+    bottom_in, top_in = bottom_deficit / dpi, top_deficit / dpi
+
     params = fig.subplotpars
+    # Absolute (inch) position of the current Axes box, to be preserved.
+    axes_left_in = params.left * fig_w_in
+    axes_right_in = params.right * fig_w_in
+    axes_bottom_in = params.bottom * fig_h_in
+    axes_top_in = params.top * fig_h_in
+
+    new_w_in = fig_w_in + left_in + right_in
+    new_h_in = fig_h_in + bottom_in + top_in
+
+    new_axes_left_in = axes_left_in + left_in
+    new_axes_bottom_in = axes_bottom_in + bottom_in
+    new_axes_right_in = new_axes_left_in + (axes_right_in - axes_left_in)
+    new_axes_top_in = new_axes_bottom_in + (axes_top_in - axes_bottom_in)
+
+    fig.set_size_inches(new_w_in, new_h_in, forward=True)
     fig.subplots_adjust(
-        left=params.left + left_deficit / fig_w if left_deficit else params.left,
-        right=params.right - right_deficit / fig_w if right_deficit else params.right,
-        bottom=params.bottom + bottom_deficit / fig_h if bottom_deficit else params.bottom,
-        top=params.top - top_deficit / fig_h if top_deficit else params.top,
+        left=new_axes_left_in / new_w_in,
+        right=new_axes_right_in / new_w_in,
+        bottom=new_axes_bottom_in / new_h_in,
+        top=new_axes_top_in / new_h_in,
     )
 
 
-def set_axis_tick_labels(ax, axis, values, labels, fontsize=None, height=0.09):
+def set_axis_tick_labels(ax, axis, values, labels, fontsize=None, height=0.09, side=None, edge=None):
     """Mark specific ``values`` on *axis* ("x" or "y") with a long pointer
     tick and a label placed beyond it, further out than the regular tick
     labels. Nearby automatic ticks that would visually collide with the new
@@ -806,6 +970,15 @@ def set_axis_tick_labels(ax, axis, values, labels, fontsize=None, height=0.09):
     `height` is the distance (axes fraction) from the axis to the label --
     the axis title's own position is never touched, so shrink `height` to
     fit the label within the fixed space before it.
+
+    `edge` picks which spine the pointer is anchored to ("bottom"/"top" for
+    `axis="x"`, "left"/"right" for `axis="y"`). `side` picks which direction
+    the label sits relative to that spine ("below"/"above" for `axis="x"`,
+    "left"/"right" for `axis="y"`). Both default to the conventional side
+    (outside the plot, on the usual axis). Either may be a single value
+    (applied to every tick) or a list matched to ``values`` by position,
+    reusing the last element when shorter (same convention as
+    ``vertical_style``/``vertical_color``).
     """
     if values is None or labels is None:
         return
@@ -817,6 +990,8 @@ def set_axis_tick_labels(ax, axis, values, labels, fontsize=None, height=0.09):
 
     vals = values if isinstance(values, (list, tuple)) else [values]
     labs = labels if isinstance(labels, (list, tuple)) else [labels]
+    sides = side if isinstance(side, (list, tuple)) else ([side] if side is not None else None)
+    edges = edge if isinstance(edge, (list, tuple)) else ([edge] if edge is not None else None)
 
     get_lim = ax.get_xlim if axis == "x" else ax.get_ylim
     get_ticks = ax.get_xticks if axis == "x" else ax.get_yticks
@@ -837,9 +1012,24 @@ def set_axis_tick_labels(ax, axis, values, labels, fontsize=None, height=0.09):
         if min(lim) - tol <= t <= max(lim) + tol
     ]
 
-    for v, label in zip(vals, labs):
+    # The regular tick labels only ever sit below the x-axis / left of the
+    # y-axis, so a custom label only risks colliding with them (and thus
+    # only needs to displace them) when it lands in that same spot.
+    default_side = "below" if axis == "x" else "left"
+    default_edge = "bottom" if axis == "x" else "left"
+
+    for i, (v, label) in enumerate(zip(vals, labs)):
         v = float(v)
         label = str(label)
+
+        if v < min(lim) or v > max(lim):
+            lim = (min(lim[0], v), max(lim[1], v))
+
+        resolved_side = _ref_line_get(sides, i, None) or default_side
+        resolved_edge = _ref_line_get(edges, i, None) or default_edge
+        if resolved_side != default_side or resolved_edge != default_edge:
+            continue
+
         halfwidth_new = _label_data_halfwidth(ax, axis, label, fontsize)
 
         def _too_close(t, l):
@@ -851,8 +1041,6 @@ def set_axis_tick_labels(ax, axis, values, labels, fontsize=None, height=0.09):
             return abs(t - v) <= max(gap, tol)
 
         existing = [(t, l) for t, l in existing if not _too_close(t, l)]
-        if v < min(lim) or v > max(lim):
-            lim = (min(lim[0], v), max(lim[1], v))
 
     remaining_ticks = sorted(t for t, _ in existing)
 
@@ -864,7 +1052,7 @@ def set_axis_tick_labels(ax, axis, values, labels, fontsize=None, height=0.09):
     set_ticks(remaining_ticks)
 
     drawn_artists = []
-    for v, label in zip(vals, labs):
+    for i, (v, label) in enumerate(zip(vals, labs)):
         arrow, text = _draw_pointer_tick_label(
             ax,
             axis,
@@ -872,6 +1060,8 @@ def set_axis_tick_labels(ax, axis, values, labels, fontsize=None, height=0.09):
             str(label),
             fontsize=fontsize,
             height=height,
+            side=_ref_line_get(sides, i, None),
+            edge=_ref_line_get(edges, i, None),
         )
         drawn_artists.extend([arrow, text])
 
@@ -881,7 +1071,7 @@ def set_axis_tick_labels(ax, axis, values, labels, fontsize=None, height=0.09):
     _expand_margins_for_artists(ax.figure, drawn_artists)
 
 
-def place_vertical_label(ax, x_value, label_text, fontsize=None, pad_fraction=0.02):
+def place_vertical_label(ax, x_value, label_text, fontsize=None, pad_fraction=0.02, avoid=None):
     """Place a label next to a vertical line at `x_value` in the least-populated vertical gap.
 
     The function inspects existing plotted data (lines, scatter collections, bars)
@@ -893,6 +1083,9 @@ def place_vertical_label(ax, x_value, label_text, fontsize=None, pad_fraction=0.
         label_text: text to display
         fontsize: optional font size
         pad_fraction: fraction of x-range to offset the label horizontally from the line
+        avoid: optional list of (x0, x1, y0, y1) data-space boxes (e.g. other
+            labels placed earlier in the same batch) the new label should not
+            overlap; it is nudged up/down until clear of all of them.
 
     Returns:
         matplotlib Text object or None
@@ -1045,6 +1238,36 @@ def place_vertical_label(ax, x_value, label_text, fontsize=None, pad_fraction=0.
         ha = "left"
         x_text = x0 + pad
 
+    if avoid:
+        size = _measure_text_extent_data(ax, text_str, fontsize)
+        if size is not None:
+            width, height = size
+            step = height * 1.4 if height > 0 else 0.06 * y_range
+
+            def _bbox_at(y_center):
+                if ha == "right":
+                    bx0, bx1 = x_text - width, x_text
+                else:
+                    bx0, bx1 = x_text, x_text + width
+                return (bx0, bx1, y_center - height / 2.0, y_center + height / 2.0)
+
+            candidate = y_text
+            direction = -1.0
+            magnitude = 1
+            attempts = 0
+            while (
+                any(_rects_overlap(_bbox_at(candidate), box) for box in avoid)
+                and attempts < 8
+            ):
+                candidate = float(
+                    np.clip(y_text + direction * magnitude * step, inner_min + margin, inner_max - margin)
+                )
+                direction *= -1.0
+                if attempts % 2 == 1:
+                    magnitude += 1
+                attempts += 1
+            y_text = candidate
+
     text_obj = ax.text(
         x_text,
         y_text,
@@ -1059,10 +1282,15 @@ def place_vertical_label(ax, x_value, label_text, fontsize=None, pad_fraction=0.
     return text_obj
 
 
-def place_horizontal_label(ax, y_value, label_text, fontsize=None, pad_fraction=0.02):
+def place_horizontal_label(ax, y_value, label_text, fontsize=None, pad_fraction=0.02, avoid=None):
     """Place a label next to a horizontal line at `y_value` in the least-populated horizontal gap.
 
     Similar strategy to `place_vertical_label` but mirrored for x positions.
+
+    Args:
+        avoid: optional list of (x0, x1, y0, y1) data-space boxes (e.g. other
+            labels placed earlier in the same batch) the new label should not
+            overlap; it is nudged left/right until clear of all of them.
     """
     if label_text is None or not str(label_text).strip():
         return None
@@ -1182,6 +1410,15 @@ def place_horizontal_label(ax, y_value, label_text, fontsize=None, pad_fraction=
     else:
         x_text = best_candidate[0]
 
+    # Clamp x_text to stay between the outermost visible tick marks, with an
+    # extra margin for the text box width so it does not overlap the frame.
+    margin = text_width_est / 2.0 if text_width_est > 0 else 0.03 * x_range_full
+    xticks = np.asarray(ax.get_xticks())
+    xticks_visible = xticks[(xticks >= xlim[0]) & (xticks <= xlim[1])]
+    inner_min = float(xticks_visible.min()) if len(xticks_visible) > 0 else xlim[0]
+    inner_max = float(xticks_visible.max()) if len(xticks_visible) > 0 else xlim[1]
+    x_text = float(np.clip(x_text, inner_min + margin, inner_max - margin))
+
     y_mid = (ylim[0] + ylim[1]) / 2.0
     pad = pad_fraction * y_range
     if y0 > y_mid:
@@ -1190,6 +1427,36 @@ def place_horizontal_label(ax, y_value, label_text, fontsize=None, pad_fraction=
     else:
         va = "bottom"
         y_pos = y0 + pad
+
+    if avoid:
+        size = _measure_text_extent_data(ax, text_str, fontsize)
+        if size is not None:
+            width, height = size
+            step = width * 1.2 if width > 0 else 0.1 * x_range_full
+
+            def _bbox_at(x_center):
+                if va == "top":
+                    by0, by1 = y_pos - height, y_pos
+                else:
+                    by0, by1 = y_pos, y_pos + height
+                return (x_center - width / 2.0, x_center + width / 2.0, by0, by1)
+
+            candidate = x_text
+            direction = -1.0
+            magnitude = 1
+            attempts = 0
+            while (
+                any(_rects_overlap(_bbox_at(candidate), box) for box in avoid)
+                and attempts < 8
+            ):
+                candidate = float(
+                    np.clip(x_text + direction * magnitude * step, inner_min + margin, inner_max - margin)
+                )
+                direction *= -1.0
+                if attempts % 2 == 1:
+                    magnitude += 1
+                attempts += 1
+            x_text = candidate
 
     text_obj = ax.text(
         x_text,

@@ -96,6 +96,15 @@ def make_name_from_args(
             if args.select:  # Check if args.select has content
                 name_parts.append("_".join(args.select))
 
+    if hasattr(args, "lower_series") and args.lower_series:
+        name_parts.append(str(args.lower_series))
+
+    if hasattr(args, "lower_plot_style") and args.lower_plot_style:
+        name_parts.append(str(args.lower_plot_style))
+
+    if hasattr(args, "lower_series_density") and args.lower_series_density:
+        name_parts.append("density")
+
     if hasattr(args, "logx") and args.logx:
         name_parts.append("logx")
     if hasattr(args, "logy") and args.logy:
@@ -161,6 +170,57 @@ def export_table(df, table_name, output_dir="tables"):
     table_path = os.path.join(output_dir, f"{table_name}.csv")
     df.to_csv(table_path, index=False)
     print(f"Table saved to {table_path}")
+
+
+def save_table_to_paths(write_func, output_arg, output_file, default_output_dir, rprint_func=None, subfolder=None):
+    """
+    Save a table to one or multiple output paths.
+
+    Handles both single path (str) and multiple paths (list) via args.output.
+    If output_arg is None, saves to default_output_dir.
+
+    Parameters:
+    write_func : callable
+        Function taking a full file path and writing the table contents to it.
+    output_arg : str, list, or None
+        Output path(s) from args.output (can be str for single, list for multiple, or None)
+    output_file : str
+        The filename for the output
+    default_output_dir : str
+        Default directory to use if output_arg is None
+    rprint_func : callable, optional
+        Rich print function for logging (if None, uses print)
+    subfolder : str, optional
+        Subfolder appended to each output path (default or explicit) before saving
+    """
+    if rprint_func is None:
+        rprint_func = print
+
+    # Convert output_arg to a list of paths
+    output_paths = []
+    if output_arg is not None:
+        if isinstance(output_arg, list):
+            output_paths = output_arg
+        else:
+            output_paths = [output_arg]
+
+    # Save to each output path
+    if output_paths:
+        for output_path in output_paths:
+            output_dir = os.path.dirname(output_path) if os.path.splitext(output_path)[1] else output_path
+            if subfolder:
+                output_dir = os.path.join(output_dir, subfolder)
+            os.makedirs(output_dir, exist_ok=True)
+            full_path = os.path.join(output_dir, output_file)
+            write_func(full_path)
+            rprint_func(f"[green]Success:[/green] Table saved to:\n{full_path}")
+    else:
+        # Use default output directory
+        output_dir = os.path.join(default_output_dir, subfolder) if subfolder else default_output_dir
+        os.makedirs(output_dir, exist_ok=True)
+        full_path = os.path.join(output_dir, output_file)
+        write_func(full_path)
+        rprint_func(f"Table saved to {full_path}")
 
 
 def save_figure_to_paths(fig, output_arg, output_file, default_output_dir, rprint_func=None, subfolder=None):

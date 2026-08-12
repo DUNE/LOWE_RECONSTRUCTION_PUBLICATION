@@ -15,7 +15,7 @@ from rich import print as rprint
 from lib import *
 from lib.selection import filter_dataframe
 from lib.exports import make_name_from_args, save_figure_to_paths
-from lib.format import make_title_from_args
+from lib.format import make_title_from_args, make_config_label_from_args, make_config_color_and_style_from_args
 from lib.imports import import_data, prepare_import
 from lib.plot import apply_legend_style, plot_data, create_common_subplots, create_common_two_panel_figure, apply_note_to_figure, add_centered_suptitle, draw_vertical_lines, draw_horizontal_lines, place_point_label
 from common_args import add_common_args, load_computation_settings, map_iterable_label, map_iterable_color, resolve_plot_kwargs, resolve_axis_label
@@ -36,6 +36,7 @@ add_common_args(
         "iterable",
         "select",
         "save_values",
+        "remove_value",
         "x",
         "y",
         "reduce",
@@ -104,6 +105,7 @@ parser.add_argument(
         "subtract",
         "ratio",
         "add",
+        "multiply",
         "sum",
         "mean",
         "rms",
@@ -162,6 +164,17 @@ parser.add_argument(
     action="store_true",
     default=False,
     help="Disable rendering of the lower subplot",
+)
+
+parser.add_argument(
+    "--overlay_names",
+    action="store_true",
+    default=False,
+    help=(
+        "Draw all --configs/--names combinations on the same shared figure "
+        "instead of one figure per combination, colored/labeled by "
+        "configuration and name (same convention as script_compare_configuration.py)."
+    ),
 )
 
 parser.add_argument(
@@ -228,6 +241,13 @@ parser.add_argument(
         "Line width per comparable value in order (e.g. 1.0 3.0). "
         "Defaults to the global line width when omitted."
     ),
+)
+
+parser.add_argument(
+    "--comparable_reverse",
+    action="store_true",
+    default=False,
+    help="Reverse the order of linestyles assigned to comparable values.",
 )
 
 args = parser.parse_args()
@@ -317,14 +337,14 @@ def _resolve_stacked_bar_width(x_values):
 
     return float(np.min(positive_diffs))
 
-def _resolve_comparable_style(sdx, args):
+def _resolve_comparable_style(sdx, args, n_total=None):
     user_styles = getattr(args, "comparable_linestyles", None)
     user_widths = getattr(args, "comparable_linewidths", None)
-    ls = (
-        user_styles[sdx]
-        if user_styles is not None and sdx < len(user_styles)
-        else _COMPARABLE_LINESTYLES[sdx % len(_COMPARABLE_LINESTYLES)]
-    )
+    styles = list(user_styles) if user_styles else list(_COMPARABLE_LINESTYLES)
+    effective_sdx = sdx
+    if getattr(args, "comparable_reverse", False) and n_total is not None:
+        effective_sdx = n_total - 1 - sdx
+    ls = styles[effective_sdx % len(styles)]
     lw = (
         user_widths[sdx]
         if user_widths is not None and sdx < len(user_widths)
@@ -337,6 +357,8 @@ def _compute_pairwise(reference, other, operation):
         return other - reference
     if operation == "add":
         return other + reference
+    if operation == "multiply":
+        return other * reference
     if operation == "ratio":
         with np.errstate(divide="ignore", invalid="ignore"):
             result = np.divide(other, reference)
@@ -396,6 +418,8 @@ def compute_bottom_series(labels, line_arrays, operation, reference_index=0):
             out_label = f"{label} - {ref_label}"
         elif op == "add":
             out_label = f"{label} + {ref_label}"
+        elif op == "multiply":
+            out_label = f"{label} * {ref_label}"
         elif op == "ratio":
             out_label = f"{label}/{ref_label}"
         elif op == "relative_difference":
@@ -414,6 +438,7 @@ def _default_bottom_label(operation):
     labels = {
         "subtract": "Difference",
         "add": "Sum",
+        "multiply": "Product",
         "sum": "Sum",
         "mean": "Mean",
         "rms": "RMS",
@@ -444,6 +469,7 @@ def main():
         "subtract",
         "ratio",
         "add",
+        "multiply",
         "sum",
         "mean",
         "rms",
@@ -494,6 +520,22 @@ def main():
     configs = configs if configs is not None else [None]
     names = names if names is not None else [None]
 
+    overlay_names = getattr(args, "overlay_names", False)
+    shared_fig = shared_ax_top = shared_ax_bottom = None
+    if overlay_names:
+        if getattr(args, "no_lower_plot", False):
+            shared_fig, shared_ax_top = create_common_subplots(nrows=1, ncols=1)
+            shared_ax_bottom = None
+        else:
+            shared_fig, shared_gs = create_common_two_panel_figure(
+                ncols=1,
+                height_ratios=[3, 1],
+            )
+            shared_ax_top = shared_fig.add_subplot(shared_gs[0])
+            shared_ax_bottom = shared_fig.add_subplot(shared_gs[1], sharex=shared_ax_top)
+            shared_ax_top.tick_params(labelbottom=False)
+    last_kdx = len(configs) - 1
+
     for kdx, (config, name) in enumerate(zip(configs, names)):
         if config is not None and name is None:
             df_config = df[(df["Config"] == config)]
@@ -520,7 +562,10 @@ def main():
             continue
 
         render_lower_plot = not getattr(args, "no_lower_plot", False)
-        if render_lower_plot:
+        computed_only = not render_lower_plot
+        if overlay_names:
+            fig, ax_top, ax_bottom = shared_fig, shared_ax_top, shared_ax_bottom
+        elif render_lower_plot:
             fig, gs = create_common_two_panel_figure(
                 ncols=1,
                 height_ratios=[3, 1],
@@ -532,6 +577,12 @@ def main():
         else:
             fig, ax_top = create_common_subplots(nrows=1, ncols=1)
             ax_bottom = None
+
+        overlay_label = overlay_color = overlay_linestyle = None
+        if overlay_names:
+            overlay_label = make_config_label_from_args(args, config=config, name=name, iterable=None)
+            overlay_color, overlay_linestyle = make_config_color_and_style_from_args(args, config=config, name=name)
+
         selected_plot_type = getattr(args, "plot_type", "step")
         plot_kwargs = resolve_plot_kwargs(selected_plot_type)
 
@@ -619,7 +670,7 @@ def main():
                         )
                         continue
 
-                    comparable_ls, comparable_lw = _resolve_comparable_style(sdx, args)
+                    comparable_ls, comparable_lw = _resolve_comparable_style(sdx, args, n_total=comparable_values_arr.size)
                     comparable_style_kwargs = {"linewidth": comparable_lw} if comparable_lw is not None else {}
                     plot_bottom = None
                     plot_type_kwargs = dict(plot_kwargs)
@@ -634,18 +685,19 @@ def main():
                             "edgecolor": "none",
                             "linewidth": 0,
                         }
-                    plot_data(
-                        args,
-                        ax_top,
-                        x_v,
-                        y=y_v,
-                        label=label if sdx == 0 else None,
-                        color=line_color,
-                        **({"linestyle": comparable_ls} if not stacked_enabled else {}),
-                        **comparable_style_kwargs,
-                        **plot_type_kwargs,
-                        **({"bottom": plot_bottom} if plot_bottom is not None else {}),
-                    )
+                    if not computed_only:
+                        plot_data(
+                            args,
+                            ax_top,
+                            x_v,
+                            y=y_v,
+                            label=label if sdx == 0 else None,
+                            color=line_color,
+                            **({"linestyle": comparable_ls} if not stacked_enabled else {}),
+                            **comparable_style_kwargs,
+                            **plot_type_kwargs,
+                            **({"bottom": plot_bottom} if plot_bottom is not None else {}),
+                        )
 
                     if plot_bottom is not None:
                         plot_bottom += y_v
@@ -708,16 +760,18 @@ def main():
                         "linewidth": 0,
                     }
 
-                plot_data(
-                    args,
-                    ax_top,
-                    x_values,
-                    y=y_values,
-                    label=label,
-                    color=line_color,
-                    **plot_type_kwargs,
-                    **({"bottom": stacked_bottom} if stacked_enabled else {}),
-                )
+                if not computed_only:
+                    plot_data(
+                        args,
+                        ax_top,
+                        x_values,
+                        y=y_values,
+                        label=f"{overlay_label} - {label}" if overlay_names else label,
+                        color=overlay_color if overlay_names else line_color,
+                        linestyle=overlay_linestyle if overlay_names and overlay_linestyle else None,
+                        **plot_type_kwargs,
+                        **({"bottom": stacked_bottom} if stacked_enabled else {}),
+                    )
 
                 if stacked_enabled:
                     stacked_bottom += y_values
@@ -772,12 +826,20 @@ def main():
         has_lines = bool(top_by_comparable) if comparable_col is not None else len(top_arrays) > 0
         if not has_lines:
             rprint("[yellow]Warning:[/yellow] No valid lines available to plot.")
-            plt.close(fig)
-            continue
+            if overlay_names:
+                if kdx != last_kdx:
+                    continue
+                # Last combination had no data of its own; still finalize the
+                # shared figure below using whatever earlier combinations drew.
+            else:
+                plt.close(fig)
+                continue
 
         bottom_series = []
         bottom_has_content = False
-        if ax_bottom is not None:
+        operation_label = None
+        op_ax = ax_bottom if ax_bottom is not None else (ax_top if computed_only else None)
+        if op_ax is not None:
             ref_index = args.reference
             if args.reference_value is not None:
                 ref_labels = (
@@ -796,7 +858,7 @@ def main():
                 for sdx, comparable_val in enumerate(comparable_values_arr):
                     if comparable_val not in top_by_comparable:
                         continue
-                    comparable_ls, comparable_lw = _resolve_comparable_style(sdx, args)
+                    comparable_ls, comparable_lw = _resolve_comparable_style(sdx, args, n_total=comparable_values_arr.size)
                     comparable_style_kwargs = {"linewidth": comparable_lw} if comparable_lw is not None else {}
 
                     if bottom_column is not None:
@@ -829,7 +891,7 @@ def main():
                     for idx, (_label, values) in enumerate(bottom_s):
                         plot_data(
                             args,
-                            ax_bottom,
+                            op_ax,
                             x_reference,
                             y=values,
                             label=(op_label if idx == 0 and sdx == 0 else None),
@@ -873,21 +935,41 @@ def main():
                 for idx, (_label, values) in enumerate(bottom_series):
                     plot_data(
                         args,
-                        ax_bottom,
+                        op_ax,
                         x_reference,
                         y=values,
-                        label=(operation_label if idx == 0 else None),
-                        linestyle=args.plot_style,
+                        label=(
+                            (overlay_label if overlay_names else operation_label)
+                            if idx == 0
+                            else None
+                        ),
+                        color=overlay_color if overlay_names else None,
+                        linestyle=(overlay_linestyle if overlay_names and overlay_linestyle else args.plot_style),
                         **plot_kwargs,
                     )
                 bottom_has_content = bool(bottom_series)
 
-            ax_bottom.axhline(y=0, color="r", zorder=-1)
+            if ax_bottom is not None:
+                ax_bottom.axhline(y=0, color="r", zorder=-1)
 
-        ax_top.set_ylabel(
-            resolve_axis_label(args.labely, args.y, df),
-            fontsize=ysublabelfontsize,
-        )
+        if overlay_names and kdx != last_kdx:
+            # Defer labels/legend/title/save until every combination has been
+            # drawn onto the shared figure.
+            continue
+
+        if computed_only:
+            ax_top.set_ylabel(
+                resolve_axis_label(args.labely, args.y, df_iterable)
+                if args.labely is not None
+                else str(operation_label) if operation_label is not None
+                else resolve_axis_label(args.labely, args.y, df_iterable),
+                fontsize=ysublabelfontsize,
+            )
+        else:
+            ax_top.set_ylabel(
+                resolve_axis_label(args.labely, args.y, df_iterable),
+                fontsize=ysublabelfontsize,
+            )
         if ax_bottom is not None:
             bottom_ylabel = (
                 args.bottom_labely
@@ -899,12 +981,12 @@ def main():
                 fontsize=ysublabelfontsize,
             )
             ax_bottom.set_xlabel(
-                resolve_axis_label(args.labelx, args.x, df),
+                resolve_axis_label(args.labelx, args.x, df_iterable),
                 fontsize=xlabelfontsize,
             )
         else:
             ax_top.set_xlabel(
-                resolve_axis_label(args.labelx, args.x, df),
+                resolve_axis_label(args.labelx, args.x, df_iterable),
                 fontsize=xlabelfontsize,
             )
 
@@ -924,20 +1006,25 @@ def main():
             if ax_bottom is not None:
                 ax_bottom.set_xscale("log")
 
+        legend_title = (
+            None
+            if computed_only
+            else (args.labelz if args.labelz is not None else args.iterable)
+        )
         leg1 = apply_legend_style(
             ax_top,
-            title=args.labelz if args.labelz is not None else args.iterable,
+            title=legend_title,
             capitalize_labels=getattr(args, "capitalize_legend", False),
         )
-        if comparable_col is not None and comparable_values_arr.size > 0:
+        if comparable_col is not None and comparable_values_arr.size > 0 and not computed_only:
             ax_top.add_artist(leg1)
             comparable_handles = [
                 mlines.Line2D(
                     [],
                     [],
                     color="black",
-                    linestyle=_resolve_comparable_style(sdx, args)[0],
-                    linewidth=_resolve_comparable_style(sdx, args)[1],
+                    linestyle=_resolve_comparable_style(sdx, args, n_total=comparable_values_arr.size)[0],
+                    linewidth=_resolve_comparable_style(sdx, args, n_total=comparable_values_arr.size)[1],
                     label=str(val),
                 )
                 for sdx, val in enumerate(comparable_values_arr)
@@ -1004,7 +1091,7 @@ def main():
         )
         output_file = make_name_from_args(
             args,
-            kdx,
+            None if overlay_names else kdx,
             prefix=None,
             suffix=output_suffix,
         )

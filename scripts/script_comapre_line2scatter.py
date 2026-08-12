@@ -6,6 +6,7 @@ ensure_src_path()
 
 from pathlib import Path
 import argparse
+import os
 import pickle
 
 import matplotlib.pyplot as plt
@@ -15,6 +16,7 @@ from rich import print as rprint
 
 from common_args import add_common_args
 from lib import titlefontsize, xlabelfontsize, ysublabelfontsize, linelabelfontsize
+from lib.exports import save_figure_to_paths
 from lib.format import make_title_from_args
 from lib.selection import filter_dataframe
 from lib.plot import apply_legend_style, plot_data, create_common_subplots, create_common_two_panel_figure, apply_note_to_figure, add_centered_suptitle, apply_common_figure_margins, draw_vertical_lines, draw_horizontal_lines, place_point_label
@@ -37,6 +39,7 @@ def parse_args():
             "variables",
             "select",
             "save_values",
+            "remove_value",
             "x",
             "y",
             "labelx",
@@ -57,6 +60,7 @@ def parse_args():
             "plot_style",
             "title",
             "output",
+            "subfolder",
             "note",
             "debug",
         ],
@@ -185,6 +189,12 @@ def parse_args():
         type=str,
         default="C1",
         help="Color for upper panel highlight windows",
+    )
+    parser.add_argument(
+        "--no_lower_plot",
+        action="store_true",
+        help="Disable rendering of the lower panel",
+        default=False,
     )
 
     return parser.parse_args()
@@ -371,6 +381,7 @@ def _plot_scatter_series(
     plot_style="scatter",
     hist_bins=50,
     hist_density=False,
+    hist_range=None,
     show_range_bars=False,
     range_start_column=None,
     range_end_column=None,
@@ -387,7 +398,7 @@ def _plot_scatter_series(
         return
 
     if plot_style == "hist":
-        counts, edges = np.histogram(x_values, bins=hist_bins)
+        counts, edges = np.histogram(x_values, bins=hist_bins, range=hist_range)
         values = counts.astype(float)
 
         if hist_density:
@@ -465,7 +476,7 @@ def _overlay_windows(ax, row, start_column, end_column, center_column, color):
         ax.axvline(peaks[idx], color=color, linestyle="--", linewidth=0.8, alpha=0.8, zorder=2)
 
 
-def _resolve_output_path(args, row):
+def _make_output_file_name(args, row):
     datafile_name = Path(args.datafile).stem if Path(args.datafile).suffix else Path(args.datafile).name
     iterable_value = (
         str(row[args.iterable])
@@ -477,22 +488,7 @@ def _resolve_output_path(args, row):
     file_name = "_".join(
         part.replace(" ", "_").replace("/", "_") for part in safe_parts if part
     )
-
-    # Default structure: <repo>/output/plots/<generated_name>.png
-    if args.output is None:
-        default_output_dir = Path(__file__).resolve().parents[1] / "output" / "plots"
-        default_output_dir.mkdir(parents=True, exist_ok=True)
-        return default_output_dir / f"{file_name}.png"
-
-    output_value = args.output[0] if isinstance(args.output, list) else args.output
-    output_path = Path(output_value)
-
-    if output_path.suffix:
-        output_path.parent.mkdir(parents=True, exist_ok=True)
-        return output_path
-
-    output_path.mkdir(parents=True, exist_ok=True)
-    return output_path / f"{file_name}.png"
+    return f"{file_name}.png"
 
 
 def _print_dataframe_debug(df, title):
@@ -557,7 +553,9 @@ def main():
     x = _to_array(row, args.x)
     y = _to_array_or_zero(row, args.y, x.size)
 
-    render_lower = True
+    lower_data_available = lower_x_column is not None and lower_x_column in row
+
+    render_lower = not args.no_lower_plot
     if render_lower:
         fig, grid = create_common_two_panel_figure(
             ncols=1,
@@ -569,8 +567,13 @@ def main():
         fig, ax_top = create_common_subplots(nrows=1, ncols=1)
         ax_bottom = None
 
+    # When the lower panel is disabled but lower-series data was requested,
+    # overlay that series onto the single upper axis instead of dropping it.
+    lower_target_ax = ax_bottom if ax_bottom is not None else (ax_top if lower_data_available else None)
+
     label = args.line_label if args.line_label is not None else (
-        str(row[args.iterable]) if args.iterable is not None and args.iterable in row else "Line"
+        str(row[args.iterable]) if args.iterable is not None and args.iterable in row
+        else (" ".join(args.variables) if getattr(args, "variables", None) else "Line")
     )
     plot_data(
         args,
@@ -591,6 +594,28 @@ def main():
             highlight_end,
             highlight_center,
             args.highlight_color,
+        )
+
+    if lower_target_ax is not None:
+        _plot_scatter_series(
+            lower_target_ax,
+            row,
+            lower_x_column,
+            lower_y_column,
+            lower_series_prefix,
+            "C1",
+            26,
+            plot_style=args.lower_plot_style,
+            hist_bins=args.lower_hist_bins,
+            hist_density=args.lower_series_density,
+            hist_range=(float(np.min(x)), float(np.max(x))),
+            show_range_bars=args.lower_series_range or args.lower_show_range_bars,
+            range_start_column=lower_start_column,
+            range_end_column=lower_end_column,
+            vertical_lines=args.lower_vertical_lines and args.lower_plot_style == "scatter",
+            top_ax=ax_top,
+            vertical_color="C1",
+            vertical_alpha=0.55,
         )
 
     ax_top.set_ylabel(args.labely, fontsize=ysublabelfontsize)
@@ -626,32 +651,6 @@ def main():
     )
 
     if ax_bottom is not None:
-        active_x = lower_x_column
-        active_y = lower_y_column
-        active_label = lower_series_prefix
-        active_color = "C1"
-        active_size = 26
-
-        _plot_scatter_series(
-            ax_bottom,
-            row,
-            active_x,
-            active_y,
-            active_label,
-            active_color,
-            active_size,
-            plot_style=args.lower_plot_style,
-            hist_bins=args.lower_hist_bins,
-            hist_density=args.lower_series_density,
-            show_range_bars=args.lower_series_range or args.lower_show_range_bars,
-            range_start_column=lower_start_column,
-            range_end_column=lower_end_column,
-            vertical_lines=args.lower_vertical_lines and args.lower_plot_style == "scatter",
-            top_ax=ax_top,
-            vertical_color=active_color,
-            vertical_alpha=0.55,
-        )
-
         ax_bottom.set_ylabel(args.lower_labely, fontsize=ysublabelfontsize)
         ax_bottom.set_xlabel(args.labelx, fontsize=xlabelfontsize)
         ax_bottom.grid(alpha=0.25)
@@ -702,11 +701,10 @@ def main():
 
     apply_note_to_figure(fig, getattr(args, "note", None))
 
-    output_path = _resolve_output_path(args, row)
-    fig.savefig(output_path, dpi=180)
+    output_file = _make_output_file_name(args, row)
+    default_output_dir = os.path.join(os.path.dirname(__file__), "..", "output", "plots")
+    save_figure_to_paths(fig, args.output, output_file, default_output_dir, rprint, subfolder=args.subfolder)
     plt.close(fig)
-
-    print("Saved line panel figure to", output_path)
 
 
 if __name__ == "__main__":

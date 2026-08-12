@@ -37,6 +37,7 @@ add_common_args(
         "reduce",
         "select",
         "save_values",
+        "remove_value",
         "bins",
         "percentile",
         "labelx",

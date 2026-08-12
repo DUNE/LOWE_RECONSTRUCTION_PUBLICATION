@@ -22,11 +22,12 @@ from lib.imports import import_data, prepare_import
 from lib.functions import (
     resolution,
     gaussian,
+    double_gaussian,
     correction_func,
     quadratic_cut,
     quadratic_function,
 )
-from lib.plot import apply_legend_style, plot_data, create_common_subplots, create_common_two_panel_figure, apply_note_to_figure, add_centered_suptitle, draw_vertical_lines, draw_horizontal_lines, place_point_label
+from lib.plot import apply_legend_style, plot_data, create_common_subplots, create_common_two_panel_figure, apply_note_to_figure, add_centered_suptitle, draw_vertical_lines, draw_horizontal_lines, place_point_label, format_ref_value
 
 from common_args import add_common_args, resolve_axis_label, resolve_plot_kwargs
 
@@ -50,6 +51,7 @@ add_common_args(
         "iterable",
         "select",
         "save_values",
+        "remove_value",
         "reduce",
         "labelx",
         "labely",
@@ -99,9 +101,33 @@ parser.add_argument(
 )
 
 parser.add_argument(
+    "--show_formula",
+    action="store_true",
+    help="Display the fit function's formula (FitFunctionFormula column) below the plot title, if present in the datafile",
+    default=False,
+)
+
+parser.add_argument(
+    "--line_labels",
+    action="store_true",
+    help="Show default (numeric-value) labels for --vertical/--horizontal reference "
+    "lines that don't have an explicit --vertical_label/--horizontal_label. Off by "
+    "default; passing --vertical_label/--horizontal_label always shows those "
+    "regardless of this flag.",
+    default=False,
+)
+
+parser.add_argument(
     "--fit_errors",
     action=argparse.BooleanOptionalAction,
     help="Display the fit parameter errors in the Fit Parameters legend",
+    default=True,
+)
+
+parser.add_argument(
+    "--fit_type_subtitle",
+    action=argparse.BooleanOptionalAction,
+    help="Display the subtitle showing the fit type (e.g. 'Gaussian Train Fit') below the plot title",
     default=True,
 )
 
@@ -303,6 +329,11 @@ def main():
                 continue
 
             fit_function_label = subset["FitFunctionLabel"].iloc[0]
+            fit_function_formula = (
+                subset["FitFunctionFormula"].iloc[0]
+                if "FitFunctionFormula" in subset.columns
+                else None
+            )
 
             x = subset[args.x].values[0].astype(float)
             y = subset[args.y].values[0].astype(float)
@@ -558,7 +589,7 @@ def main():
             continue
 
         ax_top.set_ylabel(
-            resolve_axis_label(args.labely, args.y, df),
+            resolve_axis_label(args.labely, args.y, subset),
             fontsize=ysublabelfontsize,
         )
 
@@ -571,10 +602,11 @@ def main():
         if args.logx:
             ax_top.set_xscale("log")
 
-        ax_top.set_title(
-            f"{fit_function_label} Fit",
-            fontsize=subtitlefontsize,
-        )
+        if args.fit_type_subtitle:
+            ax_top.set_title(
+                f"{fit_function_label} Fit",
+                fontsize=subtitlefontsize,
+            )
         ax_top.text(
             args.fitlegendposition[0],
             args.fitlegendposition[1],
@@ -595,13 +627,53 @@ def main():
             legend_handles.append(fit_handle)
             legend_labels.append(fit_label)
 
-        apply_legend_style(
+        legend = apply_legend_style(
             ax_top,
             title=args.labelz if args.labelz is not None else None,
             handles=legend_handles,
             labels=legend_labels,
             capitalize_labels=getattr(args, "capitalize_legend", False),
         )
+
+        if args.show_formula:
+            if fit_function_formula:
+                formula_text = str(fit_function_formula)
+                fit_text_artist = next(
+                    (
+                        t
+                        for t in legend.get_texts()
+                        if t.get_text().strip() == "Fit"
+                    ),
+                    None,
+                )
+                if fit_text_artist is not None and len(formula_text) <= 20:
+                    # Short enough to append inline, right after "Fit"
+                    fit_text_artist.set_text(f"Fit: {formula_text}")
+                else:
+                    # Too long to fit inline -- place it just below the legend box,
+                    # anchored to the legend's right edge (rather than its left) since
+                    # the legend itself is already positioned to fit within the axes,
+                    # so growing leftward from there is the more likely to stay in view.
+                    fig.canvas.draw()
+                    renderer = fig.canvas.get_renderer()
+                    legend_bbox = legend.get_window_extent(renderer=renderer)
+                    inv = ax_top.transAxes.inverted()
+                    x1_axes, y0_axes = inv.transform((legend_bbox.x1, legend_bbox.y0))
+                    ax_top.text(
+                        x1_axes,
+                        y0_axes - 0.015,
+                        formula_text,
+                        fontdict={"size": legendfontsize},
+                        transform=ax_top.transAxes,
+                        ha="right",
+                        va="top",
+                        wrap=True,
+                    )
+            else:
+                rprint(
+                    "[yellow]Warning:[/yellow] --show_formula was set but no "
+                    "FitFunctionFormula column was found in the datafile."
+                )
 
         if ax_bottom is not None:
             if args.rangex is not None:
@@ -631,7 +703,7 @@ def main():
                 ax_bottom.axhline(y=0, color="r", zorder=-1)
 
             ax_bottom.set_xlabel(
-                resolve_axis_label(args.labelx, args.x, df),
+                resolve_axis_label(args.labelx, args.x, subset),
                 fontsize=xlabelfontsize,
             )
             if args.logx:
@@ -641,14 +713,35 @@ def main():
             ax_bottom.set_ylabel("(Data - Fit)/Fit", fontsize=ysublabelfontsize)
         else:
             ax_top.set_xlabel(
-                resolve_axis_label(args.labelx, args.x, df),
+                resolve_axis_label(args.labelx, args.x, subset),
                 fontsize=xlabelfontsize,
+            )
+
+        # Default (numeric-value) labels only show when explicitly opted into via
+        # --line_labels; an explicit --vertical_label/--horizontal_label always wins.
+        # draw_vertical_lines/draw_horizontal_lines no longer generate default
+        # labels themselves, so build them here when opted in.
+        vertical_values = getattr(args, "vertical", None)
+        vertical_labels = getattr(args, "vertical_label", None)
+        if vertical_labels is None:
+            vertical_labels = (
+                [format_ref_value(v) for v in vertical_values]
+                if args.line_labels and vertical_values is not None
+                else []
+            )
+        horizontal_values = getattr(args, "horizontal", None)
+        horizontal_labels = getattr(args, "horizontal_label", None)
+        if horizontal_labels is None:
+            horizontal_labels = (
+                [format_ref_value(v) for v in horizontal_values]
+                if args.line_labels and horizontal_values is not None
+                else []
             )
 
         draw_vertical_lines(
             ax_top,
             getattr(args, "vertical", None),
-            labels=getattr(args, "vertical_label", None),
+            labels=vertical_labels,
             styles=getattr(args, "vertical_style", None),
             colors=getattr(args, "vertical_color", None),
             fontsize=linelabelfontsize,
@@ -657,12 +750,13 @@ def main():
             draw_vertical_lines(
                 ax_bottom,
                 getattr(args, "vertical", None),
+                labels=[],  # already labeled once on ax_top; avoid a duplicate below
                 fontsize=linelabelfontsize,
             )
         draw_horizontal_lines(
             ax_top,
             getattr(args, "horizontal", None),
-            labels=getattr(args, "horizontal_label", None),
+            labels=horizontal_labels,
             styles=getattr(args, "horizontal_style", None),
             colors=getattr(args, "horizontal_color", None),
             fontsize=linelabelfontsize,

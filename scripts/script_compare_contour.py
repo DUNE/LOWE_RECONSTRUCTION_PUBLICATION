@@ -85,6 +85,7 @@ add_common_args(
         "iterable",
         "select",
         "save_values",
+        "remove_value",
         "labelx",
         "labely",
         "labelz",
@@ -607,37 +608,40 @@ def validate_filter_inputs(df):
     if args.select is None:
         return
 
-    if args.save_values is None:
-        valid_select = []
-        for key in args.select:
-            if key in available_columns:
-                valid_select.append(key)
-            else:
-                rprint(
-                    f"[yellow]Warning:[/yellow] Selected key '{key}' not found in dataframe columns. Skipping this filter key."
-                )
-        args.select = valid_select if valid_select else None
-        return
-
-    valid_pairs = []
-    for key, value in zip(args.select, args.save_values):
-        if key in available_columns:
-            valid_pairs.append((key, value))
-        else:
-            rprint(
-                f"[yellow]Warning:[/yellow] Selected key '{key}' not found in dataframe columns. Skipping filter '{key}={value}'."
-            )
-
-    if len(args.select) != len(args.save_values):
+    if args.save_values is not None and len(args.select) != len(args.save_values):
         rprint(
             "[yellow]Warning:[/yellow] --select and --save_values lengths differ; extra entries are ignored."
         )
 
-    if valid_pairs:
-        args.select, args.save_values = [list(values) for values in zip(*valid_pairs)]
-    else:
-        args.select = None
+    if args.remove_value is not None and len(args.select) != len(args.remove_value):
+        rprint(
+            "[yellow]Warning:[/yellow] --select and --remove_value lengths differ; extra entries are ignored."
+        )
+
+    valid_indices = []
+    for idx, key in enumerate(args.select):
+        if key in available_columns:
+            valid_indices.append(idx)
+        else:
+            rprint(
+                f"[yellow]Warning:[/yellow] Selected key '{key}' not found in dataframe columns. Skipping this filter key."
+            )
+
+    args.select = [args.select[idx] for idx in valid_indices] or None
+
+    if args.save_values is not None:
+        args.save_values = [
+            args.save_values[idx] for idx in valid_indices if idx < len(args.save_values)
+        ] or None
+
+    if args.remove_value is not None:
+        args.remove_value = [
+            args.remove_value[idx] for idx in valid_indices if idx < len(args.remove_value)
+        ] or None
+
+    if args.select is None:
         args.save_values = None
+        args.remove_value = None
 
 
 def main():
@@ -783,7 +787,7 @@ def main():
 
         background_x, background_y = reference_grid
         if args.background == "all":
-            draw_image_background(ax_current, fig, background_x, background_y, sum_background, df=df)
+            draw_image_background(ax_current, fig, background_x, background_y, sum_background, df=subset)
         elif args.background == "first":
             draw_image_background(
                 ax_current,
@@ -791,10 +795,10 @@ def main():
                 payloads[0]["x"],
                 payloads[0]["y"],
                 payloads[0]["z"],
-                df=df,
+                df=subset,
             )
         elif args.background == "combined":
-            draw_image_background(ax_current, fig, background_x, background_y, combined_z, df=df)
+            draw_image_background(ax_current, fig, background_x, background_y, combined_z, df=subset)
 
         legend_handles = []
         if not args.combined_contours_only:
@@ -945,9 +949,9 @@ def main():
             )
             ax_current.set_title(plot_subtitle, fontsize=subtitlefontsize)
 
-        ax_current.set_xlabel(resolve_axis_label(args.labelx, args.x, df))
+        ax_current.set_xlabel(resolve_axis_label(args.labelx, args.x, subset))
         if idx == 0:
-            ax_current.set_ylabel(resolve_axis_label(args.labely, args.y, df))
+            ax_current.set_ylabel(resolve_axis_label(args.labely, args.y, subset))
 
         if args.matchx and matched_ranges[0] is not None:
             ax_current.set_xlim(matched_ranges[0])

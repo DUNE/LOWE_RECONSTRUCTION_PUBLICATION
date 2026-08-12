@@ -78,18 +78,28 @@ def _load_plot_params_config():
                 "vd_1x8x14_3view_30deg_shielded": "-",
             },
             "particle_dict": {
-                "11": "electron",
+                "11": "e-",
+                "-11": "e+",
+                "12": "nu(e)",
+                "-12": "nu(e)~",
+                "13": "mu-",
+                "-13": "mu+",
                 "22": "gamma",
-                "2112": "neutron",
-                "2212": "proton",
-                "1000020040": "alpha",
+                "2112": "n",
+                "2212": "p",
+                "1000020040": "He4",
             },
             "particle_color": {
-                "electron": "C3",
+                "e-": "C3",
+                "e+": "C7",
+                "nu(e)": "C5",
+                "nu(e)~": "C6",
+                "mu-": "C8",
+                "mu+": "C9",
                 "gamma": "C0",
-                "neutron": "C4",
-                "proton": "C1",
-                "alpha": "C2",
+                "n": "C4",
+                "p": "C1",
+                "He4": "C2",
             },
             "component_color": {
                 "Ar39": "C1",
@@ -345,6 +355,51 @@ def normalize_square_labels(square_labels, n_squares):
     return labels, None
 
 
+def parse_line_segments(line_values):
+    if line_values is None:
+        return []
+
+    if isinstance(line_values, (list, tuple)) and len(line_values) > 0 and isinstance(
+        line_values[0], (list, tuple, np.ndarray)
+    ):
+        flattened = [value for group in line_values for value in group]
+    else:
+        flattened = list(line_values)
+
+    if len(flattened) % 4 != 0:
+        raise ValueError(
+            "--line expects a multiple-of-4 number of float values (x1 y1 x2 y2 per line)."
+        )
+
+    return [
+        (
+            float(flattened[idx]),
+            float(flattened[idx + 1]),
+            float(flattened[idx + 2]),
+            float(flattened[idx + 3]),
+        )
+        for idx in range(0, len(flattened), 4)
+    ]
+
+
+def normalize_line_labels(line_labels, n_lines):
+    if line_labels is None:
+        return None, None
+
+    if isinstance(line_labels, str):
+        labels = [line_labels]
+    else:
+        labels = list(line_labels)
+
+    if len(labels) != n_lines:
+        return None, (
+            f"--line_label expects {n_lines} label(s) to match --line groups, "
+            f"but got {len(labels)}."
+        )
+
+    return labels, None
+
+
 def resolve_mapped_color(color_value):
     if color_value is None:
         return None
@@ -386,6 +441,7 @@ config_dict = _MAPPINGS.get("config_dict", {})
 config_color = _MAPPINGS.get("config_color", {})
 config_line = _MAPPINGS.get("config_line", {})
 name_color = _MAPPINGS.get("name_color", {})
+name_dict = _MAPPINGS.get("name_dict", {})
 
 particle_dict = {
     int(key): value for key, value in _MAPPINGS.get("particle_dict", {}).items()
