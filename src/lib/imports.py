@@ -1,5 +1,8 @@
 import os
 import pickle
+from collections import Counter
+from itertools import product
+
 import pandas as pd
 
 from rich import print as rprint
@@ -54,8 +57,15 @@ def prepare_import(args):
 def import_data(args):
     # Initialize an empty DataFrame to store combined data
     df = pd.DataFrame()
-    
-    configs, names = prepare_import(args)
+
+    if getattr(args, "name_columns", False) and args.configs is not None and args.names is not None:
+        # Cross-product loading: every (config, name) pair gets its own file lookup
+        # instead of the strict 1-to-1/1-to-N pairing used by prepare_import.
+        pairs = list(product(args.configs, args.names))
+        configs = [config for config, _ in pairs]
+        names = [name for _, name in pairs]
+    else:
+        configs, names = prepare_import(args)
 
     if args.configs is None and args.names is None:
         datafile = os.path.join(
@@ -69,9 +79,25 @@ def import_data(args):
         df = _dataframe_from_pickle_payload(data)
     
     else:
+        pair_counts = Counter(zip(configs, names))
+        duplicates = [pair for pair, count in pair_counts.items() if count > 1]
+        if duplicates:
+            dup_desc = "; ".join(
+                f"Config={c}, Name={n}" if n is not None else f"Config={c}"
+                for c, n in duplicates
+            )
+            rprint(
+                f"[yellow]Warning:[/yellow] Duplicate config/name pair(s) requested: "
+                f"{dup_desc}. Each occurrence will be loaded and plotted as an "
+                "independent line."
+            )
+
         loaded_chunks = []
-        # Loop through each configuration provided in args.configs
-        for config, name in zip(configs, names):
+        # Loop through each configuration provided in args.configs. `occurrence`
+        # tags which requested slot a row came from so duplicate (config, name)
+        # pairs stay distinguishable further down the pipeline instead of
+        # collapsing into a single, ambiguous merged block of rows.
+        for occurrence, (config, name) in enumerate(zip(configs, names)):
             candidate_paths = []
             # Construct the path to the data file
             if args.configs is None:
@@ -130,6 +156,7 @@ def import_data(args):
             if loaded_df.empty:
                 continue
 
+            loaded_df["_Occurrence"] = occurrence
             loaded_chunks.append(loaded_df)
 
         if loaded_chunks:

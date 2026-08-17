@@ -147,24 +147,31 @@ COMMON_ARG_SPECS = {
         "flags": ["--select"],
         "kwargs": {
             "nargs": "+",
+            "action": "extend",
             "default": None,
-            "help": "Columns/keys used for filtering",
+            "help": "Columns/keys used for filtering. Repeat the flag to add more "
+            "keys (e.g. --select Type --select Radius), or list them all in one "
+            "invocation (--select Type Radius) - both accumulate.",
         },
     },
     "save_values": {
         "flags": ["--save_values", "-s"],
         "kwargs": {
             "nargs": "+",
+            "action": "extend",
             "default": None,
-            "help": "Values used alongside --select filtering",
+            "help": "Values used alongside --select filtering. Repeat the flag to "
+            "add more values, matched positionally to --select.",
         },
     },
     "remove_value": {
         "flags": ["--remove_value"],
         "kwargs": {
             "nargs": "+",
+            "action": "extend",
             "default": None,
-            "help": "Values used alongside --select to remove matching rows instead of keeping them",
+            "help": "Values used alongside --select to remove matching rows instead "
+            "of keeping them. Repeat the flag to add more values.",
         },
     },
     "x": {
@@ -893,8 +900,15 @@ def resolve_axis_label(explicit_label, col_name, df=None):
         return ""
     base = explicit_label if explicit_label is not None else (col_name or "")
     if df is not None and col_name is not None:
-        unit_col = f"{col_name}Unit"
-        if unit_col in df.columns:
+        # Try exact match first, then progressively strip leading camel-case
+        # words (e.g. "SmoothedCounts" -> "Counts") to find a *Unit column.
+        candidates = [col_name]
+        import re as _re
+        parts = _re.findall(r'[A-Z][a-z0-9]*|[a-z0-9]+', col_name)
+        for i in range(1, len(parts)):
+            candidates.append("".join(parts[i:]))
+        unit_col = next((f"{c}Unit" for c in candidates if f"{c}Unit" in df.columns), None)
+        if unit_col is not None:
             units = df[unit_col].dropna()
             if not units.empty:
                 unit = str(units.iloc[0]).strip()

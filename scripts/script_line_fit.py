@@ -163,6 +163,13 @@ parser.add_argument(
 )
 
 parser.add_argument(
+    "--bottom_labely",
+    type=str,
+    default="(Data - Fit)/Fit",
+    help="Y-axis label for the lower residual subplot",
+)
+
+parser.add_argument(
     "--errorx",
     action="store_true",
     help="Set x-axis to show error bars",
@@ -710,7 +717,7 @@ def main():
                 ax_bottom.set_xscale("log")
 
             ax_bottom.set_ylim(-limit, limit)
-            ax_bottom.set_ylabel("(Data - Fit)/Fit", fontsize=ysublabelfontsize)
+            ax_bottom.set_ylabel(args.bottom_labely, fontsize=ysublabelfontsize)
         else:
             ax_top.set_xlabel(
                 resolve_axis_label(args.labelx, args.x, subset),

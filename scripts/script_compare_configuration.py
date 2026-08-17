@@ -177,6 +177,21 @@ parser.add_argument(
 )
 
 parser.add_argument(
+    "--shift",
+    nargs="+",
+    type=str,
+    default=None,
+    help="Config and/or name identifiers whose x-axis values should be shifted",
+)
+
+parser.add_argument(
+    "--shift_offset",
+    type=float,
+    default=0,
+    help="Offset to add to the x values for entries selected by --shift",
+)
+
+parser.add_argument(
     "--iterable_mapping",
     type=str,
     default=None,
@@ -230,6 +245,14 @@ parser.add_argument(
     type=str,
     default="Combined",
     help="Legend label for the combined line",
+)
+
+parser.add_argument(
+    "--show_configs",
+    nargs="+",
+    type=str,
+    default=None,
+    help="Restrict which --configs lines are drawn (they are still loaded and included in --operation/--combine combinations)",
 )
 
 args = parser.parse_args()
@@ -325,11 +348,25 @@ def _concat_numeric_cells(values):
     return np.concatenate(arrays)
 
 
-def _subset_for_config_name(subset, config, name):
-    if name is None or "Name" not in subset.columns:
-        return subset[(subset["Config"] == config)]
+def _subset_for_config_name(subset, config, name, occurrence=None):
+    """Select the rows loaded for a given (config, name) request.
 
-    return subset[(subset["Config"] == config) & (subset["Name"] == name)]
+    When the same (config, name) pair is requested more than once (e.g. the
+    same config listed twice in --configs), matching on value alone returns
+    every occurrence merged together as one ambiguous block of rows. Passing
+    `occurrence` (the index of this request within the config/name list, as
+    tagged onto rows by `import_data`) restricts the match to just the rows
+    loaded for that specific occurrence, so duplicates stay independent.
+    """
+    mask = subset["Config"] == config
+
+    if name is not None and "Name" in subset.columns:
+        mask &= subset["Name"] == name
+
+    if occurrence is not None and "_Occurrence" in subset.columns:
+        mask &= subset["_Occurrence"] == occurrence
+
+    return subset[mask]
 
 
 def _format_config_name_context(config, name):
@@ -341,9 +378,9 @@ def _build_geometry_combined_subset(subset, configs, names, args):
     combine_operation = getattr(args, "combine_operation", None) or "mean"
     grouped = {}
 
-    for config, name in zip(configs, names):
+    for occurrence, (config, name) in enumerate(zip(configs, names)):
         geom = str(config).split("_")[0]
-        df_config = _subset_for_config_name(subset, config, name)
+        df_config = _subset_for_config_name(subset, config, name, occurrence=occurrence)
         if df_config.empty:
             continue
 
@@ -389,6 +426,54 @@ def _build_geometry_combined_subset(subset, configs, names, args):
         combined_names.append(data["name"])
 
     return pd.DataFrame(rows), combined_configs, combined_names
+
+
+def _is_shifted(config, name, args):
+    shift = getattr(args, "shift", None)
+    if shift is None:
+        return False
+    return (config is not None and config in shift) or (name is not None and name in shift)
+
+
+def _compute_combined_reference_grid(subset, configs, names, args):
+    """Build the x grid used to align series before summing them via --operation.
+
+    Spans the union of every series' x range *after* --shift is applied, so a
+    series shifted into a narrower window can't truncate the domain of the
+    other (unshifted, or differently shifted) series being combined.
+    """
+    bin_width = None
+    x_min = None
+    x_max = None
+
+    for occurrence, (config, name) in enumerate(zip(configs, names)):
+        df_config = _subset_for_config_name(subset, config, name, occurrence=occurrence)
+        if df_config.empty:
+            continue
+
+        x, y = _extract_xy_arrays(df_config, args)
+        if x is None or y is None or len(x) < 2:
+            continue
+
+        if _is_shifted(config, name, args):
+            x = x + args.shift_offset
+
+        if bin_width is None:
+            bin_width = float(x[1] - x[0])
+
+        entry_min = float(np.min(x))
+        entry_max = float(np.max(x))
+        x_min = entry_min if x_min is None else min(x_min, entry_min)
+        x_max = entry_max if x_max is None else max(x_max, entry_max)
+
+    if bin_width is None or x_min is None or bin_width == 0:
+        return None, None
+
+    n_points = int(round((x_max - x_min) / bin_width)) + 1
+    grid = x_min + bin_width * np.arange(n_points)
+    edges = np.concatenate([grid - bin_width / 2, [grid[-1] + bin_width / 2]])
+    return grid, edges
+
 
 def main():
     """
@@ -461,12 +546,18 @@ def main():
 
         combinedy = None
         combined_errory = None
+        combined_x = None
+        combined_x_edges = None
+        if args.operation is not None:
+            combined_x, combined_x_edges = _compute_combined_reference_grid(
+                subset, configs, names, args
+            )
         for ldx, (geom, config, name) in enumerate(zip(geoms, configs, names)):
             if args.debug:
                 rprint(
                     f"[blue]Info:[/blue] Processing Geometry: {geom}, {_format_config_name_context(config, name)}"
                 )
-            df_config = _subset_for_config_name(subset, config, name)
+            df_config = _subset_for_config_name(subset, config, name, occurrence=ldx)
 
             if df_config.empty:
                 rprint(
@@ -543,6 +634,9 @@ def main():
                 )
                 continue
 
+            if _is_shifted(config, name, args):
+                x = x + args.shift_offset
+
             plotted_geoms.add(str(geom))
 
             if args.errory:
@@ -579,96 +673,144 @@ def main():
                     )
                 )
 
-            if args.operation is not None:
-                if ldx == 0:
-                    if args.operation == "squared_sum":
-                        combinedy = np.power(y, 2)
-                        combined_errory = (
-                            np.power(errory, 2) if errory is not None else None
-                        )
-                    else:
-                        combinedy = y
-                        combined_errory = (
-                            np.power(errory, 2) if errory is not None else None
-                        )
-
-                else:
-                    if args.operation == "squared_sum":
-                        combinedy = combinedy + np.power(y, 2)
-                        # For independent errors: sqrt(e1^2 + e2^2)
-                        if combined_errory is not None and errory is not None:
-                            combined_errory = combined_errory + np.power(errory, 2)
-                    else:
-                        combinedy = np.add(combinedy, y)
-                        if combined_errory is not None and errory is not None:
-                            combined_errory = combined_errory + np.power(errory, 2)
-
-                if args.project is not None and config in args.project:
-                    # Interpolate the projected y values at the original x values to combine with the original y values
-                    interpy = np.interp(
-                        x,
+            interpy = None
+            error_interpy = None
+            _project_interp = None
+            if args.project is not None and config in args.project:
+                # Interpolate this entry's projected spectrum at a given
+                # target x grid. `target_x` is `x` itself for this entry's
+                # own "(Projected)" display line further below, and (when
+                # --operation is set) `combined_x` for the running combinedy
+                # sum -- the two can differ in length once --shift is
+                # involved, so the projection has to be (re)computed on
+                # whichever grid it's about to be added onto.
+                def _project_interp(target_x):
+                    values = np.interp(
+                        target_x,
                         (x * args.project_scale) + args.project_offset,
                         y,
                         left=0,
                     )
-                    error_interpy = (
-                        [
+
+                    if errory is None:
+                        return values, None
+
+                    if errory_sym == "asymmetric":
+                        err = [
                             np.interp(
-                                x,
-                                (
-                                    (x * args.project_scale) + args.project_offset
-                                    if args.project_offset is not None
-                                    and args.project_scale is not None
-                                    else x
-                                ),
-                                (
-                                    errory[i]
-                                    if errory[i] is not None
-                                    else np.zeros_like(x)
-                                ),
+                                target_x,
+                                (x * args.project_scale) + args.project_offset,
+                                errory[i] if errory[i] is not None else np.zeros_like(x),
                                 left=0,
                                 right=0,
                             )
                             for i in range(2)
                         ]
-                        if errory is not None and errory_sym == "asymmetric"
-                        else (
-                            np.interp(
-                                x,
-                                (
-                                    (x + args.project_offset) * args.project_scale
-                                    if args.project_offset is not None
-                                    and args.project_scale is not None
-                                    else x
-                                ),
-                                errory if errory is not None else np.zeros_like(x),
-                                left=0,
-                                right=0,
+                    elif errory_sym == "symmetric":
+                        err = np.interp(
+                            target_x,
+                            (x + args.project_offset) * args.project_scale,
+                            errory,
+                            left=0,
+                            right=0,
+                        )
+                    else:
+                        err = None
+
+                    return values, err
+
+                # Own grid: reused by this entry's "(Projected)" line below.
+                interpy, error_interpy = _project_interp(x)
+
+            if args.operation is not None:
+                if combined_x is None:
+                    combined_x = x
+
+                # Entries shifted via --shift no longer share the reference x
+                # grid, so resample onto it (by physical x position) instead of
+                # summing arrays index-by-index.
+                if not np.array_equal(x, combined_x):
+                    y_for_combine = np.interp(combined_x, x, y, left=0, right=0)
+                    if errory is not None:
+                        if errory_sym == "asymmetric":
+                            errory_for_combine = [
+                                np.interp(combined_x, x, err, left=0, right=0)
+                                for err in errory
+                            ]
+                        else:
+                            errory_for_combine = np.interp(
+                                combined_x, x, errory, left=0, right=0
                             )
-                            if errory is not None and errory_sym == "symmetric"
+                    else:
+                        errory_for_combine = None
+                else:
+                    y_for_combine = y
+                    errory_for_combine = errory
+
+                if ldx == 0:
+                    if args.operation == "squared_sum":
+                        combinedy = np.power(y_for_combine, 2)
+                        combined_errory = (
+                            np.power(errory_for_combine, 2)
+                            if errory_for_combine is not None
                             else None
                         )
+                    else:
+                        combinedy = y_for_combine
+                        combined_errory = (
+                            np.power(errory_for_combine, 2)
+                            if errory_for_combine is not None
+                            else None
+                        )
+
+                else:
+                    if args.operation == "squared_sum":
+                        combinedy = combinedy + np.power(y_for_combine, 2)
+                        # For independent errors: sqrt(e1^2 + e2^2)
+                        if combined_errory is not None and errory_for_combine is not None:
+                            combined_errory = combined_errory + np.power(
+                                errory_for_combine, 2
+                            )
+                    else:
+                        combinedy = np.add(combinedy, y_for_combine)
+                        if combined_errory is not None and errory_for_combine is not None:
+                            combined_errory = combined_errory + np.power(
+                                errory_for_combine, 2
+                            )
+
+                if args.project is not None and config in args.project:
+                    # `_project_interp`/`interpy` were already computed above
+                    # (on this entry's own grid); resample onto the combined
+                    # reference grid for the running sum.
+                    interpy_for_combine, error_interpy_for_combine = _project_interp(
+                        combined_x
                     )
 
                     if args.operation == "squared_sum":
                         combinedy = combinedy + np.power(
-                            interpy,
+                            interpy_for_combine,
                             2,
                         )
-                        if combined_errory is not None and errory is not None:
+                        if (
+                            combined_errory is not None
+                            and error_interpy_for_combine is not None
+                        ):
                             # For independent errors: sqrt(e1^2 + e2^2)
                             combined_errory = combined_errory + np.power(
-                                error_interpy,
+                                error_interpy_for_combine,
                                 2,
                             )
                     else:
                         combinedy = np.add(
                             combinedy,
-                            interpy,
+                            interpy_for_combine,
                         )
-                        if combined_errory is not None and errory is not None:
+                        if (
+                            combined_errory is not None
+                            and error_interpy_for_combine is not None
+                        ):
                             combined_errory = combined_errory + np.power(
-                                error_interpy,
+                                error_interpy_for_combine,
                                 2,
                             )
 
@@ -703,6 +845,9 @@ def main():
             else:
                 rprint(f"[red]Error:[/red] Only found one x value. Skipping...")
                 continue
+
+            if args.operation is not None and combined_x_edges is None and np.array_equal(x, combined_x):
+                combined_x_edges = x_edges
 
             if config == args.mirror:
                 # Mirror around the last bin without duplicating it at the join.
@@ -778,37 +923,39 @@ def main():
                     last = unique_x[-1] + 0.5 * (unique_x[-1] - unique_x[-2])
                     x_edges = np.concatenate(([first], mids, [last]))
 
-            if args.project is not None and config in args.project:
-                plot_data(
-                    args,
-                    ax_current,
-                    x,
-                    x_edges,
-                    (
-                        np.sqrt(y**2 + interpy**2)
-                        if args.operation == "squared_sum"
-                        else y + interpy
-                    ),
-                    errory,
-                    errory_sym,
-                    geom_label + " (Projected)" if idx == ncols - 1 else None,
-                    this_color,
-                    this_linestyle,
-                )
+            show_configs = getattr(args, "show_configs", None)
+            if show_configs is None or config in show_configs:
+                if args.project is not None and config in args.project:
+                    plot_data(
+                        args,
+                        ax_current,
+                        x,
+                        x_edges,
+                        (
+                            np.sqrt(y**2 + interpy**2)
+                            if args.operation == "squared_sum"
+                            else y + interpy
+                        ),
+                        errory,
+                        errory_sym,
+                        geom_label + " (Projected)" if idx == ncols - 1 else None,
+                        this_color,
+                        this_linestyle,
+                    )
 
-            else:
-                plot_data(
-                    args,
-                    ax_current,
-                    x,
-                    x_edges,
-                    y,
-                    errory,
-                    errory_sym,
-                    geom_label if idx == ncols - 1 else None,
-                    this_color,
-                    this_linestyle,
-                )
+                else:
+                    plot_data(
+                        args,
+                        ax_current,
+                        x,
+                        x_edges,
+                        y,
+                        errory,
+                        errory_sym,
+                        geom_label if idx == ncols - 1 else None,
+                        this_color,
+                        this_linestyle,
+                    )
 
         if args.operation is not None and combinedy is not None:
             if args.operation == "squared_sum":
@@ -834,8 +981,8 @@ def main():
             plot_data(
                 args,
                 ax_current,
-                x,
-                x_edges,
+                combined_x,
+                combined_x_edges if combined_x_edges is not None else x_edges,
                 combinedy,
                 combined_errory,
                 errory_sym,

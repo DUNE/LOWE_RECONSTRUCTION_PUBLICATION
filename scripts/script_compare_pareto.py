@@ -338,6 +338,28 @@ def _resolve_iterable_markers(iterable_values):
     return {value: _MARKER_CYCLE[i % len(_MARKER_CYCLE)] for i, value in enumerate(iterable_values)}
 
 
+def _rank_quadrants_by_data_density(ax, xs, ys):
+    """Order the 4 legend corners from emptiest to most crowded, by counting how
+    many plotted (x, y) points fall in each quadrant of the current axes limits.
+    Used to auto-place two legends in different, data-sparse corners instead of
+    a hardcoded corner or matplotlib's own independent (and mutually unaware)
+    'best' pick per legend."""
+    xlim = ax.get_xlim()
+    ylim = ax.get_ylim()
+    xmid = (xlim[0] + xlim[1]) / 2.0
+    ymid = (ylim[0] + ylim[1]) / 2.0
+    xs = np.asarray(xs, dtype=float)
+    ys = np.asarray(ys, dtype=float)
+
+    counts = {
+        "lower left": int(np.sum((xs <= xmid) & (ys <= ymid))),
+        "lower right": int(np.sum((xs > xmid) & (ys <= ymid))),
+        "upper left": int(np.sum((xs <= xmid) & (ys > ymid))),
+        "upper right": int(np.sum((xs > xmid) & (ys > ymid))),
+    }
+    return sorted(counts, key=counts.get)
+
+
 def main():
     if len(args.variables) != 2:
         rprint(
@@ -459,6 +481,7 @@ def main():
         unit_colors = _resolve_unit_colors(args, units)
 
     aggregate_points = []  # (group_key, label, color, px, py, pxe, pye)
+    plotted_x, plotted_y = [], []  # every drawn point, for auto legend placement
 
     for idx, unit in enumerate(units):
         config, name, iterable_value = unit["config"], unit["name"], unit["iterable"]
@@ -492,6 +515,8 @@ def main():
                 label=point_label,
                 capsize=2,
             )
+            plotted_x.extend(xv.tolist())
+            plotted_y.extend(yv.tolist())
             if args.annotate_bins:
                 for bx, px, py in zip(xb, xv, yv):
                     ax.annotate(
@@ -526,6 +551,8 @@ def main():
                     fontsize=linelabelfontsize,
                 )
             aggregate_points.append((group_key, label, color, px, py, pxe, pye))
+            plotted_x.append(px)
+            plotted_y.append(py)
 
     if args.connect and args.aggregate != "none" and len(aggregate_points) > 1:
         if dual_mode:
@@ -559,6 +586,8 @@ def main():
 
     if args.annotate or args.annotate_bins:
         ax.margins(x=0.25, y=0.15)
+    elif dual_mode:
+        ax.margins(x=0.15, y=0.1)
 
     if args.rangex is not None:
         ax.set_xlim(args.rangex)
@@ -566,12 +595,23 @@ def main():
         ax.set_ylim(args.rangey)
 
     if dual_mode:
-        # Two legends can't both dodge the data AND each other from inside the
-        # axes (each legend's "best" placement ignores the other legend, and a
-        # forced corner just relocates the collision). Instead, shrink the axes
-        # and stack both legends in the freed-up right-hand margin -- outside
-        # the data entirely, so neither collision can happen.
-        fig.subplots_adjust(right=0.7)
+        # Auto-pick two distinct, data-sparse corners from the actual plotted
+        # points, rather than a hardcoded corner or matplotlib's own per-legend
+        # "best" (which picks each legend's spot independently and can stack
+        # them on top of each other). The taller legend gets the emptiest
+        # corner -- it's the one that most needs the extra room; a short
+        # legend fits fine in the second-sparsest corner even if that corner
+        # nominally has a bit more data in it.
+        color_ncol = 2 if len(unique_groups) > 6 else 1
+        shape_ncol = 2 if len(all_iterable_values) > 6 else 1
+        color_rows = -(-len(unique_groups) // color_ncol)
+        shape_rows = -(-len(all_iterable_values) // shape_ncol)
+
+        ranked_corners = _rank_quadrants_by_data_density(ax, plotted_x, plotted_y)
+        if shape_rows > color_rows:
+            shape_loc, color_loc = ranked_corners[0], ranked_corners[1]
+        else:
+            color_loc, shape_loc = ranked_corners[0], ranked_corners[1]
 
         color_handles = [
             mlines.Line2D(
@@ -591,9 +631,8 @@ def main():
             labels=[h.get_label() for h in color_handles],
             title=args.labelz,
             capitalize_labels=getattr(args, "capitalize_legend", False),
-            loc="upper left",
-            bbox_to_anchor=(1.02, 1.0),
-            borderaxespad=0.0,
+            loc=color_loc,
+            ncol=color_ncol,
         )
         ax.add_artist(leg_color)
 
@@ -613,9 +652,8 @@ def main():
             labels=[h.get_label() for h in shape_handles],
             title=args.iterable,
             capitalize_labels=False,
-            loc="lower left",
-            bbox_to_anchor=(1.02, 0.0),
-            borderaxespad=0.0,
+            loc=shape_loc,
+            ncol=shape_ncol,
         )
     else:
         apply_legend_style(

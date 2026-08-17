@@ -52,120 +52,12 @@ def _load_plot_params_config():
                 "two_panel_hspace": 0,
             },
         },
-        "mappings": {
-            "config_dict": {
-                "hd_1x2x6": "Signal",
-                "hd_1x2x6_lateralAPA": "Lateral",
-                "hd_1x2x6_centralAPA": "Central",
-                "vd_1x8x14_3view_30deg": "Signal",
-                "vd_1x8x14_3view_30deg_nominal": "Top",
-                "vd_1x8x14_3view_30deg_shielded": "Bottom Shielded",
-            },
-            "config_color": {
-                "hd_1x2x6": "C1",
-                "hd_1x2x6_lateralAPA": "C1",
-                "hd_1x2x6_centralAPA": "C1",
-                "vd_1x8x14_3view_30deg": "C2",
-                "vd_1x8x14_3view_30deg_nominal": "C2",
-                "vd_1x8x14_3view_30deg_shielded": "C4",
-            },
-            "config_line": {
-                "hd_1x2x6": "-",
-                "hd_1x2x6_lateralAPA": "--",
-                "hd_1x2x6_centralAPA": "-",
-                "vd_1x8x14_3view_30deg": "-",
-                "vd_1x8x14_3view_30deg_nominal": "-",
-                "vd_1x8x14_3view_30deg_shielded": "-",
-            },
-            "particle_dict": {
-                "11": "e-",
-                "-11": "e+",
-                "12": "nu(e)",
-                "-12": "nu(e)~",
-                "13": "mu-",
-                "-13": "mu+",
-                "22": "gamma",
-                "2112": "n",
-                "2212": "p",
-                "1000020040": "He4",
-            },
-            "particle_color": {
-                "e-": "C3",
-                "e+": "C7",
-                "nu(e)": "C5",
-                "nu(e)~": "C6",
-                "mu-": "C8",
-                "mu+": "C9",
-                "gamma": "C0",
-                "n": "C4",
-                "p": "C1",
-                "He4": "C2",
-            },
-            "component_color": {
-                "Ar39": "C1",
-                "Kr85": "C2",
-                "Ar42": "C3",
-                "Rn22X": "C5",
-                "CPA": "C6",
-                "APA": "C7",
-                "Gamma": "C0",
-                "Neutron": "C4",
-            },
-            "simple_plane_dict": {"-1": "Total", "0": "APA"},
-            "simple_plane_color": {},
-            "plane_dict": {
-                "-1": "Total",
-                "0": "Cathode",
-                "1": "Left Membrane",
-                "2": "Right Membrane",
-                "3": "FrontCap",
-                "4": "EndCap",
-            },
-            "plane_color": {},
-            "config_order": [
-                "HD Signal",
-                "HD Lateral",
-                "HD Central",
-                "VD Signal",
-                "VD Top",
-                "VD Bottom",
-            ],
-            "particle_order": ["marley", "neutrino", "alpha", "gamma", "neutron"],
-            "solar_dict": {
-                "pp": "pp",
-                "pep": "pep",
-                "be7": "⁷Be",
-                "b7": "⁷Be",
-                "b8": "⁸B",
-                "hep": "HEP",
-                "n13": "¹³N",
-                "o15": "¹⁵O",
-                "f17": "¹⁷F",
-            },
-            "solar_color": {
-                "pp": "C0",
-                "pep": "C1",
-                "be7": "C2",
-                "b7": "C2",
-                "b8": "C3",
-                "hep": "C4",
-                "n13": "C5",
-                "o15": "C6",
-                "f17": "C7",
-            },
-            "sn_dict": {
-                "nue": r"$\nu_e$",
-                "nuebar": r"$\bar{\nu}_e$",
-                "nux": r"$\nu_x$",
-                "total": "Total",
-            },
-            "sn_color": {
-                "nue": "C1",
-                "nuebar": "C0",
-                "nux": "C4",
-                "total": "gray",
-            },
-        },
+        # Mappings (particle/config/component labels & colors) live solely in
+        # config/plot_params.json — this default has no mappings of its own so
+        # there is exactly one place to edit them. If that file is missing or
+        # fails to parse, scripts fall back to unmapped raw values rather than
+        # a second, driftable copy of the mapping data.
+        "mappings": {},
     }
 
     config_path = os.path.abspath(
@@ -442,6 +334,7 @@ config_color = _MAPPINGS.get("config_color", {})
 config_line = _MAPPINGS.get("config_line", {})
 name_color = _MAPPINGS.get("name_color", {})
 name_dict = _MAPPINGS.get("name_dict", {})
+component_dict = _MAPPINGS.get("component", {})
 
 particle_dict = {
     int(key): value for key, value in _MAPPINGS.get("particle_dict", {}).items()

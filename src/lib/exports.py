@@ -27,6 +27,7 @@ def make_name_from_args(
         The generated export name.
     """
     name_parts = []
+    configs_part_index = None
 
     if prefix is not None:
         name_parts.append(prefix)
@@ -34,10 +35,19 @@ def make_name_from_args(
     if hasattr(args, "datafile"):
         name_parts.append(args.datafile)
 
+    show_configs = getattr(args, "show_configs", None)
+
     if hasattr(args, "configs") and args.configs:
         if args.configs is not None:
             if idx is not None and 0 <= idx < len(args.configs):
                 name_parts.append(args.configs[idx])
+            elif show_configs:
+                # Only the configs actually drawn (--show_configs) identify
+                # this plot; configs loaded solely for --operation/--combine
+                # don't need to be spelled out in the filename.
+                shown = [c for c in args.configs if c in show_configs]
+                configs_part_index = len(name_parts)
+                name_parts.append("_".join(shown) if shown else "_".join(args.configs))
             else:
                 name_parts.append("_".join(args.configs))
 
@@ -96,6 +106,12 @@ def make_name_from_args(
             if args.select:  # Check if args.select has content
                 name_parts.append("_".join(args.select))
 
+    if hasattr(args, "operation") and args.operation:
+        name_parts.append(str(args.operation))
+
+    if hasattr(args, "lower_series_data") and args.lower_series_data:
+        name_parts.append(str(args.lower_series_data))
+
     if hasattr(args, "lower_series") and args.lower_series:
         name_parts.append(str(args.lower_series))
 
@@ -113,17 +129,21 @@ def make_name_from_args(
         name_parts.append("logz")
     if hasattr(args, "no_lower_plot") and args.no_lower_plot:
         name_parts.append("no_lower")
-    
+    if hasattr(args, "invert_style") and args.invert_style:
+        name_parts.append("invert_style")
+
     if suffix is not None:
         name_parts.append(suffix)
 
     export_name = "_".join(name_parts)
     if len(export_name) > 150:
-        # Remove config names (they are typically the second and third parts)
+        # Remove config names (they are typically the second and third parts),
+        # but never the part that identifies which configs are actually shown
+        # (--show_configs) -- that one stays no matter how long the name gets.
         name_parts = [
             part
             for i, part in enumerate(name_parts)
-            if not (i == 1 or i == 2 and part.startswith("hd_"))
+            if i == configs_part_index or not (i == 1 or (i == 2 and part.startswith("hd_")))
         ]
         export_name = "_".join(name_parts)
 

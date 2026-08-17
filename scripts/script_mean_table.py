@@ -72,8 +72,16 @@ parser.add_argument(
     "--variable_name",
     "-n",
     type=str,
-    default="Variable",
-    help="Title for the variable on the table",
+    default=None,
+    help="Column used as the pivot for table columns (default: 'Variable', or "
+    "'Particle' when --name_columns is set)",
+)
+
+parser.add_argument(
+    "--name_columns",
+    action="store_true",
+    help="Layout the table as rows=configs x columns=names (derived from "
+    "--names) instead of collapsing configs into name rows",
 )
 
 
@@ -114,6 +122,9 @@ def main():
     Main function to process simulation configurations, load data files,
     and generate tables based on the provided arguments.
     """
+    if args.variable_name is None:
+        args.variable_name = "Particle" if args.name_columns else "Variable"
+
     df = import_data(args)
 
     # Check if the DataFrame is empty
@@ -121,20 +132,27 @@ def main():
         print("No data to plot. Exiting.")
         return
 
-    # Set default variable if none are provided
-    if args.variables is None:
-        args.variables = [""]
-        df[args.variable_name] = ""
-
     # Capitalize all letters in df["Geometry"]
     df["Geometry"] = df["Geometry"].str.upper()
 
     # Substitute the names in df["Config"] to be more readable with the config_dict
-    if len(args.names) == 1:
+    if args.name_columns:
+        # Keep Config as the detector configuration; derive Particle from Name
+        df["Config"] = df["Config"].map(lambda x: config_dict.get(x, x))
+        df["Particle"] = df["Name"].str.split("_").str[0]
+    elif len(args.names) == 1:
         df["Config"] = df["Config"].map(lambda x: config_dict.get(x, x))
     else:
         df["Config"] = df["Name"].str.split("_").str[0]
         df["Config"] = df["Config"].map(lambda x: particle_dict.get(x, x))
+
+    # Set default variable if none are provided
+    if args.variables is None:
+        if args.name_columns:
+            args.variables = sorted(df[args.variable_name].unique().tolist())
+        else:
+            args.variables = [""]
+            df[args.variable_name] = ""
 
     subset = filter_dataframe(df, args)
     # variables = args.variables if args.variables is not None else [None]
@@ -217,7 +235,12 @@ def main():
         )
 
     # Combine the "Geometry" and "Config" index into a single index called "Configuration"
-    if len(args.configs) <= 2 and len(args.names) == 1:
+    if args.name_columns:
+        if len(args.configs) <= 2:
+            df_table.index = df_table.index.map(lambda x: f"{x[1]}")
+        else:
+            df_table.index = df_table.index.map(lambda x: f"{x[0]} {x[1]}")
+    elif len(args.configs) <= 2 and len(args.names) == 1:
         df_table.index = df_table.index.map(lambda x: f"{x[0]}")
     elif len(args.configs) > 2 and len(args.names) == 1:
         df_table.index = df_table.index.map(lambda x: f"{x[0]} {x[1]}")
@@ -226,35 +249,42 @@ def main():
     else:
         df_table.index = df_table.index.map(lambda x: f"{x[0]} {x[1]}")
 
-    if len(args.names) > 1:
+    if len(args.names) > 1 and not args.name_columns:
         df_table.index.name = "Particle"
     else:
         df_table.index.name = "Configuration"
 
     # Sort columns as they appear in args.variables
-    if args.variable_title is not None:
-        df_table = df_table.reindex(columns=args.variables, level=1)
+    df_table = df_table.reindex(columns=args.variables, level=1)
 
     # Sort according to the configuration column and config_order
-    if len(args.configs) == 1 and len(args.names) > 1:
+    if len(args.configs) == 1 and len(args.names) > 1 and not args.name_columns:
         df_table = df_table.reindex(particle_order, level="Particle")
         # pass
-    if len(args.configs) > 2 and len(args.names) == 1:
+    if (len(args.configs) > 2 and len(args.names) == 1) or (
+        args.name_columns and len(args.configs) > 2
+    ):
         df_table = df_table.reindex(config_order, level="Configuration")
 
-    # Append units to the column titles, matching --variable_units to --variables by position
-    if args.variable_units is not None and args.variables is not None:
-        unit_map = dict(zip(args.variables, args.variable_units))
+    # Relabel column titles: capitalize/display-map names (--name_columns) and
+    # append units (--variable_units), both matched against the raw pivoted
+    # values so they compose regardless of order.
+    unit_map = (
+        dict(zip(args.variables, args.variable_units))
+        if args.variable_units is not None and args.variables is not None
+        else {}
+    )
+    if args.name_columns or unit_map:
+
+        def _display_column(raw):
+            label = raw
+            if args.name_columns and isinstance(raw, str):
+                label = component_dict.get(raw, raw.capitalize())
+            unit = unit_map.get(raw)
+            return f"{label} ({unit})" if unit else label
+
         df_table.columns = pd.MultiIndex.from_tuples(
-            [
-                (
-                    col[0],
-                    f"{col[1]} ({unit_map[col[1]]})"
-                    if unit_map.get(col[1])
-                    else col[1],
-                )
-                for col in df_table.columns
-            ]
+            [(col[0], _display_column(col[1])) for col in df_table.columns]
         )
 
     # Drop rows with all NaN values

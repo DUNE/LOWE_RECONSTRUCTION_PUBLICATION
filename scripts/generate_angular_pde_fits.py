@@ -41,6 +41,7 @@ MODELS = {
     "SiPMAngleFresnelProduct": {
         "func": angular_pde_cosine_fresnel,
         "label": "Cosine x Fresnel Angular PDE",
+        "formula": r"$A\cos\theta\left(1-\tfrac{1}{2}(r_s^2+r_p^2)\right)$",
         "p0": [1.0, 1.3],
         "bounds": ([0, 1.001], [3, 5]),
         "params_label": ["$A$", "$n$"],
@@ -50,6 +51,7 @@ MODELS = {
     "SiPMAngleFresnelInverse": {
         "func": angular_pde_cosine_fresnel_inverse,
         "label": "Cosine / Fresnel Angular PDE",
+        "formula": r"$A\cos\theta\left(1-\tfrac{1}{2}(r_s^2+r_p^2)\right)^{-1}$",
         "p0": [0.97, 1.3],
         "bounds": ([0, 1.001], [3, 5]),
         "params_label": ["$A$", "$n$"],
@@ -59,6 +61,7 @@ MODELS = {
     "SiPMAngleSqrtCosine": {
         "func": angular_pde_sqrt_cosine,
         "label": "Sqrt-Cosine Angular PDE",
+        "formula": r"$A\sqrt{\cos\theta}$",
         "p0": [1.0],
         "bounds": ([0], [3]),
         "params_label": ["$A$"],
@@ -102,6 +105,7 @@ def main():
                     "ParamsUnit": spec["params_unit"],
                     "FitFunction": spec["func"],
                     "FitFunctionLabel": spec["label"],
+                    "FitFunctionFormula": spec["formula"],
                     "Chi2": chi2,
                 }
             ]

@@ -160,6 +160,14 @@ def apply_scientific_threshold_formatter(ax, threshold=0.1, axis="both"):
         ax.yaxis.set_major_formatter(formatter)
 
 
+# Words that shouldn't get naive first-letter capitalization because their
+# correct display form isn't title case (e.g. "hep" is the HEP solar
+# neutrino line, not the word "Hep").
+_CAPITALIZE_LEGEND_EXCEPTIONS = {
+    "hep": "HEP",
+}
+
+
 def _capitalize_legend_label(label):
     if not isinstance(label, str):
         return label
@@ -169,6 +177,11 @@ def _capitalize_legend_label(label):
     for word in words:
         if not word:
             formatted_words.append(word)
+            continue
+
+        exception = _CAPITALIZE_LEGEND_EXCEPTIONS.get(word.lower())
+        if exception is not None:
+            formatted_words.append(exception)
             continue
 
         first_char = word[0]
@@ -328,23 +341,60 @@ def plot_data(
         hist_kwargs = dict(kwargs)
         hist_kwargs.setdefault("linewidth", default_linewidth)
         _apply_plot_style(hist_kwargs, resolved_plot_style)
+        fill_alpha = hist_kwargs.pop("fill_alpha", None)
+        fill_hatch = hist_kwargs.pop("fill_hatch", None)
+        fill_hatch_color = hist_kwargs.pop("fill_hatch_color", False)
+        hist_align = hist_kwargs.pop("align", getattr(args, "align", "mid"))
         ax.hist(
             x,
             bins=x_edges,
             weights=y,
             histtype=hist_kwargs.pop("histtype", "step"),
-            align=hist_kwargs.pop("align", getattr(args, "align", "mid")),
+            align=hist_align,
             label=label,
             color=color,
             **hist_kwargs,
         )
+        if fill_alpha is not None:
+            if fill_hatch_color and fill_hatch:
+                # Transparent face at fill_alpha, then a separate full-opacity
+                # hatch-only pass so hatch lines match the data line color.
+                ax.hist(
+                    x, bins=x_edges, weights=y,
+                    histtype="stepfilled", align=hist_align, label=None,
+                    color=color, alpha=fill_alpha, linewidth=0,
+                )
+                ax.hist(
+                    x, bins=x_edges, weights=y,
+                    histtype="stepfilled", align=hist_align, label=None,
+                    facecolor=(0, 0, 0, 0), edgecolor=color,
+                    hatch=fill_hatch, linewidth=0,
+                )
+            else:
+                ax.hist(
+                    x, bins=x_edges, weights=y,
+                    histtype="stepfilled", align=hist_align, label=None,
+                    color=color, alpha=fill_alpha,
+                    hatch=fill_hatch or "", linewidth=0,
+                )
         return None
 
     if plot_type == "plot":
         plot_kwargs = dict(kwargs)
+        fill_alpha = plot_kwargs.pop("fill_alpha", None)
+        fill_hatch = plot_kwargs.pop("fill_hatch", None)
+        fill_hatch_color = plot_kwargs.pop("fill_hatch_color", False)
         plot_kwargs.setdefault("linewidth", default_linewidth)
         _apply_plot_style(plot_kwargs, resolved_plot_style)
+        drawstyle = plot_kwargs.get("drawstyle", None)
+        step_mode = "mid" if drawstyle == "steps-mid" else ("pre" if drawstyle == "steps-pre" else ("post" if drawstyle == "steps-post" else None))
         ax.plot(x, y, label=label, color=color, **plot_kwargs)
+        if fill_alpha is not None and step_mode is not None:
+            ax.fill_between(x, y, 0, step=step_mode, color=color, alpha=fill_alpha,
+                            hatch=fill_hatch or "", linewidth=0)
+        elif fill_alpha is not None:
+            ax.fill_between(x, y, 0, color=color, alpha=fill_alpha,
+                            hatch=fill_hatch or "", linewidth=0)
         return None
 
     if plot_type == "errorbar":

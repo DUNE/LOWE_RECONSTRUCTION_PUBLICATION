@@ -84,7 +84,6 @@
       "vd_1x8x14_3view_30deg_nominal": "Top",
       "vd_1x8x14_3view_30deg_shielded": "Bottom Shielded"
     },
-    
     "config_color": {
       "hd_1x2x6": "C1",
       "hd_1x2x6_lateralAPA": "C3",
@@ -93,7 +92,6 @@
       "vd_1x8x14_3view_30deg_nominal": "C2",
       "vd_1x8x14_3view_30deg_shielded": "C4"
     },
-
     "config_line": {
       "hd_1x2x6": "-",
       "hd_1x2x6_lateralAPA": "-",
@@ -102,30 +100,27 @@
       "vd_1x8x14_3view_30deg_nominal": "-",
       "vd_1x8x14_3view_30deg_shielded": "-"
     },
-
     "name_color": {
-      "gamma": "C0",
+      "gamma": "C2",
       "electron": "C3",
       "neutron": "C4",
-      "proton": "C1",
-      "alpha": "C2",
+      "proton": "C8",
+      "alpha": "C5",
       "radiological": "C7",
-      "marley": "C5",
-      "marley_official": "C5",
-      "neutrino": "C6",
+      "marley": "C1",
+      "marley_official": "C1",
+      "neutrino": "C0",
       "marley_exponent0": "C0",
       "marley_exponent1": "C1",
       "marley_exponent2": "C2",
       "marley_maximum": "C3"
     },
-
     "name_dict": {
       "marley_exponent0": "Minimum Error ($\\alpha=0$)",
       "marley_exponent1": "Minimum Relative Error ($\\alpha=1$)",
       "marley_exponent2": "Weighted Relative Error ($\\alpha=2$)",
       "marley_maximum": "Maximum PE ($\\alpha\\to\\infty$)"
     },
-    
     "particle_dict": {
       "11": "e-",
       "-11": "e+",
@@ -138,20 +133,18 @@
       "2212": "p",
       "1000020040": "He4"
     },
-    
     "particle_color": {
       "e-": "C3",
       "e+": "C7",
       "nu(e)": "C5",
-      "nu(e)~": "C6",
+      "nu(e)~": "red",
       "mu-": "C8",
       "mu+": "C9",
-      "gamma": "C0",
+      "gamma": "C2",
       "n": "C4",
       "p": "C1",
-      "He4": "C2"
+      "He4": "C6"
     },
-
     "simple_plane_dict": {
       "-1": "Total",
       "0": "APA"
@@ -173,6 +166,88 @@
       "APA": "APA",
       "Gamma": "Ext. Gamma",
       "Neutron": "Ext. Neutron"
+    },
+    "component": {
+      "marley": "Neutrino",
+      "gamma": "Gamma",
+      "neutron": "Neutron",
+      "radiological": "Radiological"
+    },
+    "component_color": {
+      "Ar39": "C1",
+      "Kr85": "C6",
+      "Ar42": "C3",
+      "Rn22X": "C5",
+      "CPA": "C7",
+      "APA": "C8",
+      "Gamma": "C2",
+      "gamma": "C2",
+      "neutron": "C4",
+      "Neutron": "C4",
+      "8B": "C1",
+      "HEP": "C0",
+      "Neutrino": "C0"
+    },
+    "daynight_component_color": {
+      "radiological": "C3",
+      "Ext. Background": "C6",
+      "Gamma": "C2",
+      "Neutron": "C4",
+      "Radiological": "C3",
+      "gamma": "C2",
+      "neutron": "C4",
+      "Solar Day": "C1",
+      "Solar Night": "C0"
+    },
+    "hep_component_color": {
+      "radiological": "C3",
+      "Ext. Background": "C6",
+      "gamma": "C2",
+      "neutron": "C4",
+      "8B": "C1",
+      "hep": "C0"
+    },
+    "cutflow_stage_dict": {
+      "Raw": "Total",
+      "Fiducial": "Fiducial",
+      "NHits+OpHits+AdjCl": "Topological"
+    },
+    "bottom_label_dict": {
+      "asymmetry": "$\\frac{day - night}{\\frac{1}{2}\\,(day + night)}$"
+    },
+    "solar_dict": {
+      "pp": "pp",
+      "pep": "pep",
+      "be7": "⁷Be",
+      "b7": "⁷Be",
+      "b8": "⁸B",
+      "hep": "HEP",
+      "n13": "¹³N",
+      "o15": "¹⁵O",
+      "f17": "¹⁷F"
+    },
+    "solar_color": {
+      "pp": "C0",
+      "pep": "C1",
+      "be7": "C2",
+      "b7": "C2",
+      "b8": "C3",
+      "hep": "C4",
+      "n13": "C5",
+      "o15": "C6",
+      "f17": "C7"
+    },
+    "sn_dict": {
+      "nue": "$\\nu_e$",
+      "nuebar": "$\\bar{\\nu}_e$",
+      "nux": "$\\nu_x$",
+      "total": "Total"
+    },
+    "sn_color": {
+      "nue": "C1",
+      "nuebar": "C0",
+      "nux": "C4",
+      "total": "gray"
     },
     "config_order": [
       "HD Signal",
