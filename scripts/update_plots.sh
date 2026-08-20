@@ -24,16 +24,19 @@
 #
 # Content filters (only applied when --sync is active):
 #   --flags  DIM [DIM ...]       Filter dimensions to apply: any of
-#                                  name  config  folder  energy
+#                                  name  config  folder  energy  study  analysis
 #                                  (prefix with 'no-' to exclude instead of include)
 #   --variables VAL [VAL ...]    Values corresponding 1-to-1 with --flags
 #
 #   --flags and --variables must have the same number of arguments.
 #   Each pair (DIM, VAL) translates to --DIM VAL on sync_solar_data.sh:
-#     name   → --name VAL        (include only files matching sample name)
-#     config → --config VAL      (include only files matching detector config)
-#     folder → --folder VAL      (include only files whose path contains folder)
-#     energy → --energy VAL      (include only files matching energy label)
+#     name     → --name VAL        (include only files matching sample name)
+#     config   → --config VAL      (include only files matching detector config)
+#     folder   → --folder VAL      (include only files whose path contains folder)
+#     energy   → --energy VAL      (include only files matching energy label)
+#     study    → --study VAL       (include only files under this study subdirectory)
+#     analysis → --analysis VAL    (include only files in this physics analysis:
+#                                    daynight, hep, or sensitivity)
 #   Prefix with 'no-' to exclude instead:
 #     no-name → --exclude-name VAL,  no-config → --exclude-config VAL, etc.
 #
@@ -159,6 +162,10 @@ if $DO_SYNC; then
             no-folder ) SYNC_ARGS+=(--exclude-folder  "$val") ;;
             energy    ) SYNC_ARGS+=(--energy          "$val") ;;
             no-energy ) SYNC_ARGS+=(--exclude-energy  "$val") ;;
+            study     ) SYNC_ARGS+=(--study           "$val") ;;
+            no-study  ) SYNC_ARGS+=(--exclude-study   "$val") ;;
+            analysis   ) SYNC_ARGS+=(--analysis          "$val") ;;
+            no-analysis) SYNC_ARGS+=(--exclude-analysis  "$val") ;;
             *) echo "Warning: unknown filter dimension '$dim' — ignored" >&2 ;;
         esac
     done

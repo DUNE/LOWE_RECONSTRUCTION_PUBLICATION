@@ -42,6 +42,19 @@
 #   --exclude-folder VALUE   Exclude files whose path contains this folder
 #   --energy VALUE           Include only files whose name contains this energy label
 #   --exclude-energy VALUE   Exclude files whose name contains this energy label
+#   --study VALUE             Include only files under this study subdirectory
+#                              (e.g. default, unc_bkg0, charge_Q100, oscpoint_solar
+#                              — the variant folder some outputs are grouped under,
+#                              one level above the .pkl file). Files with no study
+#                              subdirectory at all are left untouched by this filter
+#                              — it only rejects files under a *different* study.
+#   --exclude-study VALUE     Exclude files under this study subdirectory
+#   --analysis VALUE           Include only files belonging to this physics
+#                              analysis: daynight, hep, or sensitivity. Matched
+#                              case-insensitively against the full path and
+#                              filename with hyphens stripped, so "day-night",
+#                              "DayNight", "HEP", "Sensitivity" all match.
+#   --exclude-analysis VALUE   Exclude files belonging to this analysis
 #
 # Filter logic: all filters are matched against the full remote path and filename.
 # Include filters are OR-ed within a dimension; all dimensions must pass (AND).
@@ -62,6 +75,8 @@
 #   ./sync_solar_data.sh --config hd_1x2x6_centralAPA --name marley
 #   ./sync_solar_data.sh --name marley --name gamma --exclude-folder Truncated
 #   ./sync_solar_data.sh --energy SolarEnergy --force
+#   ./sync_solar_data.sh --study default --exclude-study unc_bkg0
+#   ./sync_solar_data.sh --analysis daynight --name marley --folder truncated
 #   ./sync_solar_data.sh --show-sources
 #   ./sync_solar_data.sh --list-themes
 #   ./sync_solar_data.sh --theme daynight --publication
@@ -73,6 +88,12 @@ DATA_DIR="$SCRIPT_DIR/input/data"
 MANIFEST_PATH="config/analysis/pkl_paths.json"
 INDEX_PATH="output/data/index.json"
 SOLAR_INDEX_PY="$SCRIPT_DIR/src/lib/solar_index.py"
+
+# Known theme names (mirrors index.json's "_themes"). Some outputs are grouped
+# into subdirectories with these names (e.g. solar/nhits/.../daynight/) — that's
+# a thematic grouping, not a study/systematic variant, so --study/--exclude-study
+# must never treat them as one even when --theme wasn't passed this run.
+KNOWN_THEME_DIRS=(daynight hep sensitivity)
 
 DEFAULT_REMOTE="gae_out:/pc/choozdsk01/users/manthey/SOLAR"
 DEFAULT_PNFS="gae_out:/pnfs/ciemat.es/data/neutrinos/DUNE/SOLAR"
@@ -91,6 +112,10 @@ INCLUDE_FOLDERS=()
 EXCLUDE_FOLDERS=()
 INCLUDE_ENERGIES=()
 EXCLUDE_ENERGIES=()
+INCLUDE_STUDIES=()
+EXCLUDE_STUDIES=()
+INCLUDE_ANALYSES=()
+EXCLUDE_ANALYSES=()
 
 INCLUDE_THEMES=()
 PUBLICATION_ONLY=false
@@ -112,6 +137,10 @@ while [[ $# -gt 0 ]]; do
         --exclude-folder)  EXCLUDE_FOLDERS+=("$2");      shift 2 ;;
         --energy)          INCLUDE_ENERGIES+=("$2");     shift 2 ;;
         --exclude-energy)  EXCLUDE_ENERGIES+=("$2");     shift 2 ;;
+        --study)           INCLUDE_STUDIES+=("$2");      shift 2 ;;
+        --exclude-study)   EXCLUDE_STUDIES+=("$2");      shift 2 ;;
+        --analysis)        INCLUDE_ANALYSES+=("$2");     shift 2 ;;
+        --exclude-analysis) EXCLUDE_ANALYSES+=("$2");    shift 2 ;;
         --theme)           INCLUDE_THEMES+=("$2");       shift 2 ;;
         --publication)     PUBLICATION_ONLY=true;        shift   ;;
         --list-themes)     LIST_THEMES=true;             shift   ;;
@@ -152,6 +181,64 @@ matches_filter() {
     if (( ${#EXCLUDE_FOLDERS[@]}  > 0 )); then _any_match  "$path" "${EXCLUDE_FOLDERS[@]}"  && return 1; fi
     if (( ${#INCLUDE_ENERGIES[@]} > 0 )); then _any_match  "$path" "${INCLUDE_ENERGIES[@]}" || return 1; fi
     if (( ${#EXCLUDE_ENERGIES[@]} > 0 )); then _any_match  "$path" "${EXCLUDE_ENERGIES[@]}" && return 1; fi
+
+    # Study filter: only some outputs are organised under an extra study/variant
+    # subdirectory (e.g. default, unc_bkg0, charge_Q100) directly above the
+    # .pkl file; most aren't. --study/--exclude-study must not reject paths
+    # that have no such subdirectory in the first place — only paths where one
+    # is present and doesn't match. A directory is treated as "structural"
+    # (i.e. not a study) when it equals one of the active --config/--name/
+    # --folder values, or a known theme name (daynight/hep/sensitivity —
+    # thematic grouping, not a study variant); anything else immediately above
+    # the filename is taken to be a study segment. (Without any --config/
+    # --name/--folder filters active, every other immediate parent directory
+    # is treated as a study segment.)
+    if (( ${#INCLUDE_STUDIES[@]} > 0 || ${#EXCLUDE_STUDIES[@]} > 0 )); then
+        local parent="${path%/*}"
+        parent="${parent##*/}"
+        local is_study=true val
+        for val in "${INCLUDE_CONFIGS[@]}" "${EXCLUDE_CONFIGS[@]}" \
+                   "${INCLUDE_NAMES[@]}"   "${EXCLUDE_NAMES[@]}"   \
+                   "${INCLUDE_FOLDERS[@]}" "${EXCLUDE_FOLDERS[@]}" \
+                   "${INCLUDE_THEMES[@]}"  "${KNOWN_THEME_DIRS[@]}"; do
+            [[ "$parent" == "$val" ]] && { is_study=false; break; }
+        done
+        if $is_study; then
+            if (( ${#INCLUDE_STUDIES[@]} > 0 )); then
+                local found=false
+                for val in "${INCLUDE_STUDIES[@]}"; do [[ "$parent" == "$val" ]] && { found=true; break; }; done
+                $found || return 1
+            fi
+            if (( ${#EXCLUDE_STUDIES[@]} > 0 )); then
+                for val in "${EXCLUDE_STUDIES[@]}"; do [[ "$parent" == "$val" ]] && return 1; done
+            fi
+        fi
+    fi
+
+    # Analysis filter: select by physics analysis (daynight/hep/sensitivity).
+    # Matched case-insensitively against the full path, with hyphens stripped,
+    # so "day-night" directories and "DayNight"/"HEP"/"Sensitivity" filename
+    # fragments are all recognised regardless of which spelling is requested.
+    if (( ${#INCLUDE_ANALYSES[@]} > 0 || ${#EXCLUDE_ANALYSES[@]} > 0 )); then
+        local path_norm="${path//-/}"
+        path_norm="${path_norm,,}"
+        local val val_norm
+        if (( ${#INCLUDE_ANALYSES[@]} > 0 )); then
+            local found=false
+            for val in "${INCLUDE_ANALYSES[@]}"; do
+                val_norm="${val//-/}"; val_norm="${val_norm,,}"
+                [[ "$path_norm" == *"$val_norm"* ]] && { found=true; break; }
+            done
+            $found || return 1
+        fi
+        if (( ${#EXCLUDE_ANALYSES[@]} > 0 )); then
+            for val in "${EXCLUDE_ANALYSES[@]}"; do
+                val_norm="${val//-/}"; val_norm="${val_norm,,}"
+                [[ "$path_norm" == *"$val_norm"* ]] && return 1
+            done
+        fi
+    fi
+
     return 0
 }
 
@@ -194,6 +281,10 @@ $DRY_RUN     && echo "    Mode         : dry-run (no files will be written)"
 (( ${#EXCLUDE_FOLDERS[@]}  > 0 )) && echo "    -folder      : ${EXCLUDE_FOLDERS[*]}"
 (( ${#INCLUDE_ENERGIES[@]} > 0 )) && echo "    +energy      : ${INCLUDE_ENERGIES[*]}"
 (( ${#EXCLUDE_ENERGIES[@]} > 0 )) && echo "    -energy      : ${EXCLUDE_ENERGIES[*]}"
+(( ${#INCLUDE_STUDIES[@]}  > 0 )) && echo "    +study       : ${INCLUDE_STUDIES[*]}"
+(( ${#EXCLUDE_STUDIES[@]}  > 0 )) && echo "    -study       : ${EXCLUDE_STUDIES[*]}"
+(( ${#INCLUDE_ANALYSES[@]} > 0 )) && echo "    +analysis    : ${INCLUDE_ANALYSES[*]}"
+(( ${#EXCLUDE_ANALYSES[@]} > 0 )) && echo "    -analysis    : ${EXCLUDE_ANALYSES[*]}"
 (( ${#INCLUDE_THEMES[@]}   > 0 )) && echo "    +theme       : ${INCLUDE_THEMES[*]}"
 $PUBLICATION_ONLY && echo "    publication  : only publication_export files"
 echo ""
