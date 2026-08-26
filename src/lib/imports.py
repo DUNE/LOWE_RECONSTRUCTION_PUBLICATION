@@ -1,7 +1,7 @@
-import os
 import pickle
 from collections import Counter
 from itertools import product
+from pathlib import Path
 
 import pandas as pd
 
@@ -17,6 +17,48 @@ def _dataframe_from_pickle_payload(data):
             return pd.DataFrame([data])
 
     return pd.DataFrame(data)
+
+
+def resolve_input_data_dir(path_override=None):
+    repo_root = Path(__file__).resolve().parents[2]
+    default_input_dir = repo_root / "input" / "data"
+
+    if path_override is None:
+        return default_input_dir, True
+
+    raw_path = str(path_override).strip()
+    if not raw_path:
+        return default_input_dir, True
+
+    resolved = Path(raw_path)
+    if resolved.is_absolute():
+        return resolved, False
+
+    return default_input_dir / resolved, False
+
+
+def build_datafile_candidates(datafile, input_dir, include_studies_fallback=True, include_stem_fallback=False):
+    input_dir = Path(input_dir)
+    candidate = Path(datafile)
+
+    candidates = [candidate]
+    if candidate.suffix == ".pkl":
+        candidates.append(input_dir / candidate.name)
+    else:
+        candidates.append(input_dir / f"{candidate.name}.pkl")
+        if include_stem_fallback:
+            candidates.append(input_dir / f"{candidate.stem}.pkl")
+
+    if include_studies_fallback:
+        candidates += [input_dir / "studies" / c.name for c in candidates if c.is_relative_to(input_dir)]
+
+    deduped_candidates = []
+    for path in candidates:
+        if path in deduped_candidates:
+            continue
+        deduped_candidates.append(path)
+
+    return deduped_candidates
 
 def prepare_import(args):
     '''
@@ -67,20 +109,19 @@ def import_data(args):
     else:
         configs, names = prepare_import(args)
 
+    input_dir, include_studies_fallback = resolve_input_data_dir(getattr(args, "path", None))
+
     if args.configs is None and args.names is None:
-        input_dir = os.path.join(os.path.dirname(__file__), "../..", "input", "data")
-        candidate_paths = [
-            os.path.join(input_dir, f"{args.datafile}.pkl"),
-            # Study-variant pkls (e.g. ..._charge_Q100.pkl) live under studies/
-            # instead of flat in input/data/ — fall back there when the flat
-            # path doesn't exist, rather than maintaining a suffix allowlist.
-            os.path.join(input_dir, "studies", f"{args.datafile}.pkl"),
-        ]
-        datafile = next((path for path in candidate_paths if os.path.exists(path)), None)
+        candidate_paths = build_datafile_candidates(
+            args.datafile,
+            input_dir,
+            include_studies_fallback=include_studies_fallback,
+        )
+        datafile = next((path for path in candidate_paths if path.exists()), None)
         if datafile is None:
             print(f"Data file not found: {candidate_paths[0]}")
             return df
-        with open(datafile, 'rb') as f:
+        with datafile.open('rb') as f:
             data = pickle.load(f)
         df = _dataframe_from_pickle_payload(data)
     
@@ -107,55 +148,24 @@ def import_data(args):
             candidate_paths = []
             # Construct the path to the data file
             if args.configs is None:
-                candidate_paths.append(
-                    os.path.join(
-                        os.path.dirname(__file__),
-                        "../..",
-                        "input",
-                        "data",
-                        f"{name}_{args.datafile}.pkl",
-                    )
-                )
+                candidate_paths.append(input_dir / f"{name}_{args.datafile}.pkl")
             elif args.names is None:
-                candidate_paths.append(
-                    os.path.join(
-                        os.path.dirname(__file__),
-                        "../..",
-                        "input",
-                        "data",
-                        f"{config}_{args.datafile}.pkl",
-                    )
-                )
-                candidate_paths.append(
-                    os.path.join(
-                        os.path.dirname(__file__),
-                        "../..",
-                        "input",
-                        "data",
-                        f"{args.datafile}.pkl",
-                    )
-                )
+                candidate_paths.append(input_dir / f"{config}_{args.datafile}.pkl")
+                candidate_paths.append(input_dir / f"{args.datafile}.pkl")
             else:
-                candidate_paths.append(
-                    os.path.join(
-                        os.path.dirname(__file__),
-                        "../..",
-                        "input",
-                        "data",
-                        f"{config}_{name}_{args.datafile}.pkl",
-                    )
-                )
+                candidate_paths.append(input_dir / f"{config}_{name}_{args.datafile}.pkl")
 
             # Study-variant pkls (e.g. ..._charge_Q100.pkl) live under
             # input/data/studies/ instead of flat in input/data/ — fall back
             # there for each candidate rather than maintaining a suffix
             # allowlist. Flat candidates are still tried first.
-            candidate_paths += [
-                os.path.join(os.path.dirname(path), "studies", os.path.basename(path))
-                for path in candidate_paths
-            ]
+            if include_studies_fallback:
+                candidate_paths += [
+                    path.parent / "studies" / path.name
+                    for path in candidate_paths
+                ]
 
-            datafile = next((path for path in candidate_paths if os.path.exists(path)), None)
+            datafile = next((path for path in candidate_paths if path.exists()), None)
 
             # Check if the data file exists
             if datafile is None:
@@ -163,7 +173,7 @@ def import_data(args):
                 continue
             
             # Load the data from the pickle file
-            with open(datafile, 'rb') as f:
+            with datafile.open('rb') as f:
                 data = pickle.load(f)
 
             loaded_df = _dataframe_from_pickle_payload(data)

@@ -20,6 +20,7 @@ from lib.functions import resolution
 import matplotlib.lines as mlines
 import matplotlib.patches as mpatches
 import math
+import sys
 
 from lib.plot import (
     apply_legend_style,
@@ -32,6 +33,36 @@ from lib.plot import (
     place_point_label,
 )
 from common_args import add_common_args, map_iterable_label, map_iterable_color, resolve_axis_label
+
+
+def _extract_path_override(argv):
+    cleaned = []
+    path_override = None
+    idx = 0
+    while idx < len(argv):
+        token = argv[idx]
+        if token.startswith("--path="):
+            path_override = token.split("=", 1)[1]
+            idx += 1
+            continue
+
+        if token == "--path":
+            if idx + 1 < len(argv) and not argv[idx + 1].startswith("-"):
+                path_override = argv[idx + 1]
+                idx += 2
+                continue
+            cleaned.append(token)
+            idx += 1
+            continue
+
+        cleaned.append(token)
+        idx += 1
+
+    return path_override, cleaned
+
+
+_PATH_OVERRIDE, _CLEANED_ARGV = _extract_path_override(sys.argv[1:])
+sys.argv = [sys.argv[0], *_CLEANED_ARGV]
 
 
 # Import with args parser
@@ -103,6 +134,14 @@ add_common_args(
         },
     },
 )
+
+if "--path" not in parser._option_string_actions:
+    parser.add_argument(
+        "--path",
+        type=str,
+        default=None,
+        help="Base path for --datafile lookups. Relative values resolve inside input/data/ (e.g. --path studies)",
+    )
 
 parser.add_argument(
     "--errorx",
@@ -326,6 +365,8 @@ parser.add_argument(
 )
 
 args = parser.parse_args()
+if not hasattr(args, "path") or args.path is None:
+    args.path = _PATH_OVERRIDE
 
 _MISSING_ITERABLE_MAPPING_WARNING_SHOWN = False
 

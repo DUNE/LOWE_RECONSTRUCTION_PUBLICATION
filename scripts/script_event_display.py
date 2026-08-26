@@ -6,8 +6,6 @@ from _bootstrap import ensure_src_path
 
 ensure_src_path()
 
-from pathlib import Path
-import pickle
 import pandas as pd
 import numpy as np
 from rich import print as rprint
@@ -132,33 +130,7 @@ args = parser.parse_args()
 
 
 def _load_display_df(args):
-    """Load a display pkl that may live directly at the given path or in input/data/."""
-    candidate = Path(args.datafile)
-    repo_root = Path(__file__).resolve().parents[1]
-    input_dir = repo_root / "input" / "data"
-
-    candidates = [candidate]
-    if candidate.suffix == ".pkl":
-        candidates.append(input_dir / candidate.name)
-    else:
-        candidates.append(input_dir / f"{candidate.name}.pkl")
-        candidates.append(input_dir / f"{candidate.stem}.pkl")
-
-    # Study-variant pkls (e.g. ..._charge_Q100.pkl) live under
-    # input/data/studies/ instead of flat in input/data/ — fall back there
-    # rather than maintaining a suffix allowlist.
-    candidates += [input_dir / "studies" / c.name for c in candidates if c.is_relative_to(input_dir)]
-
-    for path in candidates:
-        if not path.exists():
-            continue
-        with path.open("rb") as fh:
-            data = pickle.load(fh)
-        if isinstance(data, pd.DataFrame):
-            return data
-        return pd.DataFrame(data)
-
-    # Fall back to import_data convention
+    """Load display data via the standard script import helper."""
     return import_data(args)
 
 

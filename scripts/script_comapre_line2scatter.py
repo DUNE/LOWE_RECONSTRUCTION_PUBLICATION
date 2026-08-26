@@ -4,10 +4,8 @@ from _bootstrap import ensure_src_path
 
 ensure_src_path()
 
-from pathlib import Path
 import argparse
 import os
-import pickle
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -18,6 +16,7 @@ from common_args import add_common_args
 from lib import titlefontsize, xlabelfontsize, ysublabelfontsize, linelabelfontsize
 from lib.exports import save_figure_to_paths
 from lib.format import make_title_from_args
+from lib.imports import import_data
 from lib.selection import filter_dataframe
 from lib.plot import apply_legend_style, plot_data, create_common_subplots, create_common_two_panel_figure, apply_note_to_figure, add_centered_suptitle, apply_common_figure_margins, draw_vertical_lines, draw_horizontal_lines, place_point_label
 
@@ -200,39 +199,19 @@ def parse_args():
     return parser.parse_args()
 
 
-def load_df(path):
-    candidate = Path(path)
-    repo_root = Path(__file__).resolve().parents[1]
-    input_dir = repo_root / "input" / "data"
-
-    candidates = [candidate]
-    if candidate.suffix == ".pkl":
-        candidates.append(input_dir / candidate.name)
-    else:
-        candidates.append(input_dir / f"{candidate.name}.pkl")
-
-    # Study-variant pkls (e.g. ..._charge_Q100.pkl) live under
-    # input/data/studies/ instead of flat in input/data/ — fall back there
-    # rather than maintaining a suffix allowlist.
-    candidates += [input_dir / "studies" / c.name for c in candidates if c.is_relative_to(input_dir)]
-
-    for resolved_path in candidates:
-        if not resolved_path.exists():
-            continue
-
-        with resolved_path.open("rb") as input_file:
-            data = pickle.load(input_file)
-
-        if isinstance(data, pd.DataFrame):
-            return data
-        if isinstance(data, list):
-            return pd.DataFrame(data)
-        if isinstance(data, dict):
-            return pd.DataFrame(data)
-
-        return pd.DataFrame(data)
-
-    raise FileNotFoundError(f"Could not find input data file for '{path}'")
+def load_df(path, path_override=None):
+    """Load a dataframe using the shared import helper used across the repo."""
+    args = argparse.Namespace(
+        datafile=path,
+        path=path_override,
+        configs=None,
+        names=None,
+        debug=False,
+    )
+    df = import_data(args)
+    if df.empty:
+        raise FileNotFoundError(f"Could not find input data file for '{path}'")
+    return df
 
 
 def _to_array(row, column):
@@ -506,7 +485,7 @@ def _print_dataframe_debug(df, title):
 
 def main():
     args = parse_args()
-    df = load_df(args.datafile)
+    df = load_df(args.datafile, args.path)
 
     if df.empty:
         raise ValueError("Input dataframe is empty")

@@ -20,10 +20,12 @@
 #   {config}_{name}_{datafile}.pkl
 # so all files are safely flattened by basename into input/data/.
 #
-# Study-variant files carry an additional study-label suffix before .pkl
-# (e.g. ..._charge_Q100.pkl, ..._unc_bkg4.pkl) and are flattened into
-# input/data/studies/ instead, keeping input/data/ itself to nominal
-# (no-suffix) results. See KNOWN_STUDY_SUFFIXES below.
+# Study-variant files live one directory level deeper on the remote, under a
+# study subdirectory (e.g. .../truncated/charge_Q100/{config}_{name}_{datafile}.pkl)
+# — see KNOWN_STUDY_DIRS below. Since that raw basename is identical to the
+# nominal file's, it's flattened into input/data/studies/ with the study
+# label appended to the stem (..._charge_Q100.pkl) to keep it distinct;
+# nominal (root-level) files stay flat in input/data/ under their own name.
 #
 # Usage:
 #   ./sync_solar_data.sh [OPTIONS]
@@ -100,28 +102,32 @@ SOLAR_INDEX_PY="$SCRIPT_DIR/src/lib/solar_index.py"
 # must never treat them as one even when --theme wasn't passed this run.
 KNOWN_THEME_DIRS=(daynight hep sensitivity)
 
-# Filename suffixes (before .pkl) that mark a study/systematic-variant output,
-# as opposed to a nominal (no-suffix) result. Used only to route flattened
-# files into input/data/studies/ vs input/data/ at sync time — consumers
-# resolve the same split via an existence-based fallback instead (see
-# src/lib/imports.py), so this list only needs to grow here.
-KNOWN_STUDY_SUFFIXES=(
-    _metric_raw _metric_smoothed
-    _unc_bkg0 _unc_bkg4 _unc_bkg6 _unc_bkg10 _unc_bkg20
-    _unc_sig0 _unc_sig2 _unc_sig6 _unc_sig8 _unc_sig20 _unc_sig40
-    _oscpoint_solar _oscpoint_reactor
-    _energy_maink _energy_spk
-    _charge_Q50 _charge_Q100 _charge_Q200 _charge_Q500
-    _fiduc_truth _bkg_gamma
+# Study/systematic-variant subdirectory names, one level above the .pkl file
+# on the remote. Used only to route flattened files into input/data/studies/
+# vs input/data/ at sync time (and to derive the appended filename suffix) —
+# consumers resolve the same split via an existence-based fallback instead
+# (see src/lib/imports.py), so this list only needs to grow here.
+KNOWN_STUDY_DIRS=(
+    default
+    metric_raw metric_smoothed
+    unc_bkg0 unc_bkg4 unc_bkg6 unc_bkg10 unc_bkg20
+    unc_sig0 unc_sig2 unc_sig6 unc_sig8 unc_sig20 unc_sig40
+    oscpoint_solar oscpoint_reactor
+    energy_maink energy_spk
+    charge_Q50 charge_Q100 charge_Q200 charge_Q500
+    fiduc_truth bkg_gamma
 )
 
-# True if $1 (a bare filename) carries a known study-label suffix.
-_is_study_variant_file() {
-    local stem="${1%.pkl}" suffix
-    for suffix in "${KNOWN_STUDY_SUFFIXES[@]}"; do
-        [[ "$stem" == *"$suffix" ]] && return 0
+# Returns the study label if $1 (a full tmp path) lives inside a known study
+# subdirectory, or empty string if it's a root-level (non-study) file.
+_study_label_of() {
+    local parent
+    parent="$(basename "$(dirname "$1")")"
+    local dir
+    for dir in "${KNOWN_STUDY_DIRS[@]}"; do
+        [[ "$parent" == "$dir" ]] && echo "$parent" && return 0
     done
-    return 1
+    echo ""
 }
 
 DEFAULT_REMOTE="gae_out:/pc/choozdsk01/users/manthey/SOLAR"
@@ -604,10 +610,13 @@ while IFS= read -r -d '' src; do
     matches_filter "$src" || continue
 
     base="$(basename "$src")"
-    if _is_study_variant_file "$base"; then
-        dest="$DATA_DIR/studies/$base"
-    else
+    stem="${base%.pkl}"
+    study="$(_study_label_of "$src")"
+
+    if [[ -z "$study" || "$study" == "default" ]]; then
         dest="$DATA_DIR/$base"
+    else
+        dest="$DATA_DIR/studies/${stem}_${study}.pkl"
     fi
 
     if [[ -f "$dest" ]] && ! $FORCE; then (( SKIPPED++ )) || true; continue; fi

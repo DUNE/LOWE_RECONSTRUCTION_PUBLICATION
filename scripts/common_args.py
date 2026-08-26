@@ -108,6 +108,14 @@ COMMON_ARG_SPECS = {
             "help": "Path/name of the input data file (pkl format)",
         },
     },
+    "path": {
+        "flags": ["--path"],
+        "kwargs": {
+            "type": str,
+            "default": None,
+            "help": "Base path for --datafile lookups. Relative values resolve inside input/data/ (e.g. --path studies)",
+        },
+    },
     "configs": {
         "flags": ["--configs"],
         "kwargs": {
@@ -680,6 +688,9 @@ COMMON_ARG_SPECS = {
 def add_common_args(parser, arg_names, overrides=None):
     overrides = overrides or {}
 
+    if "datafile" in arg_names and "path" not in arg_names:
+        arg_names = list(arg_names) + ["path"]
+
     for arg_name in arg_names:
         if arg_name not in COMMON_ARG_SPECS:
             raise KeyError(f"Unknown common arg '{arg_name}'")
@@ -950,4 +961,3 @@ def resolve_plot_kwargs(selected_plot_type):
     return {
         "plot_type": selected_plot_type,
     }
-
