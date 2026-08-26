@@ -50,7 +50,7 @@ Run a single macro directly:
 
 ```bash
 python3 scripts/script_compare_configuration.py --help
-python3 scripts/script_mean_table.py --help
+python3 scripts/script_aggregate_table.py --help
 ```
 
 Run a batch of commands from a text file:
@@ -76,6 +76,8 @@ For example:
 
 Store your serialized input files in [`input/data/`](input/data/). The plotting and table macros look there by default when `--datafile` is provided.
 
+Study/systematic-variant pkls (filenames with a label suffix before `.pkl`, e.g. `..._charge_Q100.pkl`, `..._unc_bkg4.pkl`) go in `input/data/studies/` instead of flat in `input/data/`. `sync_solar_data.sh` routes them there automatically; loaders fall back to `input/data/studies/{name}.pkl` whenever the flat path doesn't exist, so no filename allowlist needs to stay in sync.
+
 ### 2. Pick A Macro Type
 
 The repository includes several reusable macro patterns:
@@ -86,7 +88,7 @@ The repository includes several reusable macro patterns:
 - [`script_compare_hist2d.py`](scripts/script_compare_hist2d.py): builds 2D histograms and density maps
 - [`script_compare_reduction.py`](scripts/script_compare_reduction.py): reduces distributions into boxplots or summary scatters
 - [`script_line_fit.py`](scripts/script_line_fit.py): draws fit curves and residual panels
-- [`script_mean_table.py`](scripts/script_mean_table.py): creates summary tables from grouped values
+- [`script_aggregate_table.py`](scripts/script_aggregate_table.py): creates summary tables from grouped values
 
 ### 3. Run A Single Command
 
@@ -97,7 +99,7 @@ python3 scripts/script_compare_hist1d.py --datafile Example_Distribution -x Valu
 python3 scripts/script_compare_hist2d.py --datafile Example_Calibration -x TrueEnergy -y RecoEnergy --diagonal
 python3 scripts/script_compare_configuration.py --datafile Example_Efficiency -y Efficiency -x Values -v X Y Z
 python3 scripts/script_line_fit.py --datafile Example_Fit -x Values -y Density --errory --chi2
-python3 scripts/script_mean_table.py --datafile Example_Table -y Efficiency --variables X Y Z -t Coordinate
+python3 scripts/script_aggregate_table.py --datafile Example_Table -y Efficiency --variables X Y Z -t Coordinate
 ```
 
 For [`script_compare_configuration.py`](scripts/script_compare_configuration.py), you can group multiple input lines into combined lines with:
@@ -150,8 +152,8 @@ my_tables_scripts.txt
 Add one table command per line, for example:
 
 ```text
-scripts/script_mean_table.py --datafile Example_Table -y Efficiency --variables X Y Z -t Coordinate
-scripts/script_mean_table.py --datafile Example_Table -y RMS --variables MethodA MethodB -t Algorithm
+scripts/script_aggregate_table.py --datafile Example_Table -y Efficiency --variables X Y Z -t Coordinate
+scripts/script_aggregate_table.py --datafile Example_Table -y RMS --variables MethodA MethodB -t Algorithm
 ```
 
 Run it with:

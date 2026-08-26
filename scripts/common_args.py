@@ -665,6 +665,15 @@ COMMON_ARG_SPECS = {
             "help": "Text annotation to add to the plot (positioned automatically in best location)",
         },
     },
+    "multiply": {
+        "flags": ["--multiply"],
+        "kwargs": {
+            "type": float,
+            "default": None,
+            "help": "Multiply every --y value (and its error, if present) by this "
+            "factor before plotting - e.g. for unit conversion or rescaling",
+        },
+    },
 }
 
 

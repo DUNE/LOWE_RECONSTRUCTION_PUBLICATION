@@ -76,6 +76,7 @@ add_common_args(
         "point",
         "point_label",
         "note",
+        "multiply",
         "debug",
     ],
     overrides={
@@ -495,6 +496,15 @@ def main():
         rprint("[yellow]Warning:[/yellow] No datafiles found. Exiting...")
         return
 
+    if args.multiply is not None:
+        df[args.y] = df[args.y].apply(
+            lambda v: np.asarray(v) * args.multiply if v is not None else v
+        )
+        if f"{args.y}Error" in df.columns:
+            df[f"{args.y}Error"] = df[f"{args.y}Error"].apply(
+                lambda v: np.asarray(v) * args.multiply if v is not None else v
+            )
+
     if args.iterable not in df.columns:
         available_columns = ", ".join(map(str, df.columns.tolist()))
         rprint(
@@ -555,6 +565,16 @@ def main():
         comparable_alpha_map = {}  # comparable_label -> fill alpha (secondary legend, --comparable_fill_strength mode)
         iterable_style_map = {}  # iterable_label -> linestyle (secondary legend, --invert_style)
         subset_by_variable = {}  # variable idx -> a representative variable-filtered dataframe
+        # Values that have already claimed the one legend label slot for their
+        # primary dimension this figure. In comparable_mode the label is normally
+        # attached to the first comparable sub-line (sdx == 0 / linestyle index 0),
+        # but if that particular combination has no data it gets skipped -- and
+        # every later sub-line that *does* draw is then unlabeled, silently
+        # dropping the entry from the legend. Tracking "already labeled" instead
+        # of "is the nominal first slot" lets the label fall to whichever
+        # sub-line actually draws first.
+        _labeled_iterables = set()
+        _labeled_comparables = set()
         # Drop None values from df in iterable column
         iterable_column = str(args.iterable)
         df_config = df_config[df_config[iterable_column].notna()]
@@ -879,11 +899,10 @@ def main():
                             reverse=getattr(args, "iterable_reverse", False),
                         )
                         primary_value_label = comparable_label
-                        plot_label = (
-                            comparable_label
-                            if (idx == n_vars - 1 and linestyle_idx_by_iterable[iterable] == 0)
-                            else None
-                        )
+                        plot_label = None
+                        if idx == n_vars - 1 and comparable_value not in _labeled_comparables:
+                            plot_label = comparable_label
+                            _labeled_comparables.add(comparable_value)
                     else:
                         line_color = (
                             map_iterable_color(iterable, getattr(args, "iterable_color_mapping", None))
@@ -894,7 +913,10 @@ def main():
                         )
                         line_linestyle = _resolve_comparable_linestyle(sdx, args, n_total=len(global_comparable_values))
                         primary_value_label = iterable_label
-                        plot_label = iterable_label if (idx == n_vars - 1 and sdx == 0) else None
+                        plot_label = None
+                        if idx == n_vars - 1 and iterable not in _labeled_iterables:
+                            plot_label = iterable_label
+                            _labeled_iterables.add(iterable)
 
                     _cfs_active = getattr(args, "comparable_fill_strength", False)
                     _fill_active = getattr(args, "fill", False) or _cfs_active

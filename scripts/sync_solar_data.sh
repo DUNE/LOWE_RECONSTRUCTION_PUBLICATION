@@ -20,6 +20,11 @@
 #   {config}_{name}_{datafile}.pkl
 # so all files are safely flattened by basename into input/data/.
 #
+# Study-variant files carry an additional study-label suffix before .pkl
+# (e.g. ..._charge_Q100.pkl, ..._unc_bkg4.pkl) and are flattened into
+# input/data/studies/ instead, keeping input/data/ itself to nominal
+# (no-suffix) results. See KNOWN_STUDY_SUFFIXES below.
+#
 # Usage:
 #   ./sync_solar_data.sh [OPTIONS]
 #
@@ -94,6 +99,30 @@ SOLAR_INDEX_PY="$SCRIPT_DIR/src/lib/solar_index.py"
 # a thematic grouping, not a study/systematic variant, so --study/--exclude-study
 # must never treat them as one even when --theme wasn't passed this run.
 KNOWN_THEME_DIRS=(daynight hep sensitivity)
+
+# Filename suffixes (before .pkl) that mark a study/systematic-variant output,
+# as opposed to a nominal (no-suffix) result. Used only to route flattened
+# files into input/data/studies/ vs input/data/ at sync time — consumers
+# resolve the same split via an existence-based fallback instead (see
+# src/lib/imports.py), so this list only needs to grow here.
+KNOWN_STUDY_SUFFIXES=(
+    _metric_raw _metric_smoothed
+    _unc_bkg0 _unc_bkg4 _unc_bkg6 _unc_bkg10 _unc_bkg20
+    _unc_sig0 _unc_sig2 _unc_sig6 _unc_sig8 _unc_sig20 _unc_sig40
+    _oscpoint_solar _oscpoint_reactor
+    _energy_maink _energy_spk
+    _charge_Q50 _charge_Q100 _charge_Q200 _charge_Q500
+    _fiduc_truth _bkg_gamma
+)
+
+# True if $1 (a bare filename) carries a known study-label suffix.
+_is_study_variant_file() {
+    local stem="${1%.pkl}" suffix
+    for suffix in "${KNOWN_STUDY_SUFFIXES[@]}"; do
+        [[ "$stem" == *"$suffix" ]] && return 0
+    done
+    return 1
+}
 
 DEFAULT_REMOTE="gae_out:/pc/choozdsk01/users/manthey/SOLAR"
 DEFAULT_PNFS="gae_out:/pnfs/ciemat.es/data/neutrinos/DUNE/SOLAR"
@@ -569,12 +598,17 @@ echo ""
 
 # --- Flatten, filter, and copy to input/data/ ---------------------------------
 NEW=0; SKIPPED=0; UPDATED=0
+mkdir -p "$DATA_DIR/studies"
 
 while IFS= read -r -d '' src; do
     matches_filter "$src" || continue
 
     base="$(basename "$src")"
-    dest="$DATA_DIR/$base"
+    if _is_study_variant_file "$base"; then
+        dest="$DATA_DIR/studies/$base"
+    else
+        dest="$DATA_DIR/$base"
+    fi
 
     if [[ -f "$dest" ]] && ! $FORCE; then (( SKIPPED++ )) || true; continue; fi
 

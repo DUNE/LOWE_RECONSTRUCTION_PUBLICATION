@@ -26,57 +26,63 @@ def make_name_from_args(
     str
         The generated export name.
     """
+    # Each part is tagged essential=True if it must never be dropped when the
+    # name has to be shortened. datafile/configs/names are what actually
+    # identify a run, so they stay; everything else (variables, select,
+    # style flags, ...) is expendable filler that can be trimmed.
     name_parts = []
-    configs_part_index = None
+
+    def add(text, essential=False):
+        if text:
+            name_parts.append((text, essential))
 
     if prefix is not None:
-        name_parts.append(prefix)
+        add(prefix, essential=True)
 
     if hasattr(args, "datafile"):
-        name_parts.append(args.datafile)
+        add(args.datafile, essential=True)
 
     show_configs = getattr(args, "show_configs", None)
 
     if hasattr(args, "configs") and args.configs:
         if args.configs is not None:
             if idx is not None and 0 <= idx < len(args.configs):
-                name_parts.append(args.configs[idx])
+                add(args.configs[idx], essential=True)
             elif show_configs:
                 # Only the configs actually drawn (--show_configs) identify
                 # this plot; configs loaded solely for --operation/--combine
                 # don't need to be spelled out in the filename.
                 shown = [c for c in args.configs if c in show_configs]
-                configs_part_index = len(name_parts)
-                name_parts.append("_".join(shown) if shown else "_".join(args.configs))
+                add("_".join(shown) if shown else "_".join(args.configs), essential=True)
             else:
-                name_parts.append("_".join(args.configs))
+                add("_".join(args.configs), essential=True)
 
     if hasattr(args, "project") and args.project:
         for proj in args.project:
             if proj:
-                name_parts.append(proj)
+                add(proj)
 
     if hasattr(args, "names") and args.names:
         if args.names is not None:
             if idx is not None and 0 <= idx < len(args.names):
-                name_parts.append(args.names[idx])
+                add(args.names[idx], essential=True)
             else:
-                name_parts.append("_".join(args.names))
+                add("_".join(args.names), essential=True)
 
     if hasattr(args, "x") and args.x and isinstance(args.x, str):
-        name_parts.append(args.x)
+        add(args.x)
 
     if hasattr(args, "y") and args.y and isinstance(args.y, str):
-        name_parts.append(args.y)
+        add(args.y)
 
     if hasattr(args, "z") and args.z and isinstance(args.z, str):
-        name_parts.append(args.z)
+        add(args.z)
 
     if hasattr(args, "errory") and args.errory:
-        name_parts.append("error")
+        add("error")
 
     if hasattr(args, "variables") and args.variables:
-        name_parts.append("_".join(args.variables))
+        add("_".join(args.variables))
 
     if hasattr(args, "iterable") and args.iterable:
         if (hasattr(args, "select") and args.select is None) and (
@@ -88,10 +94,10 @@ def make_name_from_args(
                 if val:  # Check if val has content
                     iterable_parts.append(f"{val}")
             if iterable_parts:  # Only add if iterable_parts is not empty
-                name_parts.append("_".join(iterable_parts))
+                add("_".join(iterable_parts))
         else:
             if args.iterable:  # Check if args.iterable has content
-                name_parts.append(f"{args.iterable}")
+                add(f"{args.iterable}")
 
     if hasattr(args, "select") and args.select:
         if hasattr(args, "save_values") and args.save_values:
@@ -101,51 +107,67 @@ def make_name_from_args(
                 if sel and val:  # Check if both sel and val have content
                     select_parts.append(f"{sel}_{val}")
             if select_parts:  # Only add if select_parts is not empty
-                name_parts.append("_".join(select_parts))
+                add("_".join(select_parts))
         else:
             if args.select:  # Check if args.select has content
-                name_parts.append("_".join(args.select))
+                add("_".join(args.select))
 
     if hasattr(args, "operation") and args.operation:
-        name_parts.append(str(args.operation))
+        add(str(args.operation))
 
     if hasattr(args, "lower_series_data") and args.lower_series_data:
-        name_parts.append(str(args.lower_series_data))
+        add(str(args.lower_series_data))
 
     if hasattr(args, "lower_series") and args.lower_series:
-        name_parts.append(str(args.lower_series))
+        add(str(args.lower_series))
 
     if hasattr(args, "lower_plot_style") and args.lower_plot_style:
-        name_parts.append(str(args.lower_plot_style))
+        add(str(args.lower_plot_style))
 
     if hasattr(args, "lower_series_density") and args.lower_series_density:
-        name_parts.append("density")
+        add("density")
 
     if hasattr(args, "logx") and args.logx:
-        name_parts.append("logx")
+        add("logx")
     if hasattr(args, "logy") and args.logy:
-        name_parts.append("logy")
+        add("logy")
     if hasattr(args, "logz") and args.logz:
-        name_parts.append("logz")
+        add("logz")
     if hasattr(args, "no_lower_plot") and args.no_lower_plot:
-        name_parts.append("no_lower")
+        add("no_lower")
     if hasattr(args, "invert_style") and args.invert_style:
-        name_parts.append("invert_style")
+        add("invert_style")
+
+    MAX_LEN = 150
+    suffix_part = ("_" + suffix) if suffix is not None else ""
+
+    def joined(drop):
+        return "_".join(text for i, (text, _) in enumerate(name_parts) if i not in drop)
+
+    dropped = set()
+    if len(joined(dropped)) + len(suffix_part) > MAX_LEN:
+        # Drop the biggest non-essential parts first (--variables is usually
+        # the main offender) until the name fits, keeping datafile/configs/
+        # names intact so runs that only differ in those stay distinct.
+        droppable_by_size = sorted(
+            (i for i, (_, essential) in enumerate(name_parts) if not essential),
+            key=lambda i: -len(name_parts[i][0]),
+        )
+        for i in droppable_by_size:
+            if len(joined(dropped)) + len(suffix_part) <= MAX_LEN:
+                break
+            dropped.add(i)
+
+    export_name = joined(dropped)
+    if len(export_name) + len(suffix_part) > MAX_LEN:
+        # Even the essential parts alone don't fit; hard-truncate them so the
+        # suffix (which carries the file extension, e.g. "table.tex") always
+        # survives intact.
+        budget = max(MAX_LEN - len(suffix_part), 0)
+        export_name = export_name[:budget].rstrip("_")
 
     if suffix is not None:
-        name_parts.append(suffix)
-
-    export_name = "_".join(name_parts)
-    if len(export_name) > 150:
-        # Remove config names (they are typically the second and third parts),
-        # but never the part that identifies which configs are actually shown
-        # (--show_configs) -- that one stays no matter how long the name gets.
-        name_parts = [
-            part
-            for i, part in enumerate(name_parts)
-            if i == configs_part_index or not (i == 1 or (i == 2 and part.startswith("hd_")))
-        ]
-        export_name = "_".join(name_parts)
+        export_name = export_name + "_" + suffix
 
     export_name = export_name.replace(" ", "_").replace("-", "_").replace("#", "n")
     return export_name.lower()

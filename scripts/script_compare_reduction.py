@@ -64,6 +64,7 @@ add_common_args(
         "point",
         "point_label",
         "note",
+        "multiply",
         "debug",
     ],
     overrides={
@@ -732,6 +733,15 @@ def main():
     if df.empty:
         rprint("[yellow]Warning:[/yellow] No datafiles found. Exiting...")
         return
+
+    if args.multiply is not None:
+        df[args.y] = df[args.y].apply(
+            lambda v: np.asarray(v) * args.multiply if v is not None else v
+        )
+        if f"{args.y}Error" in df.columns:
+            df[f"{args.y}Error"] = df[f"{args.y}Error"].apply(
+                lambda v: np.asarray(v) * args.multiply if v is not None else v
+            )
 
     # Select the entries in the dataframe with with name matching args.names and nake a plot for each iterable
     if args.panels is not None:

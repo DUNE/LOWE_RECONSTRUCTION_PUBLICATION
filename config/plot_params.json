@@ -173,6 +173,14 @@
       "neutron": "Neutron",
       "radiological": "Radiological"
     },
+    "stage_dict": {
+      "Raw": "Total",
+      "TPC-PDS Matching": "TPC-PDS Matching",
+      "Fiducial": "Fiducial",
+      "NHits": "Cluster Hits",
+      "NHits+OpHits": "Optical Hits",
+      "NHits+OpHits+AdjCl": "Adj. Clusters"
+    },
     "component_color": {
       "Ar39": "C1",
       "Kr85": "C6",

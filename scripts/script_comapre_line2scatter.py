@@ -211,6 +211,11 @@ def load_df(path):
     else:
         candidates.append(input_dir / f"{candidate.name}.pkl")
 
+    # Study-variant pkls (e.g. ..._charge_Q100.pkl) live under
+    # input/data/studies/ instead of flat in input/data/ — fall back there
+    # rather than maintaining a suffix allowlist.
+    candidates += [input_dir / "studies" / c.name for c in candidates if c.is_relative_to(input_dir)]
+
     for resolved_path in candidates:
         if not resolved_path.exists():
             continue

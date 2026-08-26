@@ -55,6 +55,8 @@ from _bootstrap import ensure_src_path
 ensure_src_path()
 
 from matplotlib.lines import Line2D
+from matplotlib.patches import Patch
+from matplotlib.colors import to_rgba, to_rgb
 from rich import print as rprint
 
 from lib import *
@@ -165,7 +167,7 @@ parser.add_argument(
     "--combined_color",
     type=str,
     default="black",
-    help="Color for the combined contour line",
+    help="Color for the combined contour line. Pass 'DUNE' to sequentially cycle through the dunestyle DUNE logo color palette, one color per subplot panel",
 )
 
 parser.add_argument(
@@ -257,6 +259,34 @@ parser.add_argument(
 )
 
 parser.add_argument(
+    "--fill_contours",
+    action="store_true",
+    default=False,
+    help="Fill contour regions with color (contourf) instead of drawing outline-only contour lines",
+)
+
+parser.add_argument(
+    "--fill_alpha",
+    type=float,
+    default=None,
+    help="Alpha for the most significant filled contour band; defaults to --contour_alpha for per-config fills and --combined_alpha for the combined fill",
+)
+
+parser.add_argument(
+    "--fill_outer_alpha",
+    type=float,
+    default=0.0,
+    help="Alpha for the outermost region below the lowest contour level (fully transparent by default)",
+)
+
+parser.add_argument(
+    "--fill_inner_alpha",
+    type=float,
+    default=0.0,
+    help="Alpha for the innermost region above the highest contour level (fully transparent by default)",
+)
+
+parser.add_argument(
     "--contour_min_vertices",
     type=int,
     default=0,
@@ -289,6 +319,51 @@ SIGMA_TO_CUMULATIVE = {
     2.0: 0.8646647167633873,
     3.0: 0.9888910034617577,
 }
+
+# The actual DUNE-styled color cycle: dune.mplstyle (auto-applied by `from lib
+# import *`, which enables dunestyle on import) sets this as axes.prop_cycle,
+# and it's what every other plot in the repo draws its "Cn" colors from (e.g.
+# script_iterable_scan.py's per-line colors). Read it live instead of
+# hardcoding a copy, so this never drifts from the real style again.
+DUNE_COLOR_PALETTE = list(plt.rcParams["axes.prop_cycle"].by_key()["color"])
+
+
+def is_dune_color(base_color):
+    return str(base_color).strip().upper() == "DUNE"
+
+
+def _shade_color(hex_color, factor=0.0):
+    """Blend `hex_color` toward white (factor > 0) or black (factor < 0) by
+    |factor| (0-1). factor=0 returns the color unchanged.
+    """
+    r, g, b = to_rgb(hex_color)
+    if factor > 0:
+        return (r + (1 - r) * factor, g + (1 - g) * factor, b + (1 - b) * factor)
+    if factor < 0:
+        return (r * (1 + factor), g * (1 + factor), b * (1 + factor))
+    return (r, g, b)
+
+
+def resolve_band_hues(base_color, level_count, offset=0):
+    if is_dune_color(base_color):
+        palette_size = len(DUNE_COLOR_PALETTE)
+        hues = []
+        for i in range(level_count):
+            slot = i + offset
+            base = DUNE_COLOR_PALETTE[slot % palette_size]
+            # Every extra trip around the 3-color DUNE palette alternates
+            # lightening/darkening the base hue, so repeated colors (e.g. a
+            # 4th, 5th, 6th contour level) stay visually distinct instead of
+            # silently duplicating an earlier band's exact color.
+            cycle = slot // palette_size
+            if cycle == 0:
+                hues.append(base)
+            else:
+                step = (cycle + 1) // 2
+                sign = 1 if cycle % 2 else -1
+                hues.append(_shade_color(base, sign * min(0.25 * step, 0.7)))
+        return hues
+    return [base_color] * level_count
 
 
 def sigma_to_cumulative_probability(sigma):
@@ -366,6 +441,89 @@ def apply_contour_discontinuity_filter(contour_set):
         paths = collection.get_paths()
         filtered_paths = [path for path in paths if len(path.vertices) >= min_vertices]
         collection.set_paths(filtered_paths)
+
+
+def resolve_fill_alpha(default_alpha):
+    fill_alpha = getattr(args, "fill_alpha", None)
+    return fill_alpha if fill_alpha is not None else default_alpha
+
+
+def compute_inner_band_alphas(base_color, level_count, alpha_max, inner_alpha=None):
+    if level_count <= 0:
+        return []
+    last_alpha = 0.0 if inner_alpha is None else inner_alpha
+    if level_count == 1:
+        return [last_alpha]
+    if is_dune_color(base_color):
+        # Distinct hues already separate the bands, so keep opacity uniform across them.
+        return [alpha_max] * (level_count - 1) + [last_alpha]
+    ramp = np.linspace(alpha_max / (level_count - 1), alpha_max, level_count - 1)
+    return list(ramp) + [last_alpha]
+
+
+def build_fill_colors(base_color, level_count, alpha_max, outer_alpha, inner_alpha=None, offset=0):
+    if level_count <= 0:
+        return []
+    hues = resolve_band_hues(base_color, level_count, offset)
+    inner_alphas = compute_inner_band_alphas(base_color, level_count, alpha_max, inner_alpha)
+    colors = [to_rgba(hues[0], alpha=outer_alpha)]
+    colors += [to_rgba(hue, alpha=float(alpha)) for hue, alpha in zip(hues, inner_alphas)]
+    return colors
+
+
+def format_sigma_label(sigma):
+    return f"${float(sigma):g}\\sigma$"
+
+
+def sigma_band_labels(levels_sorted, sigmas, level_mode):
+    if level_mode == "z_values":
+        return [format_sigma_label(level) for level in levels_sorted]
+
+    sorted_sigmas = sorted(float(s) for s in sigmas if np.isfinite(s))
+    if len(sorted_sigmas) == len(levels_sorted):
+        return [format_sigma_label(sigma) for sigma in sorted_sigmas]
+    return [f"Level {level:.3g}" for level in levels_sorted]
+
+
+def build_fill_legend_handles(levels, sigmas, level_mode, base_color, alpha_max, inner_alpha=None, prefix=None, offset=0):
+    if not levels:
+        return []
+
+    levels_sorted = sorted(levels)
+    labels = sigma_band_labels(levels_sorted, sigmas, level_mode)
+    hues = resolve_band_hues(base_color, len(levels_sorted), offset)
+    inner_alphas = compute_inner_band_alphas(base_color, len(levels_sorted), alpha_max, inner_alpha)
+
+    handles = []
+    for label, hue, alpha in list(zip(labels, hues, inner_alphas))[:-1]:
+        full_label = f"{prefix} {label}" if prefix else label
+        handles.append(
+            Patch(
+                facecolor=hue,
+                edgecolor=hue,
+                alpha=float(alpha),
+                label=full_label,
+            )
+        )
+    return handles
+
+
+def draw_filled_contour(ax, x, y, image, levels, base_color, alpha_max, zorder, outer_alpha=0.0, inner_alpha=None, offset=0):
+    if not levels:
+        return None
+
+    levels_sorted = sorted(levels)
+    extended_levels = [-np.inf] + levels_sorted + [np.inf]
+    colors = build_fill_colors(base_color, len(levels_sorted), alpha_max, outer_alpha, inner_alpha, offset)
+
+    return ax.contourf(
+        x,
+        y,
+        image,
+        levels=extended_levels,
+        colors=colors,
+        zorder=zorder,
+    )
 
 
 def smooth_background_image(z):
@@ -692,7 +850,9 @@ def main():
         enumerate(variables),
         enumerate(iterables) if args.iterable is not None else enumerate([None]),
     ):
-        ax_current = ax if ncols == 1 else ax[idx if args.variables is not None else jdx]
+        panel_idx = idx if args.variables is not None else jdx
+        ax_current = ax if ncols == 1 else ax[panel_idx]
+        combined_color = args.combined_color
 
         if variable is not None and iterable is None:
             subset = filtered_df[(filtered_df["Variable"] == variable)]
@@ -817,31 +977,56 @@ def main():
                         f"[blue]Info:[/blue] Contour levels for {payload['label']}: {levels} (z-range: {z_min:.4g} to {z_max:.4g})"
                     )
 
-                contour_set = ax_current.contour(
-                    payload["x"],
-                    payload["y"],
-                    contour_image,
-                    levels=levels,
-                    colors=[payload["color"]],
-                    linestyles=resolve_contour_linestyles(len(levels), payload["linestyle"]),
-                    linewidths=args.contour_linewidth,
-                    alpha=args.contour_alpha,
-                    zorder=5,
-                )
-                apply_contour_discontinuity_filter(contour_set)
-                legend_linestyle = resolve_contour_linestyles(1, payload["linestyle"])
-                if isinstance(legend_linestyle, list):
-                    legend_linestyle = legend_linestyle[0]
-                legend_handles.append(
-                    Line2D(
-                        [0],
-                        [0],
-                        color=payload["color"],
-                        linestyle=legend_linestyle,
-                        linewidth=args.contour_linewidth,
-                        label=payload["label"],
+                if args.fill_contours:
+                    draw_filled_contour(
+                        ax_current,
+                        payload["x"],
+                        payload["y"],
+                        contour_image,
+                        levels,
+                        payload["color"],
+                        resolve_fill_alpha(args.contour_alpha),
+                        zorder=5,
+                        outer_alpha=args.fill_outer_alpha,
+                        inner_alpha=args.fill_inner_alpha,
                     )
-                )
+                    legend_handles.extend(
+                        build_fill_legend_handles(
+                            levels,
+                            args.contour_sigmas,
+                            args.contour_level_mode,
+                            payload["color"],
+                            resolve_fill_alpha(args.contour_alpha),
+                            inner_alpha=args.fill_inner_alpha,
+                            prefix=payload["label"] if len(payloads) > 1 else None,
+                        )
+                    )
+                else:
+                    contour_set = ax_current.contour(
+                        payload["x"],
+                        payload["y"],
+                        contour_image,
+                        levels=levels,
+                        colors=[payload["color"]],
+                        linestyles=resolve_contour_linestyles(len(levels), payload["linestyle"]),
+                        linewidths=args.contour_linewidth,
+                        alpha=args.contour_alpha,
+                        zorder=5,
+                    )
+                    apply_contour_discontinuity_filter(contour_set)
+                    legend_linestyle = resolve_contour_linestyles(1, payload["linestyle"])
+                    if isinstance(legend_linestyle, list):
+                        legend_linestyle = legend_linestyle[0]
+                    legend_handles.append(
+                        Line2D(
+                            [0],
+                            [0],
+                            color=payload["color"],
+                            linestyle=legend_linestyle,
+                            linewidth=args.contour_linewidth,
+                            label=payload["label"],
+                        )
+                    )
 
         if args.operation == "squared_sum":
             combined_contour_image = smooth_contour_image(
@@ -862,41 +1047,90 @@ def main():
                         f"[blue]Info:[/blue] Combined contour levels: {combined_levels} (z-range: {z_min:.4g} to {z_max:.4g})"
                     )
 
-                combined_linewidth = (
-                    args.combined_linewidth
-                    if getattr(args, "combined_linewidth", None) is not None
-                    else args.contour_linewidth + 0.5
-                )
+                # Rotate the DUNE palette's starting hue by panel index so each
+                # subplot panel cycles through a different offset instead of
+                # every panel independently restarting at the same color.
+                panel_color_offset = panel_idx % len(DUNE_COLOR_PALETTE)
 
-                contour_set = ax_current.contour(
-                    background_x,
-                    background_y,
-                    combined_contour_image,
-                    levels=combined_levels,
-                    colors=[args.combined_color],
-                    linestyles=resolve_contour_linestyles(
-                        len(combined_levels), args.combined_linestyle
-                    ),
-                    linewidths=combined_linewidth,
-                    alpha=args.combined_alpha,
-                    zorder=6,
-                )
-                apply_contour_discontinuity_filter(contour_set)
-                combined_legend_linestyle = resolve_contour_linestyles(
-                    1, args.combined_linestyle
-                )
-                if isinstance(combined_legend_linestyle, list):
-                    combined_legend_linestyle = combined_legend_linestyle[0]
-                legend_handles.append(
-                    Line2D(
-                        [0],
-                        [0],
-                        color=args.combined_color,
-                        linestyle=combined_legend_linestyle,
-                        linewidth=combined_linewidth,
-                        label=args.combined_label,
+                if args.fill_contours:
+                    draw_filled_contour(
+                        ax_current,
+                        background_x,
+                        background_y,
+                        combined_contour_image,
+                        combined_levels,
+                        combined_color,
+                        resolve_fill_alpha(args.combined_alpha),
+                        zorder=6,
+                        outer_alpha=args.fill_outer_alpha,
+                        inner_alpha=args.fill_inner_alpha,
+                        offset=panel_color_offset,
                     )
-                )
+                    legend_handles.extend(
+                        build_fill_legend_handles(
+                            combined_levels,
+                            args.contour_sigmas,
+                            args.contour_level_mode,
+                            combined_color,
+                            resolve_fill_alpha(args.combined_alpha),
+                            inner_alpha=args.fill_inner_alpha,
+                            prefix=None if args.combined_contours_only else args.combined_label,
+                            offset=panel_color_offset,
+                        )
+                    )
+                else:
+                    combined_linewidth = (
+                        args.combined_linewidth
+                        if getattr(args, "combined_linewidth", None) is not None
+                        else args.contour_linewidth + 0.5
+                    )
+
+                    contour_set = ax_current.contour(
+                        background_x,
+                        background_y,
+                        combined_contour_image,
+                        levels=combined_levels,
+                        colors=resolve_band_hues(combined_color, len(combined_levels), panel_color_offset),
+                        linestyles=resolve_contour_linestyles(
+                            len(combined_levels), args.combined_linestyle
+                        ),
+                        linewidths=combined_linewidth,
+                        alpha=args.combined_alpha,
+                        zorder=6,
+                    )
+                    apply_contour_discontinuity_filter(contour_set)
+                    combined_legend_linestyle = resolve_contour_linestyles(
+                        1, args.combined_linestyle
+                    )
+                    if isinstance(combined_legend_linestyle, list):
+                        combined_legend_linestyle = combined_legend_linestyle[0]
+                    if is_dune_color(combined_color):
+                        combined_prefix = None if args.combined_contours_only else args.combined_label
+                        for label, hue in zip(
+                            sigma_band_labels(sorted(combined_levels), args.contour_sigmas, args.contour_level_mode),
+                            resolve_band_hues(combined_color, len(combined_levels), panel_color_offset),
+                        ):
+                            legend_handles.append(
+                                Line2D(
+                                    [0],
+                                    [0],
+                                    color=hue,
+                                    linestyle=combined_legend_linestyle,
+                                    linewidth=combined_linewidth,
+                                    label=f"{combined_prefix} {label}" if combined_prefix else label,
+                                )
+                            )
+                    else:
+                        legend_handles.append(
+                            Line2D(
+                                [0],
+                                [0],
+                                color=combined_color,
+                                linestyle=combined_legend_linestyle,
+                                linewidth=combined_linewidth,
+                                label=args.combined_label,
+                            )
+                        )
 
         if x_range_local is not None and y_range_local is not None:
             if matched_ranges[0] is None:
@@ -994,11 +1228,12 @@ def main():
                     place_point_label(ax_current, point_x, point_y, point_labels[point_idx], fontsize=linelabelfontsize)
 
         if legend_handles:
-            apply_legend_style(
+            legend = apply_legend_style(
                 ax_current,
                 handles=legend_handles,
                 capitalize_labels=getattr(args, "capitalize_legend", False),
             )
+            legend.set_zorder(10)
 
     plot_title = make_title_from_args(args)
     add_centered_suptitle(fig, plot_title, fontsize=titlefontsize)

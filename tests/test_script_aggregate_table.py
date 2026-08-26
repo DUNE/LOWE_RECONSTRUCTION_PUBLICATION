@@ -13,7 +13,7 @@ def _load_module_and_main(monkeypatch):
         sys,
         "argv",
         [
-            "script_mean_table.py",
+            "script_aggregate_table.py",
             "--datafile",
             "mock",
         ],
@@ -26,9 +26,9 @@ def _load_module_and_main(monkeypatch):
     monkeypatch.syspath_prepend(str(src_dir))
     monkeypatch.syspath_prepend(str(repo_root))
 
-    module = importlib.import_module("scripts.script_mean_table")
+    module = importlib.import_module("scripts.script_aggregate_table")
     module = importlib.reload(module)
-    from scripts.script_mean_table import main
+    from scripts.script_aggregate_table import main
 
     return module, main
 
@@ -70,7 +70,7 @@ def test_main_generates_table_latex_output(monkeypatch, plot_artifact_dir):
     monkeypatch.setattr(
         module,
         "make_name_from_args",
-        lambda _args, prefix=None, suffix=None: f"test_script_mean_table.{suffix.split('.')[-1]}" if suffix else "test_script_mean_table",
+        lambda _args, prefix=None, suffix=None: f"test_script_aggregate_table.{suffix.split('.')[-1]}" if suffix else "test_script_aggregate_table",
     )
 
     main()

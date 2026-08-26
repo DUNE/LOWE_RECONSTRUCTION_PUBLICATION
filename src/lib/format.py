@@ -1,5 +1,6 @@
 import sys
 import os
+import re
 import numpy as np
 import pandas as pd
 from . import config_dict, config_color, config_line, name_color, name_dict
@@ -13,7 +14,7 @@ def get_simple_title_from_script(args=None):
     Examples:
         script_compare_configuration.py -> Compare Configuration
         script_compare_hist1d.py -> Compare Histogram 1D
-        script_mean_table.py -> Mean Table
+        script_aggregate_table.py -> Aggregate Table
     
     Returns:
         str: A simple title based on the script name
@@ -155,17 +156,133 @@ def make_subtitle_from_args(args, iterables, plot_type="hist1d", idx=None):
     return " - ".join(subtitle_parts)
 
 
+def _wants_scientific(value, args):
+    """
+    Decide whether `value` should be rendered in scientific notation:
+    always when --scientific is set, or automatically when its magnitude
+    falls outside the [--scientific_threshold_low, --scientific_threshold_high]
+    window (either bound may be None/unset).
+    """
+    if args is None:
+        return False
+
+    if getattr(args, "scientific", False):
+        return True
+
+    abs_value = abs(value)
+
+    low = getattr(args, "scientific_threshold_low", None)
+    if low is not None and abs_value < low:
+        return True
+
+    high = getattr(args, "scientific_threshold_high", None)
+    if high is not None and abs_value > high:
+        return True
+
+    return False
+
+
+def _resolve_decimal_places(error):
+    """Number of decimal places (plain notation) needed to show `error` to
+    1 significant figure, or 2 if its leading digit is 1 (PDG rounding rule).
+    Can be negative for errors coarser than the ones place (e.g. an error of
+    ~20000 resolves to -3, i.e. round to the nearest thousand).
+    Returns None if the error can't be used to resolve a precision.
+    """
+    if error is None or not np.isfinite(error) or error <= 0:
+        return None
+
+    exponent = int(np.floor(np.log10(abs(error))))
+    leading_digit = int(abs(error) / 10**exponent + 1e-9)
+    sig_figs = 2 if leading_digit == 1 else 1
+    return sig_figs - 1 - exponent
+
+
+def _too_many_digits(error_digits, max_digits=3):
+    """True if the parenthetical error digits have grown past what 1-2
+    significant figures should ever produce (allowing a little rounding
+    slack, e.g. 9.6 -> "10"). A large digit count means the error's own
+    magnitude is wildly different from the value's, usually an unconstrained
+    or degenerate fit parameter, where the parenthetical notation breaks down.
+    """
+    return len(str(abs(error_digits))) > max_digits
+
+
+def _format_value_with_paren_error(base_format, value, error):
+    """Format `value +/- error` in compact parenthetical notation (e.g.
+    "1.35(6)e-08" instead of "1.35e-08 +/- 6e-09"), the standard convention
+    used in PDG/CODATA tables: the digits in parentheses are the error rounded
+    to the value's last significant decimal place, in units of that place.
+    Falls back to a plain formatted value if the error can't resolve a precision.
+    """
+    decimals = _resolve_decimal_places(error)
+    if decimals is None:
+        return format(value, base_format)
+
+    match = re.match(r"^\.?\d*([a-zA-Z%])$", base_format)
+    type_char = match.group(1) if match else "f"
+
+    if type_char in "fF%":
+        error_digits = int(round(abs(error) * 10**decimals))
+        if decimals >= 0:
+            value_str = format(value, f".{decimals}{type_char}")
+        else:
+            # format() can't take negative precision; pre-round to the
+            # resolved place (e.g. nearest thousand) and show 0 decimals
+            value_str = format(round(value, decimals), f".0{type_char}")
+        if _too_many_digits(error_digits):
+            # Error dwarfs the value (e.g. an unconstrained/degenerate fit
+            # parameter) -- parenthetical notation isn't meaningful, fall back
+            # to showing value and error independently.
+            return f"{value_str} $\\pm$ {format(error, base_format)}"
+        return f"{value_str}({error_digits})"
+
+    if type_char in "eEgG":
+        value_exponent = (
+            int(np.floor(np.log10(abs(value)))) if value != 0 and np.isfinite(value) else 0
+        )
+        mantissa_decimals = max(decimals + value_exponent, 0)
+        mantissa_part, _, exponent_part = format(
+            value, f".{mantissa_decimals}{type_char}"
+        ).partition("e")
+        error_digits = int(round(abs(error) / 10 ** (value_exponent - mantissa_decimals)))
+        if _too_many_digits(error_digits):
+            return f"{format(value, base_format)} $\\pm$ {format(error, base_format)}"
+        return f"{mantissa_part}({error_digits})e{exponent_part}"
+
+    return format(value, base_format)
+
+
 def format_with_error(
     row, args=None, threshold=1e-3, significant_figures=1, error_format="±"
 ):
-    mean = row[(args.y, "mean")]
+    mean = row[(args.y, getattr(args, "operation", "mean"))]
     error = row[(f"{args.y}Error", "<lambda>")]
 
-    if mean < threshold:  # Check if mean is smaller than threshold
+    threshold = getattr(args, "threshold", threshold) if args is not None else threshold
+
+    if abs(mean) < threshold:  # Check if mean is smaller than threshold
         return "---"  # Return '---' if mean is below threshold
 
+    scientific = _wants_scientific(mean, args)
+    decimals = significant_figures if significant_figures is not None else 1
+
     if pd.isna(error) or np.isinf(error) or error == 0 or error > 100 * abs(mean):
+        if scientific:
+            return f"{mean:.{decimals}e} ± {np.nan}"
         return f"{mean:.2f} ± {np.nan}"  # Return mean ± error with 2 decimal places
+
+    if scientific:
+        if args is not None and getattr(args, "compact_scientific", False):
+            return _format_value_with_paren_error("e", mean, error)
+        if error_format == "±":
+            format_string = f"{{:.{decimals}e}} ± {{:.{decimals}e}}"
+        elif error_format == "()":
+            format_string = f"{{:.{decimals}e}}({{:.{decimals}e}})"
+        else:
+            print(f"Unknown format: {error_format}. Defaulting to '±'")
+            format_string = f"{{:.{decimals}e}} ± {{:.{decimals}e}}"
+        return format_string.format(mean, error)
 
     # Determine significant figures based on error if not provided
     error_magnitude = -int(np.floor(np.log10(abs(error)))) + 1
@@ -190,6 +307,25 @@ def format_with_error(
         format_string = f"{{:.{significance}f}} ± {{:.{significance}f}}"
 
     return format_string.format(mean, error)
+
+
+def format_value(row, args=None, threshold=1e-3):
+    """
+    Format an aggregated value with no uncertainty, for use when the source
+    data has no *Error column to propagate (see format_with_error for the
+    version that includes a propagated error).
+    """
+    mean = row[(args.y, getattr(args, "operation", "mean"))]
+
+    threshold = getattr(args, "threshold", threshold) if args is not None else threshold
+
+    if abs(mean) < threshold:  # Check if mean is smaller than threshold
+        return "---"
+
+    if _wants_scientific(mean, args):
+        return f"{mean:.2e}"
+
+    return f"{mean:.2f}"
 
 
 def make_config_label_from_args(args, config=None, name=None, iterable=None):

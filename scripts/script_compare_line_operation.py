@@ -65,6 +65,7 @@ add_common_args(
         "point",
         "point_label",
         "note",
+        "multiply",
         "debug",
     ],
     overrides={
@@ -916,6 +917,15 @@ def main():
         rprint("[yellow]Warning:[/yellow] No datafiles found. Exiting...")
         return
 
+    if args.multiply is not None:
+        df[args.y] = df[args.y].apply(
+            lambda v: np.asarray(v) * args.multiply if v is not None else v
+        )
+        if f"{args.y}Error" in df.columns:
+            df[f"{args.y}Error"] = df[f"{args.y}Error"].apply(
+                lambda v: np.asarray(v) * args.multiply if v is not None else v
+            )
+
     configs, names = prepare_import(args)
     configs = configs if configs is not None else [None]
     names = names if names is not None else [None]
@@ -973,7 +983,6 @@ def main():
             continue
 
         render_lower_plot = not getattr(args, "no_lower_plot", False)
-        computed_only = not render_lower_plot
         if overlay_names:
             fig, ax_top, ax_bottom = shared_fig, shared_ax_top, shared_ax_bottom
         elif render_lower_plot:
@@ -1103,20 +1112,19 @@ def main():
                             "edgecolor": "none",
                             "linewidth": 0,
                         }
-                    if not computed_only:
-                        plot_data(
-                            args,
-                            ax_top,
-                            x_v,
-                            y=y_v,
-                            label=label if sdx == 0 else None,
-                            color=line_color,
-                            **({"linestyle": comparable_ls} if not stacked_enabled else {}),
-                            **comparable_style_kwargs,
-                            **comparable_fill_kwargs,
-                            **plot_type_kwargs,
-                            **({"bottom": plot_bottom} if plot_bottom is not None else {}),
-                        )
+                    plot_data(
+                        args,
+                        ax_top,
+                        x_v,
+                        y=y_v,
+                        label=label if sdx == 0 else None,
+                        color=line_color,
+                        **({"linestyle": comparable_ls} if not stacked_enabled else {}),
+                        **comparable_style_kwargs,
+                        **comparable_fill_kwargs,
+                        **plot_type_kwargs,
+                        **({"bottom": plot_bottom} if plot_bottom is not None else {}),
+                    )
 
                     if plot_bottom is not None:
                         plot_bottom += y_v
@@ -1182,18 +1190,17 @@ def main():
                         "linewidth": 0,
                     }
 
-                if not computed_only:
-                    plot_data(
-                        args,
-                        ax_top,
-                        x_values,
-                        y=y_values,
-                        label=f"{overlay_label} - {label}" if overlay_names else label,
-                        color=overlay_color if overlay_names else line_color,
-                        linestyle=overlay_linestyle if overlay_names and overlay_linestyle else None,
-                        **plot_type_kwargs,
-                        **({"bottom": stacked_bottom} if stacked_enabled else {}),
-                    )
+                plot_data(
+                    args,
+                    ax_top,
+                    x_values,
+                    y=y_values,
+                    label=f"{overlay_label} - {label}" if overlay_names else label,
+                    color=overlay_color if overlay_names else line_color,
+                    linestyle=overlay_linestyle if overlay_names and overlay_linestyle else None,
+                    **plot_type_kwargs,
+                    **({"bottom": stacked_bottom} if stacked_enabled else {}),
+                )
 
                 if stacked_enabled:
                     stacked_bottom += y_values
@@ -1261,17 +1268,9 @@ def main():
         bottom_series = []
         bottom_has_content = False
         operation_label = None
-        op_ax = ax_bottom if ax_bottom is not None else (ax_top if computed_only else None)
+        op_ax = ax_bottom
 
         def _bottom_legend_label(default_text):
-            # --bottom_labely renames the bottom axis's y-axis label, not the
-            # legend entry for its line(s) -- ax_bottom.set_ylabel below has
-            # its own independent bottom_ylabel computation that still
-            # applies the override. The exception is --no_lower_plot, where
-            # the operation result is the only thing on ax_top and there's
-            # no separate legend/ylabel to distinguish.
-            if ax_bottom is None and args.bottom_labely is not None:
-                return args.bottom_labely
             return default_text
 
         if op_ax is not None:
@@ -1500,19 +1499,10 @@ def main():
             # drawn onto the shared figure.
             continue
 
-        if computed_only:
-            ax_top.set_ylabel(
-                resolve_axis_label(args.labely, args.y, df_iterable)
-                if args.labely is not None
-                else str(operation_label) if operation_label is not None
-                else resolve_axis_label(args.labely, args.y, df_iterable),
-                fontsize=ysublabelfontsize,
-            )
-        else:
-            ax_top.set_ylabel(
-                resolve_axis_label(args.labely, args.y, df_iterable),
-                fontsize=ysublabelfontsize,
-            )
+        ax_top.set_ylabel(
+            resolve_axis_label(args.labely, args.y, df_iterable),
+            fontsize=ysublabelfontsize,
+        )
         if ax_bottom is not None:
             bottom_ylabel = (
                 args.bottom_labely
@@ -1555,17 +1545,13 @@ def main():
             if ax_bottom is not None:
                 ax_bottom.set_xscale("log")
 
-        legend_title = (
-            None
-            if computed_only
-            else (args.labelz if args.labelz is not None else args.iterable)
-        )
+        legend_title = args.labelz if args.labelz is not None else args.iterable
         leg1 = apply_legend_style(
             ax_top,
             title=legend_title,
             capitalize_labels=getattr(args, "capitalize_legend", False),
         )
-        if comparable_col is not None and comparable_values_arr.size > 0 and not computed_only:
+        if comparable_col is not None and comparable_values_arr.size > 0:
             ax_top.add_artist(leg1)
             _cfs_legend = getattr(args, "comparable_fill_strength", False)
             if _cfs_legend:

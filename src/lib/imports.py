@@ -68,11 +68,17 @@ def import_data(args):
         configs, names = prepare_import(args)
 
     if args.configs is None and args.names is None:
-        datafile = os.path.join(
-            os.path.dirname(__file__), "../..", "input", "data", f"{args.datafile}.pkl"
-        )
-        if not os.path.exists(datafile):
-            print(f"Data file not found: {datafile}")
+        input_dir = os.path.join(os.path.dirname(__file__), "../..", "input", "data")
+        candidate_paths = [
+            os.path.join(input_dir, f"{args.datafile}.pkl"),
+            # Study-variant pkls (e.g. ..._charge_Q100.pkl) live under studies/
+            # instead of flat in input/data/ — fall back there when the flat
+            # path doesn't exist, rather than maintaining a suffix allowlist.
+            os.path.join(input_dir, "studies", f"{args.datafile}.pkl"),
+        ]
+        datafile = next((path for path in candidate_paths if os.path.exists(path)), None)
+        if datafile is None:
+            print(f"Data file not found: {candidate_paths[0]}")
             return df
         with open(datafile, 'rb') as f:
             data = pickle.load(f)
@@ -140,8 +146,17 @@ def import_data(args):
                     )
                 )
 
+            # Study-variant pkls (e.g. ..._charge_Q100.pkl) live under
+            # input/data/studies/ instead of flat in input/data/ — fall back
+            # there for each candidate rather than maintaining a suffix
+            # allowlist. Flat candidates are still tried first.
+            candidate_paths += [
+                os.path.join(os.path.dirname(path), "studies", os.path.basename(path))
+                for path in candidate_paths
+            ]
+
             datafile = next((path for path in candidate_paths if os.path.exists(path)), None)
-            
+
             # Check if the data file exists
             if datafile is None:
                 print(f"Data file not found: {candidate_paths[0]}")
