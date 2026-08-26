@@ -212,6 +212,8 @@ notebooks/*.ipynb
 # Imported input data (keep directory structure)
 input/data/*.csv
 input/data/*.pkl
+input/data/*/*.pkl
+input/captions/*.txt
 
 # Imported script_lists expect the one named example_scripts.txt
 input/plots/*.txt
@@ -219,22 +221,27 @@ input/tables/*.txt
 !input/plots/example_scripts.txt
 
 # Generated plots (keep directory structure)
-output/plots/*.png
 output/plots/*.pdf
 output/plots/*.svg
 output/plots/*.eps
 output/plots/*.jpg
+output/plots/*.png
+output/plots/*/*.png
 
 # Generated tables (keep directory structure)
 output/tables/*.csv
 output/tables/*.tsv
 output/tables/*.xlsx
-output/tables/*.tex
 output/tables/*.html
+output/tables/*.tex
+output/tables/*/*.tex
 
 # Generated test reports
-styles/*/examples/images/*.png
+styles/
 tests/output/
+
+# Generated presentations
+output/presentations/*.pdf
 
 # Temporary files
 tmp*/
