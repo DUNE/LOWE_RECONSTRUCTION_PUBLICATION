@@ -55,8 +55,7 @@ from _bootstrap import ensure_src_path
 ensure_src_path()
 
 from matplotlib.lines import Line2D
-from matplotlib.patches import Patch
-from matplotlib.colors import to_rgba, to_rgb
+from matplotlib.colors import LogNorm, Normalize, to_rgba, to_rgb
 from rich import print as rprint
 
 from lib import *
@@ -66,7 +65,11 @@ from lib.imports import import_data, prepare_import
 from lib.plot import apply_scientific_threshold_formatter, apply_legend_style, create_common_subplots, apply_note_to_figure, add_centered_suptitle, draw_vertical_lines, draw_horizontal_lines, place_point_label
 
 from lib.selection import filter_dataframe
-from common_args import add_common_args, resolve_axis_label
+from common_args import add_common_args, map_iterable_label, map_iterable_color, resolve_axis_label
+
+# Linestyle cycle for overlaying multiple --datafile study variants of the
+# same config on one contour panel (see the _Datafile-grouping branch below).
+_DATAFILE_LINESTYLE_CYCLE = ["-", "--", ":", "-."]
 
 
 parser = argparse.ArgumentParser(
@@ -88,11 +91,13 @@ add_common_args(
         "select",
         "save_values",
         "remove_value",
+        "filename_select",
         "labelx",
         "labely",
         "labelz",
         "rangex",
         "rangey",
+        "rangez",
         "logz",
         "density",
         "zoom",
@@ -146,6 +151,29 @@ parser.add_argument(
     action="store_true",
     help="Draw diagonal line",
     default=False,
+)
+
+parser.add_argument(
+    "--iterable_mapping",
+    type=str,
+    default=None,
+    help=(
+        "Optional mapping dictionary name from plot_params mappings used to "
+        "rename _Datafile values in legend labels when multiple --datafile "
+        "study variants of one config are overlaid on a single panel."
+    ),
+)
+
+parser.add_argument(
+    "--iterable_color_mapping",
+    type=str,
+    default=None,
+    help=(
+        "Optional mapping dictionary name from plot_params mappings used to "
+        "set per-_Datafile contour colors (supports Cn and rgb(r,g,b)) when "
+        "multiple --datafile study variants of one config are overlaid on a "
+        "single panel."
+    ),
 )
 
 parser.add_argument(
@@ -275,8 +303,8 @@ parser.add_argument(
 parser.add_argument(
     "--fill_outer_alpha",
     type=float,
-    default=0.0,
-    help="Alpha for the outermost region below the lowest contour level (fully transparent by default)",
+    default=None,
+    help="Alpha for the outermost region below the lowest contour level. Defaults to matching the opacity of the other filled bands (e.g. --fill_alpha), so the region is visible using the first palette color; pass 0 to make it transparent instead",
 )
 
 parser.add_argument(
@@ -284,6 +312,13 @@ parser.add_argument(
     type=float,
     default=0.0,
     help="Alpha for the innermost region above the highest contour level (fully transparent by default)",
+)
+
+parser.add_argument(
+    "--fill_outline_linewidth",
+    type=float,
+    default=None,
+    help="Line width for the solid contour line drawn on top of each filled band at its exact sigma level (defaults to the fill's normal contour linewidth + 1.0). The legend refers to these lines, not the shaded bands, so each entry maps unambiguously to one boundary.",
 )
 
 parser.add_argument(
@@ -448,6 +483,21 @@ def resolve_fill_alpha(default_alpha):
     return fill_alpha if fill_alpha is not None else default_alpha
 
 
+def resolve_outer_alpha(outer_alpha, alpha_max):
+    # None means "match the other bands' opacity" so the outer region reads as
+    # a natural continuation of the palette instead of silently vanishing.
+    return alpha_max if outer_alpha is None else outer_alpha
+
+
+def resolve_band_hue_groups(base_color, level_count, offset=0):
+    """Split a (level_count + 1)-color palette slice into (outer_hue, inner_hues),
+    so the outer (below-lowest-level) region gets its own slot at the front of
+    the sequence and every sigma band after it keeps advancing through the
+    palette instead of repeating the outer band's color."""
+    all_hues = resolve_band_hues(base_color, level_count + 1, offset)
+    return all_hues[0], all_hues[1:]
+
+
 def compute_inner_band_alphas(base_color, level_count, alpha_max, inner_alpha=None):
     if level_count <= 0:
         return []
@@ -464,10 +514,10 @@ def compute_inner_band_alphas(base_color, level_count, alpha_max, inner_alpha=No
 def build_fill_colors(base_color, level_count, alpha_max, outer_alpha, inner_alpha=None, offset=0):
     if level_count <= 0:
         return []
-    hues = resolve_band_hues(base_color, level_count, offset)
+    outer_hue, inner_hues = resolve_band_hue_groups(base_color, level_count, offset)
     inner_alphas = compute_inner_band_alphas(base_color, level_count, alpha_max, inner_alpha)
-    colors = [to_rgba(hues[0], alpha=outer_alpha)]
-    colors += [to_rgba(hue, alpha=float(alpha)) for hue, alpha in zip(hues, inner_alphas)]
+    colors = [to_rgba(outer_hue, alpha=resolve_outer_alpha(outer_alpha, alpha_max))]
+    colors += [to_rgba(hue, alpha=float(alpha)) for hue, alpha in zip(inner_hues, inner_alphas)]
     return colors
 
 
@@ -485,23 +535,54 @@ def sigma_band_labels(levels_sorted, sigmas, level_mode):
     return [f"Level {level:.3g}" for level in levels_sorted]
 
 
-def build_fill_legend_handles(levels, sigmas, level_mode, base_color, alpha_max, inner_alpha=None, prefix=None, offset=0):
+def resolve_fill_outline_linewidth(base_linewidth):
+    outline_linewidth = getattr(args, "fill_outline_linewidth", None)
+    return outline_linewidth if outline_linewidth is not None else base_linewidth + 1.0
+
+
+def draw_fill_outline(ax, x, y, image, levels, base_color, linewidth, zorder, offset=0):
+    if not levels:
+        return None
+
+    levels_sorted = sorted(levels)
+    # Unshifted: each line takes the color of the region just outside/below it
+    # (the outer band's black for the first line, then the palette succession),
+    # matching the outer fill's starting color instead of the shifted fill bands.
+    hues = resolve_band_hues(base_color, len(levels_sorted), offset)
+    contour_set = ax.contour(
+        x,
+        y,
+        image,
+        levels=levels_sorted,
+        colors=hues,
+        linestyles="-",
+        linewidths=linewidth,
+        alpha=1.0,
+        zorder=zorder,
+    )
+    apply_contour_discontinuity_filter(contour_set)
+    return contour_set
+
+
+def build_contour_line_legend_handles(levels, sigmas, level_mode, base_color, linewidth, offset=0, prefix=None):
     if not levels:
         return []
 
     levels_sorted = sorted(levels)
     labels = sigma_band_labels(levels_sorted, sigmas, level_mode)
     hues = resolve_band_hues(base_color, len(levels_sorted), offset)
-    inner_alphas = compute_inner_band_alphas(base_color, len(levels_sorted), alpha_max, inner_alpha)
 
     handles = []
-    for label, hue, alpha in list(zip(labels, hues, inner_alphas))[:-1]:
+    for label, hue in zip(labels, hues):
         full_label = f"{prefix} {label}" if prefix else label
         handles.append(
-            Patch(
-                facecolor=hue,
-                edgecolor=hue,
-                alpha=float(alpha),
+            Line2D(
+                [0],
+                [0],
+                color=hue,
+                linestyle="-",
+                linewidth=linewidth,
+                alpha=1.0,
                 label=full_label,
             )
         )
@@ -710,12 +791,18 @@ def draw_image_background(ax, fig, x, y, z, df=None):
     if args.logz:
         positive = np.ma.masked_less_equal(positive, 0)
 
+    rangez = getattr(args, "rangez", None)
+    if args.logz:
+        norm = LogNorm(vmin=rangez[0], vmax=rangez[1]) if rangez is not None else LogNorm()
+    else:
+        norm = Normalize(vmin=rangez[0], vmax=rangez[1]) if rangez is not None else None
+
     mesh = ax.pcolormesh(
         x,
         y,
         positive,
         shading="auto",
-        norm=LogNorm() if args.logz else None,
+        norm=norm,
     )
     cbar = fig.colorbar(mesh, ax=ax)
     if args.labelz is not None:
@@ -823,6 +910,12 @@ def main():
         )
         args.combined_contours_only = False
 
+    # Real NaN values in the "Variable" column are excluded by default.
+    # Explicitly requesting "None" in --variables opts back in, converting
+    # those NaNs to the literal string "None" so they survive filtering.
+    if args.variables is not None and "None" in args.variables and "Variable" in df.columns:
+        df["Variable"] = df["Variable"].fillna("None")
+
     ncols = (
         len(args.variables)
         if args.variables is not None
@@ -885,6 +978,8 @@ def main():
                 df_config = df_config[df_config["Config"] == config]
             if name is not None:
                 df_config = df_config[df_config["Name"] == name]
+            if "_Occurrence" in df_config.columns:
+                df_config = df_config[df_config["_Occurrence"] == cdx]
 
             if df_config.empty:
                 if args.debug:
@@ -893,49 +988,90 @@ def main():
                     )
                 continue
 
-            try:
-                grid = aggregate_config_grid(df_config)
-            except ValueError as exc:
-                rprint(f"[red]Error:[/red] {exc}")
-                continue
+            # When multiple --datafile entries were loaded for the same
+            # (config, name) pair (e.g. overlaying several study variants of
+            # one config on a single panel), split them into separate contour
+            # items instead of silently summing them into one blob. Each
+            # variant gets its own cycled color/linestyle and a label from
+            # its _Datafile tag (optionally remapped via --iterable_mapping).
+            # Single-datafile selections (the original/common case, including
+            # multi-config comparisons that each load one datafile) are
+            # unaffected — they fall through as a single group exactly as
+            # before, still colored via config_color/config_line.
+            if "_Datafile" in df_config.columns and df_config["_Datafile"].nunique() > 1:
+                datafile_groups = list(df_config.groupby("_Datafile", sort=False))
+            else:
+                datafile_groups = [(None, df_config)]
 
-            if grid is None:
-                continue
+            for datafile_label, df_group in datafile_groups:
+                try:
+                    grid = aggregate_config_grid(df_group)
+                except ValueError as exc:
+                    rprint(f"[red]Error:[/red] {exc}")
+                    continue
 
-            x_grid = grid["x"]
-            y_grid = grid["y"]
-            z_grid = grid["z"]
+                if grid is None:
+                    continue
 
-            if reference_grid is None:
-                reference_grid = (x_grid, y_grid)
-                sum_background = np.zeros_like(z_grid, dtype=float)
-                combined_z = np.zeros_like(z_grid, dtype=float)
-                x_range_local, y_range_local = extract_extent(x_grid, y_grid)
-            elif not grids_match(reference_grid, (x_grid, y_grid)):
-                rprint(
-                    "[red]Error:[/red] Configuration grids do not share the same x/y coordinates, so they cannot be combined on one contour plot."
+                x_grid = grid["x"]
+                y_grid = grid["y"]
+                z_grid = grid["z"]
+
+                # Background summation and --operation squared_sum both need every
+                # item on shared x/y coordinates; pure contour-line overlays (the
+                # common case for comparing study variants with --background none)
+                # don't, since each contour is drawn from its own payload's grid.
+                needs_shared_grid = args.background in ("all", "combined") or args.operation == "squared_sum"
+
+                if reference_grid is None:
+                    reference_grid = (x_grid, y_grid)
+                    sum_background = np.zeros_like(z_grid, dtype=float)
+                    combined_z = np.zeros_like(z_grid, dtype=float)
+                    x_range_local, y_range_local = extract_extent(x_grid, y_grid)
+                    sum_background = sum_background + z_grid
+                    if args.operation == "squared_sum":
+                        combined_z = combined_z + np.square(z_grid)
+                elif grids_match(reference_grid, (x_grid, y_grid)):
+                    sum_background = sum_background + z_grid
+                    if args.operation == "squared_sum":
+                        combined_z = combined_z + np.square(z_grid)
+                elif needs_shared_grid:
+                    rprint(
+                        "[red]Error:[/red] Configuration grids do not share the same x/y coordinates, so they cannot be combined on one contour plot."
+                    )
+                    continue
+                # else: grid mismatch, but nothing downstream needs the shared
+                # background/combined_z — fall through and draw this item's own
+                # contour from its own grid.
+
+                if datafile_label is not None:
+                    item_idx = len(payloads)
+                    color = (
+                        map_iterable_color(datafile_label, getattr(args, "iterable_color_mapping", None))
+                        or f"C{item_idx % 10}"
+                    )
+                    linestyle = _DATAFILE_LINESTYLE_CYCLE[item_idx % len(_DATAFILE_LINESTYLE_CYCLE)]
+                    datafile_display = map_iterable_label(
+                        datafile_label, "_Datafile", getattr(args, "iterable_mapping", None)
+                    )
+                    label = f"{build_config_label(config, name, iterable)}, {datafile_display}"
+                else:
+                    color = config_color[config] if config in config_color else f"C{cdx % 10}"
+                    linestyle = config_line[config] if config in config_line else "-"
+                    label = build_config_label(config, name, iterable)
+
+                payloads.append(
+                    {
+                        "x": x_grid,
+                        "y": y_grid,
+                        "z": z_grid,
+                        "color": color,
+                        "linestyle": linestyle,
+                        "label": label,
+                        "config": config,
+                        "name": name,
+                    }
                 )
-                continue
-
-            sum_background = sum_background + z_grid
-            if args.operation == "squared_sum":
-                combined_z = combined_z + np.square(z_grid)
-
-            color = config_color[config] if config in config_color else f"C{cdx % 10}"
-            linestyle = config_line[config] if config in config_line else "-"
-
-            payloads.append(
-                {
-                    "x": x_grid,
-                    "y": y_grid,
-                    "z": z_grid,
-                    "color": color,
-                    "linestyle": linestyle,
-                    "label": build_config_label(config, name, iterable),
-                    "config": config,
-                    "name": name,
-                }
-            )
 
         if not payloads or reference_grid is None:
             continue
@@ -990,14 +1126,24 @@ def main():
                         outer_alpha=args.fill_outer_alpha,
                         inner_alpha=args.fill_inner_alpha,
                     )
+                    fill_outline_linewidth = resolve_fill_outline_linewidth(args.contour_linewidth)
+                    draw_fill_outline(
+                        ax_current,
+                        payload["x"],
+                        payload["y"],
+                        contour_image,
+                        levels,
+                        payload["color"],
+                        fill_outline_linewidth,
+                        zorder=5.5,
+                    )
                     legend_handles.extend(
-                        build_fill_legend_handles(
+                        build_contour_line_legend_handles(
                             levels,
                             args.contour_sigmas,
                             args.contour_level_mode,
                             payload["color"],
-                            resolve_fill_alpha(args.contour_alpha),
-                            inner_alpha=args.fill_inner_alpha,
+                            fill_outline_linewidth,
                             prefix=payload["label"] if len(payloads) > 1 else None,
                         )
                     )
@@ -1052,6 +1198,12 @@ def main():
                 # every panel independently restarting at the same color.
                 panel_color_offset = panel_idx % len(DUNE_COLOR_PALETTE)
 
+                combined_linewidth = (
+                    args.combined_linewidth
+                    if getattr(args, "combined_linewidth", None) is not None
+                    else args.contour_linewidth + 0.5
+                )
+
                 if args.fill_contours:
                     draw_filled_contour(
                         ax_current,
@@ -1066,25 +1218,30 @@ def main():
                         inner_alpha=args.fill_inner_alpha,
                         offset=panel_color_offset,
                     )
+                    fill_outline_linewidth = resolve_fill_outline_linewidth(combined_linewidth)
+                    draw_fill_outline(
+                        ax_current,
+                        background_x,
+                        background_y,
+                        combined_contour_image,
+                        combined_levels,
+                        combined_color,
+                        fill_outline_linewidth,
+                        zorder=6.5,
+                        offset=panel_color_offset,
+                    )
                     legend_handles.extend(
-                        build_fill_legend_handles(
+                        build_contour_line_legend_handles(
                             combined_levels,
                             args.contour_sigmas,
                             args.contour_level_mode,
                             combined_color,
-                            resolve_fill_alpha(args.combined_alpha),
-                            inner_alpha=args.fill_inner_alpha,
-                            prefix=None if args.combined_contours_only else args.combined_label,
+                            fill_outline_linewidth,
                             offset=panel_color_offset,
+                            prefix=None if args.combined_contours_only else args.combined_label,
                         )
                     )
                 else:
-                    combined_linewidth = (
-                        args.combined_linewidth
-                        if getattr(args, "combined_linewidth", None) is not None
-                        else args.contour_linewidth + 0.5
-                    )
-
                     contour_set = ax_current.contour(
                         background_x,
                         background_y,

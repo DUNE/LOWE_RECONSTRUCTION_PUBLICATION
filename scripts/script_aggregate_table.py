@@ -37,6 +37,7 @@ add_common_args(
         "select",
         "save_values",
         "remove_value",
+        "filename_select",
         "x",
         "rangex",
         "y",
@@ -206,6 +207,23 @@ parser.add_argument(
 )
 
 parser.add_argument(
+    "--error_mode",
+    choices=["quadrature", "linear", "std", "sem", "max"],
+    default="quadrature",
+    help="How to combine per-row --y errors within each group (default: "
+    "quadrature). 'quadrature': sqrt(sum(err^2)) for --operation sum, "
+    "sqrt(sum(err^2))/n for mean - the standard error-propagation formula, "
+    "assuming independent errors. If that looks inflated for your data (e.g. "
+    "many correlated bins being summed), try: 'std'/'sem' - ignore the "
+    "*Error column entirely and use the spread of the raw --y values instead "
+    "(population std, or std/sqrt(n) for the mean's standard error; these "
+    "work even when --y has no matching *Error column); 'max' - the largest "
+    "per-row error; 'linear' - errors added directly (sum for --operation "
+    "sum, mean for --operation mean), a conservative bound for fully "
+    "correlated errors.",
+)
+
+parser.add_argument(
     "--scientific",
     action="store_true",
     help="Always format table values in scientific notation (e.g. 1.2e-03), "
@@ -248,6 +266,18 @@ parser.add_argument(
     default=None,
     help="Multiply every --y value (and its error, if present) by this factor "
     "before aggregating/displaying - e.g. for unit conversion or rescaling",
+)
+
+parser.add_argument(
+    "--multiply_row",
+    nargs="+",
+    type=float,
+    default=None,
+    help="Per-config multiplier(s) for --y (and its error, if present), "
+    "matched positionally to --configs (e.g. --configs A B C --multiply_row "
+    "1 1 2 scales only C's rows by 2). Applied before --multiply, and before "
+    "any config renaming (--name_columns, config_dict), so it always keys "
+    "off the raw --configs values as given.",
 )
 
 parser.add_argument(
@@ -327,6 +357,23 @@ def main():
         print("No data to plot. Exiting.")
         return
 
+    # Per-config rescaling, matched positionally against the raw --configs
+    # values (before any renaming below). --y may still be array-valued here
+    # (explode() hasn't run yet), so scale element-wise via apply rather than
+    # a plain Series multiply.
+    if args.multiply_row is not None:
+        row_multipliers = dict(zip(args.configs, args.multiply_row))
+        factors = df["Config"].map(row_multipliers).fillna(1.0)
+        df[args.y] = [
+            np.asarray(v) * f if v is not None else v
+            for v, f in zip(df[args.y], factors)
+        ]
+        if f"{args.y}Error" in df.columns:
+            df[f"{args.y}Error"] = [
+                np.asarray(v) * f if v is not None else v
+                for v, f in zip(df[f"{args.y}Error"], factors)
+            ]
+
     # Derive the "Geometry" column from the config name if it isn't already present
     if "Geometry" not in df.columns:
         df["Geometry"] = df["Config"].str.split("_").str[0]
@@ -352,6 +399,13 @@ def main():
         else:
             args.variables = [""]
             df[args.variable_name] = ""
+
+    # Real NaN values in the pivot column (e.g. rows with no Variable label)
+    # are excluded by default. Explicitly requesting "None" in --variables
+    # opts back in, converting those NaNs to the literal string "None" so
+    # they survive filtering/grouping/pivoting like any other value.
+    if "None" in args.variables:
+        df[args.variable_name] = df[args.variable_name].fillna("None")
 
     subset = filter_dataframe(df, args)
     # variables = args.variables if args.variables is not None else [None]
@@ -416,14 +470,38 @@ def main():
     # If a real error column exists, combine the aggregate and its propagated
     # error into a single string column. E.g. "0.95 ± 0.02". Without one, there
     # is no uncertainty to report, so just format the aggregated value alone
-    # rather than inventing an error from the values themselves.
-    has_error_column = f"{args.y}Error" in df_config.columns and not args.no_error
+    # rather than inventing an error from the values themselves. --error_mode
+    # std/sem are the exception: they derive an error from the spread of the
+    # raw --y values instead, so they work even without a *Error column.
+    derives_error_from_spread = args.error_mode in ("std", "sem")
+    has_error_column = (
+        f"{args.y}Error" in df_config.columns or derives_error_from_spread
+    ) and not args.no_error
 
     if has_error_column:
-        if args.operation == "sum":
-            error_agg = lambda x: np.sqrt(np.sum(x**2))
-        else:
-            error_agg = lambda x: np.sqrt(np.sum(x**2)) / len(x)
+        if derives_error_from_spread:
+            # No real per-row error to propagate - overwrite (or create) the
+            # *Error column with a copy of --y itself, so the same groupby.agg
+            # shape below can feed it through a spread-based lambda.
+            df_config[f"{args.y}Error"] = df_config[args.y]
+            if args.error_mode == "std":
+                error_agg = lambda x: np.std(x, ddof=1) if len(x) > 1 else 0.0
+            else:  # sem
+                error_agg = lambda x: (
+                    np.std(x, ddof=1) / np.sqrt(len(x)) if len(x) > 1 else 0.0
+                )
+        elif args.error_mode == "linear":
+            if args.operation == "sum":
+                error_agg = lambda x: np.sum(x)
+            else:
+                error_agg = lambda x: np.sum(x) / len(x)
+        elif args.error_mode == "max":
+            error_agg = lambda x: np.max(x)
+        else:  # quadrature (default) - standard error-propagation formula
+            if args.operation == "sum":
+                error_agg = lambda x: np.sqrt(np.sum(x**2))
+            else:
+                error_agg = lambda x: np.sqrt(np.sum(x**2)) / len(x)
 
         df_table = df_config.groupby(row_index + [args.variable_name]).agg(
             {

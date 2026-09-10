@@ -31,3 +31,21 @@ def test_filter_dataframe_accepts_string_select_column_name():
     filtered = filter_dataframe(df, _Args())
 
     assert list(filtered["Value"]) == [2]
+
+
+def test_filter_dataframe_or_matches_repeated_select_column():
+    args = _Args()
+    args.select = ["Variable", "SpectrumType", "SpectrumType"]
+    args.save_values = ["Asimov", "Smoothed", "Raw"]
+    df = pd.DataFrame(
+        [
+            {"Variable": "Asimov", "SpectrumType": "Smoothed", "Value": 1},
+            {"Variable": "Asimov", "SpectrumType": "Raw", "Value": 2},
+            {"Variable": "Asimov", "SpectrumType": "Gaussian", "Value": 3},
+            {"Variable": "Gaussian", "SpectrumType": "Raw", "Value": 4},
+        ]
+    )
+
+    filtered = filter_dataframe(df, args)
+
+    assert list(filtered["Value"]) == [1, 2]

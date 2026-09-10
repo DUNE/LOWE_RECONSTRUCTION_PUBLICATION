@@ -245,3 +245,7 @@ output/presentations/*.pdf
 
 # Temporary files
 tmp*/
+
+# SSH password file for non-interactive sync_solar_data.sh auth (defaults to
+# ~/.solar_sync_pass, outside the repo — this is a defensive backstop only)
+.solar_sync_pass

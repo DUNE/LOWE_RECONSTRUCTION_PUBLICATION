@@ -4,6 +4,7 @@ import re
 import numpy as np
 import pandas as pd
 from . import config_dict, config_color, config_line, name_color, name_dict
+from .imports import normalize_datafiles
 
 
 def get_simple_title_from_script(args=None):
@@ -21,7 +22,7 @@ def get_simple_title_from_script(args=None):
     """
     try:
         if args is not None and hasattr(args, "datafile") and args.datafile:
-            title_source = str(args.datafile)
+            title_source = "_".join(normalize_datafiles(args.datafile))
         else:
             # Fallback to the script basename (without directories)
             script_name = sys.argv[0] if sys.argv else "script"
@@ -86,8 +87,8 @@ def make_verbose_title_from_args(args):
     """
     title_parts = []
 
-    if hasattr(args, "datafile"):
-        title_parts.append(args.datafile)
+    if hasattr(args, "datafile") and args.datafile:
+        title_parts.append("_".join(normalize_datafiles(args.datafile)))
 
     if hasattr(args, "configs") and args.configs:
         if args.configs is not None:

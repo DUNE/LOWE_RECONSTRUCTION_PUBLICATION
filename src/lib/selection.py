@@ -131,9 +131,13 @@ def filter_dataframe(df, args):
 
     # Filter the DataFrame based on the unique value combinations for the selected columns
     if args.select is not None and args.save_values is not None:
+        selection_values = {}
         for save_key, save_value in zip(
             _normalize_selection_columns(args.select), args.save_values
         ):
+            selection_values.setdefault(save_key, []).append(save_value)
+
+        for save_key, save_values in selection_values.items():
             # Check that the save_key exists in the dataframe and their entries match the type of save_value
             if save_key not in this_df.columns:
                 rprint(
@@ -148,21 +152,32 @@ def filter_dataframe(df, args):
 
             if args.debug:
                 rprint(
-                    f"\tApplying select filtering on {save_key}={save_value} with values {this_df[save_key].unique().tolist()}"
+                    f"\tApplying select filtering on {save_key}={save_values} with values {this_df[save_key].unique().tolist()}"
                 )
 
-            matched_value, ok = _coerce_filter_value(
-                this_df[save_key], save_value, save_key, args.debug
-            )
-            if not ok:
+            matched_values = []
+            for save_value in save_values:
+                matched_value, ok = _coerce_filter_value(
+                    this_df[save_key], save_value, save_key, args.debug
+                )
+                if ok:
+                    matched_values.append(matched_value)
+
+            if not matched_values:
                 continue
 
-            if matched_value is None:
-                if args.debug:
-                    rprint(f"\t\tSelecting missing values for {save_key}")
-                this_df = this_df[this_df[save_key].isna()]
-            else:
-                this_df = this_df[this_df[save_key] == matched_value]
+            missing_requested = any(value is None for value in matched_values)
+            non_missing_values = [
+                value for value in matched_values if value is not None
+            ]
+            value_mask = this_df[save_key].isin(non_missing_values)
+            if missing_requested:
+                value_mask |= this_df[save_key].isna()
+
+            if args.debug:
+                rprint(f"\tSelecting {save_key} in {matched_values}")
+
+            this_df = this_df[value_mask]
 
             if args.debug:
                 rprint(f"\tSize after filtering: {len(this_df)}")

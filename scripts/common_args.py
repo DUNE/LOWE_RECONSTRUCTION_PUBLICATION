@@ -103,17 +103,25 @@ COMMON_ARG_SPECS = {
     "datafile": {
         "flags": ["--datafile"],
         "kwargs": {
+            "nargs": "+",
             "type": str,
             "default": None,
-            "help": "Path/name of the input data file (pkl format)",
+            "help": "Path/name of the input data file(s) (pkl format). Provide "
+            "multiple values to merge several files into one run.",
         },
     },
     "path": {
         "flags": ["--path"],
         "kwargs": {
+            "nargs": "+",
             "type": str,
             "default": None,
-            "help": "Base path for --datafile lookups. Relative values resolve inside input/data/ (e.g. --path studies)",
+            "help": "Base path(s) for --datafile lookups. Provide a single value to "
+            "apply to every --datafile entry, or exactly as many values as "
+            "--datafile entries to pick a different path per file. Relative "
+            "values resolve inside input/data/ (e.g. --path studies). Pass "
+            "'default' to use the plain input/data/ location (with studies/ "
+            "fallback) for that entry.",
         },
     },
     "configs": {
@@ -169,7 +177,8 @@ COMMON_ARG_SPECS = {
             "action": "extend",
             "default": None,
             "help": "Values used alongside --select filtering. Repeat the flag to "
-            "add more values, matched positionally to --select.",
+                "add more values, matched positionally to --select. Repeating a "
+                "select key keeps any of its supplied values.",
         },
     },
     "remove_value": {
@@ -180,6 +189,20 @@ COMMON_ARG_SPECS = {
             "default": None,
             "help": "Values used alongside --select to remove matching rows instead "
             "of keeping them. Repeat the flag to add more values.",
+        },
+    },
+    "filename_select": {
+        "flags": ["--filename_select"],
+        "kwargs": {
+            "nargs": "+",
+            "action": "extend",
+            "default": None,
+            "help": "Which --select key(s) must always appear in the output "
+            "filename (e.g. --filename_select FlashMatch), protected from the "
+            "automatic length-based trimming in make_name_from_args - use this "
+            "to keep otherwise-identical runs from overwriting each other's "
+            "output file when they only differ in one --select/--save_values "
+            "pair. Without this flag, filename generation is unchanged.",
         },
     },
     "x": {
@@ -680,6 +703,25 @@ COMMON_ARG_SPECS = {
             "default": None,
             "help": "Multiply every --y value (and its error, if present) by this "
             "factor before plotting - e.g. for unit conversion or rescaling",
+        },
+    },
+    "errory": {
+        "flags": ["--errory"],
+        "kwargs": {
+            "action": "store_true",
+            "default": False,
+            "help": "Plot y-axis error bars/bands (requires an {y}Error or "
+            "{y}Error+/{y}Error- column)",
+        },
+    },
+    "errory_type": {
+        "flags": ["--errory_type"],
+        "kwargs": {
+            "type": str,
+            "default": "bars",
+            "choices": ["bars", "bands"],
+            "help": "Style of y-axis error display: 'bars' (errorbar) or 'bands' "
+            "(shaded fill_between)",
         },
     },
 }

@@ -8,7 +8,21 @@ import pandas as pd
 
 
 def _load_module_and_main(monkeypatch):
-    monkeypatch.setattr(sys, "argv", ["script_compare_contour.py", "--datafile", "mock"])
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "script_compare_contour.py",
+            "--datafile",
+            "mock",
+            "-x",
+            "XGrid",
+            "-y",
+            "YGrid",
+            "-z",
+            "ZGrid",
+        ],
+    )
 
     repo_root = Path(__file__).resolve().parents[1]
     scripts_dir = repo_root / "scripts"
@@ -138,6 +152,7 @@ def _mk_args(tmp_path, operation=None, background="all"):
         labelz=None,
         rangex=None,
         rangey=None,
+        rangez=None,
         logz=False,
         density=False,
         zoom=False,
@@ -147,12 +162,29 @@ def _mk_args(tmp_path, operation=None, background="all"):
         vertical=None,
         diagonal=False,
         operation=operation,
+        combined_contours_only=False,
+        combined_color="black",
+        combined_linestyle="-",
+        combined_linewidth=None,
+        combined_alpha=1.0,
+        combined_label="Combined",
         background=background,
         contour_sigmas=[1.0, 2.0],
+        contour_level_mode="z_values",
+        contour_linestyles=None,
         contour_linewidth=2.0,
         contour_alpha=0.95,
         title=None,
+        contour_smoothing_sigma=0.0,
+        fill_contours=False,
+        fill_alpha=None,
+        fill_outer_alpha=0.0,
+        fill_inner_alpha=0.0,
+        contour_min_vertices=0,
+        nan_fill="interpolate",
+        nan_interp_method="linear",
         output=str(tmp_path / "artifact-root"),
+        subfolder=None,
         debug=False,
     )
 
@@ -280,6 +312,30 @@ def test_main_squared_sum_combines_z_grids_for_background_and_contour(
     assert len(axis.contour_calls) == 3
     assert np.allclose(axis.contour_calls[-1]["z"], expected_combined)
     assert axis.contour_calls[-1]["colors"] == ["black"]
+
+
+def test_main_applies_rangez_to_colorbar_normalization(monkeypatch, plot_artifact_dir):
+    module, main = _load_module_and_main(monkeypatch)
+    args = _mk_args(plot_artifact_dir, operation=None, background="all")
+    args.rangez = [0.25, 2.5]
+
+    z_a = np.array([[1.0, 2.0, 0.5], [0.2, 3.0, 0.1]])
+    z_b = np.array([[0.5, 1.0, 0.2], [0.1, 0.4, 0.3]])
+    _x, _y, df = _example_dataframe(z_a, z_b)
+
+    axis, _fig = _patch_common(
+        monkeypatch,
+        module,
+        args,
+        df,
+        artifact_name="test_script_compare_contour.rangez",
+        stub_render=True,
+    )
+    main()
+
+    norm = axis.pcolormesh_calls[0]["norm"]
+    assert norm.vmin == 0.25
+    assert norm.vmax == 2.5
 
     output_file = plot_artifact_dir / "test_script_compare_contour.logic2"
     assert output_file.exists()

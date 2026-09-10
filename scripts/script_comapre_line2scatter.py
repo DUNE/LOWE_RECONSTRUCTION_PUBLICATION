@@ -6,6 +6,7 @@ ensure_src_path()
 
 import argparse
 import os
+from pathlib import Path
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -16,7 +17,7 @@ from common_args import add_common_args
 from lib import titlefontsize, xlabelfontsize, ysublabelfontsize, linelabelfontsize
 from lib.exports import save_figure_to_paths
 from lib.format import make_title_from_args
-from lib.imports import import_data
+from lib.imports import import_data, normalize_datafiles
 from lib.selection import filter_dataframe
 from lib.plot import apply_legend_style, plot_data, create_common_subplots, create_common_two_panel_figure, apply_note_to_figure, add_centered_suptitle, apply_common_figure_margins, draw_vertical_lines, draw_horizontal_lines, place_point_label
 
@@ -34,11 +35,14 @@ def parse_args():
         parser,
         [
             "datafile",
+            "configs",
+            "names",
             "iterable",
             "variables",
             "select",
             "save_values",
             "remove_value",
+            "filename_select",
             "x",
             "y",
             "labelx",
@@ -197,21 +201,6 @@ def parse_args():
     )
 
     return parser.parse_args()
-
-
-def load_df(path, path_override=None):
-    """Load a dataframe using the shared import helper used across the repo."""
-    args = argparse.Namespace(
-        datafile=path,
-        path=path_override,
-        configs=None,
-        names=None,
-        debug=False,
-    )
-    df = import_data(args)
-    if df.empty:
-        raise FileNotFoundError(f"Could not find input data file for '{path}'")
-    return df
 
 
 def _to_array(row, column):
@@ -461,7 +450,8 @@ def _overlay_windows(ax, row, start_column, end_column, center_column, color):
 
 
 def _make_output_file_name(args, row):
-    datafile_name = Path(args.datafile).stem if Path(args.datafile).suffix else Path(args.datafile).name
+    datafile_label = Path("_".join(normalize_datafiles(args.datafile)))
+    datafile_name = datafile_label.stem if datafile_label.suffix else datafile_label.name
     iterable_value = (
         str(row[args.iterable])
         if args.iterable is not None and args.iterable in row and pd.notna(row[args.iterable])
@@ -485,16 +475,24 @@ def _print_dataframe_debug(df, title):
 
 def main():
     args = parse_args()
-    df = load_df(args.datafile, args.path)
+    df = import_data(args)
 
     if df.empty:
-        raise ValueError("Input dataframe is empty")
+        raise FileNotFoundError(
+            f"Could not find input data file for '{'_'.join(normalize_datafiles(args.datafile))}'"
+        )
 
     if args.iterable is not None and args.iterable not in df.columns:
         if args.debug:
             rprint(
                 f"[yellow]Warning:[/yellow] Iterable column '{args.iterable}' is missing; using the full dataframe."
             )
+
+    # Real NaN values in the "Variable" column are excluded by default.
+    # Explicitly requesting "None" in --variables opts back in, converting
+    # those NaNs to the literal string "None" so they survive filtering.
+    if args.variables is not None and "None" in args.variables and "Variable" in df.columns:
+        df["Variable"] = df["Variable"].fillna("None")
 
     if (
         args.iterable is not None and args.iterable in df.columns

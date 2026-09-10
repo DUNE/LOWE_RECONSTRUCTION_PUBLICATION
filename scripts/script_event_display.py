@@ -33,6 +33,7 @@ add_common_args(
         "select",
         "save_values",
         "remove_value",
+        "filename_select",
         "x",
         "y",
         "z",

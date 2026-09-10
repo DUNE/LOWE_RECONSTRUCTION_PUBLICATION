@@ -4,7 +4,8 @@
     "lowe": ["/home/smanthey/Documents/lowe_reco_paper/Figures/"],
     "thesis": ["/home/smanthey/Code/THESIS/figures/exclusive/"],
     "solar": ["/home/smanthey/Code/THESIS/figures/solar/"],
-    "phaseI": ["/home/smanthey/Code/THESIS/figures/phaseI/"],
+    "phaseI": ["/home/smanthey/Documents/solar_neutrinos_phaseI_paper/figures/", "/home/smanthey/Code/THESIS/figures/phaseI/"],
+    "study": ["/home/smanthey/Code/THESIS/figures/study/"],
     "pde": ["/home/smanthey/Documents/pde_xa_vd_paper/images/"]
   },
   "tables": {
@@ -12,6 +13,6 @@
     "lowe": ["/home/smanthey/Documents/lowe_reco_paper/Tables/"],
     "thesis": ["/home/smanthey/Code/THESIS/tables/"],
     "solar": ["/home/smanthey/Code/THESIS/tables/"],
-    "phaseI": ["/home/smanthey/Code/THESIS/tables/phaseI/"]
+    "phaseI": ["/home/smanthey/Documents/solar_neutrinos_phaseI_paper/tables/", "/home/smanthey/Code/THESIS/tables/phaseI/"]
   }
 }

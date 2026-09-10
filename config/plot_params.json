@@ -173,7 +173,26 @@
       "neutron": "Neutron",
       "radiological": "Radiological"
     },
+    "appearance_terms": {
+      "P(nu_mu->nu_e)": "$P(\\nu_\\mu\\to\\nu_e)$",
+      "T1 (atmospheric)": "$T_1$ (atmospheric)",
+      "T2 (interference)": "$T_2$ (interference)",
+      "T3 (solar)": "$T_3$ (solar)"
+    },
+    "coordinate_efficiency":{
+      "X": "X (\\%)",
+      "Y": "Y (\\%)",
+      "Z": "Z (\\%)",
+      "None": "Combined XYZ (\\%)"
+    },
+    "coordinate_unit":{
+      "X": "X (cm)",
+      "Y": "Y (cm)",
+      "Z": "Z (cm)",
+      "None": "Combined XYZ (cm)"
+    },
     "stage_dict": {
+      "Truth": "Truth",
       "Raw": "Total",
       "TPC-PDS Matching": "TPC-PDS Matching",
       "Fiducial": "Fiducial",
@@ -204,6 +223,7 @@
       "Radiological": "C3",
       "gamma": "C2",
       "neutron": "C4",
+      "Solar": "C0",
       "Solar Day": "C1",
       "Solar Night": "C0"
     },
@@ -245,6 +265,9 @@
       "o15": "C6",
       "f17": "C7"
     },
+    "cs_dict":{
+      "marley": "Marley"
+    },
     "sn_dict": {
       "nue": "$\\nu_e$",
       "nuebar": "$\\bar{\\nu}_e$",
@@ -274,6 +297,52 @@
       "neutron",
       "radiological"
     ],
+    "study_dict": {
+      "default": "Reference",
+      "oscpoint_solar": "Solar Best-Fit $\\Delta m^2_{21}$",
+      "oscpoint_reactor": "Reactor $\\Delta m^2_{21}$",
+      "energy_maink": "MainK Energy",
+      "energy_spk": "SignalParticleK Energy",
+      "charge_Q50": "Q > 50 ADC",
+      "charge_Q100": "Q > 100 ADC",
+      "charge_Q200": "Q > 200 ADC",
+      "charge_Q500": "Q > 500 ADC",
+      "unc_bkg0": "$\\sigma_{bkg}$ = 0%",
+      "unc_bkg4": "$\\sigma_{bkg}$ = 4%",
+      "unc_bkg6": "$\\sigma_{bkg}$ = 6%",
+      "unc_bkg10": "$\\sigma_{bkg}$ = 10%",
+      "unc_bkg20": "$\\sigma_{bkg}$ = 20%",
+      "unc_sig0": "$\\sigma_{sig}$ = 0%",
+      "unc_sig2": "$\\sigma_{sig}$ = 2%",
+      "unc_sig6": "$\\sigma_{sig}$ = 6%",
+      "unc_sig8": "$\\sigma_{sig}$ = 8%",
+      "unc_sig20": "$\\sigma_{sig}$ = 20%",
+      "unc_sig40": "$\\sigma_{sig}$ = 40%",
+      "metric_raw": "Raw Histogram",
+      "metric_smoothed": "Smoothed Histogram",
+      "bkg_gamma": "$deex. \\gamma$ Removal",
+      "fiduc_truth": "MC-Truth Fiducial",
+      "DayNight_Counts": "Reference",
+      "DayNight_Counts_charge_Q50": "Q > 50 ADC",
+      "DayNight_Counts_charge_Q100": "Q > 100 ADC",
+      "DayNight_Counts_charge_Q500": "Q > 500 ADC",
+      "Sensitivity_SolarEnergy": "Reference",
+      "Sensitivity_SolarEnergy_oscpoint_solar": "Solar Best-Fit $\\Delta m^2_{21}$",
+      "Sensitivity_SolarEnergy_oscpoint_reactor": "Reactor $\\Delta m^2_{21}$",
+      "nuisance_nominal": "No Nuisances",
+      "nuisance_sin13": "$\\sin^{2}\\theta_{13}$ Pull Only",
+      "nuisance_escale": "Energy Scale Only",
+      "membrane_veto_off": "No Membrane Veto",
+      "DayNight_Exposure": "Reference",
+      "HEP_Exposure": "Reference",
+      "HEP_Counts": "Reference",
+      "Sensitivity_Counts": "Reference",
+      "Sensitivity_Significance": "Reference",
+      "SolarEnergy_Sensitivity_Templates": "Reference",
+      "HEP_AdaptiveRebin_Comparison": "Reference",
+      "HEP_AdaptiveRebin_Comparison_metric_raw": "Raw Histogram",
+      "HEP_AdaptiveRebin_Comparison_metric_smoothed": "Smoothed Histogram"
+    },
     "interaction_names": {
       "CC": "CC: $\\nu$ Ar40",
       "ES": "ES: $\\nu$ e",

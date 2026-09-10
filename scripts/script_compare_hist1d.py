@@ -38,6 +38,7 @@ add_common_args(
         "select",
         "save_values",
         "remove_value",
+        "filename_select",
         "bins",
         "percentile",
         "labelx",
@@ -100,6 +101,12 @@ def main():
     if df.empty:
         rprint("[yellow]Warning:[/yellow] No datafiles found. Exiting...")
         return
+
+    # Real NaN values in the "Variable" column are excluded by default.
+    # Explicitly requesting "None" in --variables opts back in, converting
+    # those NaNs to the literal string "None" so they survive filtering.
+    if args.variables is not None and "None" in args.variables and "Variable" in df.columns:
+        df["Variable"] = df["Variable"].fillna("None")
 
     # Select the entries in the dataframe with with name matching args.names and nake a plot for each iterable
     if args.variables is None:

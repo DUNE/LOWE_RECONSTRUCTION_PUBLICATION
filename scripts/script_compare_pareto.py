@@ -39,6 +39,7 @@ add_common_args(
         "select",
         "save_values",
         "remove_value",
+        "filename_select",
         "iterable",
         "reduce",
         "x",
@@ -373,6 +374,13 @@ def main():
     if df.empty:
         rprint("[yellow]Warning:[/yellow] No datafiles found. Exiting...")
         return
+
+    # Real NaN values in the "Variable" column are excluded by default.
+    # Explicitly requesting "None" in --variables (e.g. as one of the two
+    # Pareto axes) opts back in, converting those NaNs to the literal string
+    # "None" so they survive filtering.
+    if "None" in args.variables and "Variable" in df.columns:
+        df["Variable"] = df["Variable"].fillna("None")
 
     configs, names = prepare_import(args)
     configs = configs if configs is not None else [None]

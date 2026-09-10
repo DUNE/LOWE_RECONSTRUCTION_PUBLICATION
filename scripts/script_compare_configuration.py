@@ -37,6 +37,7 @@ add_common_args(
         "select",
         "save_values",
         "remove_value",
+        "filename_select",
         "x",
         "rangex",
         "rangey",
@@ -75,6 +76,8 @@ add_common_args(
         "output",
         "subfolder",
         "debug",
+        "errory",
+        "errory_type",
     ],
     overrides={
         "configs": {
@@ -101,21 +104,6 @@ parser.add_argument(
     type=str,
     default="Config",
     help="List of comparable parameter to produce plots",
-)
-
-parser.add_argument(
-    "--errory",
-    action="store_true",
-    help="Plot y-axis error bars",
-    default=False,
-)
-
-parser.add_argument(
-    "--errory_type",
-    type=str,
-    default="bars",
-    help="Style of errors.",
-    choices=["bars", "bands"],
 )
 
 parser.add_argument(
@@ -253,6 +241,20 @@ parser.add_argument(
     type=str,
     default=None,
     help="Restrict which --configs lines are drawn (they are still loaded and included in --operation/--combine combinations)",
+)
+
+parser.add_argument(
+    "--printy",
+    type=float,
+    default=None,
+    help="X-value at which to print the corresponding Y-value (e.g., --printy 10 prints the significance at 10 years)",
+)
+
+parser.add_argument(
+    "--printx",
+    type=float,
+    default=None,
+    help="Y-value at which to print the corresponding X-value (e.g., --printx 3 prints the years at 3 sigma)",
 )
 
 args = parser.parse_args()
@@ -488,6 +490,12 @@ def main():
         rprint("No data to plot. Exiting.")
         return
 
+    # Real NaN values in the "Variable" column are excluded by default.
+    # Explicitly requesting "None" in --variables opts back in, converting
+    # those NaNs to the literal string "None" so they survive filtering.
+    if args.variables is not None and "None" in args.variables and "Variable" in df.columns:
+        df["Variable"] = df["Variable"].fillna("None")
+
     ncols = len(args.variables) if args.variables is not None else 1
     fig, ax = create_common_subplots(
         nrows=1,
@@ -634,6 +642,30 @@ def main():
                 )
                 continue
 
+            # Print y-value at specified x-value or x-value at specified y-value
+            if args.printy is not None and args.printy >= min(x) and args.printy <= max(x):
+                y_at_x = np.interp(args.printy, x, y, left=np.nan, right=np.nan)
+                config_name = make_config_label_from_args(args, config=config, name=name, iterable=None)
+                rprint(f"[green]PrintY:[/green] At x={args.printy:.2f}, y={y_at_x:.4f} for {config_name}")
+            
+            if args.printx is not None and args.printx >= min(y) and args.printx <= max(y):
+                # For PrintX: interpolate x from y
+                # Find the index where y crosses the target value
+                above_idx = np.where(y >= args.printx)[0]
+                if len(above_idx) > 0:
+                    first_above_idx = above_idx[0]
+                    if first_above_idx > 0:
+                        # Linear interpolation between the two points
+                        x1, x2 = x[first_above_idx-1], x[first_above_idx]
+                        y1, y2 = y[first_above_idx-1], y[first_above_idx]
+                        x_at_y = x1 + (args.printx - y1) * (x2 - x1) / (y2 - y1) if y2 != y1 else x1
+                    else:
+                        x_at_y = x[0]
+                else:
+                    x_at_y = x[-1]
+                config_name = make_config_label_from_args(args, config=config, name=name, iterable=None)
+                rprint(f"[green]PrintX:[/green] At y={args.printx:.2f}, x={x_at_y:.4f} for {config_name}")
+
             if _is_shifted(config, name, args):
                 x = x + args.shift_offset
 
@@ -641,6 +673,9 @@ def main():
 
             if args.errory:
                 if errory_sym == "asymmetric":
+                    # {y}Error-/{y}Error+ are positive-magnitude deltas from the
+                    # central value (lower/upper), not literal bound values -
+                    # plot_data() applies them as y -/+ errory[0]/errory[1].
                     lower = _concat_numeric_cells(df_config[f"{args.y}Error-"].tolist())
                     upper = _concat_numeric_cells(df_config[f"{args.y}Error+"].tolist())
                     errory = [lower, upper] if lower is not None and upper is not None else None
@@ -660,7 +695,7 @@ def main():
                 label_parts = [str(mapped_geom)]
                 if mapped_config is not None and str(mapped_config) != str(mapped_geom):
                     label_parts.append(str(mapped_config))
-                if mapped_name is not None and str(mapped_name) not in label_parts:
+                if name is not None and str(mapped_name) not in label_parts:
                     label_parts.append(str(mapped_name))
 
                 geom_label = ", ".join(label_parts)
@@ -672,6 +707,18 @@ def main():
                         args, config=config, name=name, iterable=None
                     )
                 )
+
+
+            if args.iterable is not None and iterable is not None:
+                iterable_label = map_iterable_label(
+                    iterable, args.iterable, getattr(args, "iterable_mapping", None)
+                )
+                if mapping_name is not None:
+                    geom_label = str(iterable_label)
+                elif str(iterable_label) not in {
+                    part.strip() for part in str(geom_label).split(",")
+                }:
+                    geom_label = f"{geom_label}, {iterable_label}"
 
             interpy = None
             error_interpy = None
@@ -965,6 +1012,30 @@ def main():
             combined_errory = (
                 np.power(combined_errory, 0.5) if combined_errory is not None else None
             )
+
+            # Print y-value at specified x-value or x-value at specified y-value for combined data
+            if args.printy is not None and args.printy >= min(combined_x) and args.printy <= max(combined_x):
+                y_at_x = np.interp(args.printy, combined_x, combinedy, left=np.nan, right=np.nan)
+                rprint(f"[green]PrintY (Combined):[/green] At x={args.printy:.2f}, y={y_at_x:.4f}")
+            
+            if args.printx is not None and args.printx >= min(combinedy) and args.printx <= max(combinedy):
+                # For PrintX: interpolate x from y
+                # Both arrays should be sorted by x (exposure), but we need to interpolate in reverse
+                # We can sort by y or use the fact that x is sorted and y is generally increasing
+                # Find the index where y crosses the target value
+                above_idx = np.where(combinedy >= args.printx)[0]
+                if len(above_idx) > 0:
+                    first_above_idx = above_idx[0]
+                    if first_above_idx > 0:
+                        # Linear interpolation between the two points
+                        x1, x2 = combined_x[first_above_idx-1], combined_x[first_above_idx]
+                        y1, y2 = combinedy[first_above_idx-1], combinedy[first_above_idx]
+                        x_at_y = x1 + (args.printx - y1) * (x2 - x1) / (y2 - y1) if y2 != y1 else x1
+                    else:
+                        x_at_y = combined_x[0]
+                else:
+                    x_at_y = combined_x[-1]
+                rprint(f"[green]PrintX (Combined):[/green] At y={args.printx:.2f}, x={x_at_y:.4f}")
 
             # Use CLI-configurable styling for the combined line
             combined_label = (

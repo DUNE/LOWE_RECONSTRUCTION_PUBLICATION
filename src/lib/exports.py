@@ -1,6 +1,6 @@
 import os
 
-from .imports import prepare_import
+from .imports import prepare_import, normalize_datafiles
 from .plot import apply_common_figure_margins
 from typing import Optional
 
@@ -31,58 +31,108 @@ def make_name_from_args(
     # identify a run, so they stay; everything else (variables, select,
     # style flags, ...) is expendable filler that can be trimmed.
     name_parts = []
+    protected_parts = set()
+    filename_select_values = {
+        str(value).strip().casefold()
+        for value in (getattr(args, "filename_select", None) or [])
+        if str(value).strip()
+    }
 
-    def add(text, essential=False):
+    def filename_selected(*aliases):
+        return any(str(alias).casefold() in filename_select_values for alias in aliases)
+
+    def add(text, essential=False, protected=False):
         if text:
             name_parts.append((text, essential))
+            if protected:
+                protected_parts.add(len(name_parts) - 1)
 
     if prefix is not None:
-        add(prefix, essential=True)
+        add(prefix, essential=True, protected=filename_selected("prefix"))
 
     if hasattr(args, "datafile"):
-        add(args.datafile, essential=True)
+        add(
+            "_".join(normalize_datafiles(args.datafile)),
+            essential=True,
+            protected=filename_selected("datafile"),
+        )
 
     show_configs = getattr(args, "show_configs", None)
 
     if hasattr(args, "configs") and args.configs:
         if args.configs is not None:
             if idx is not None and 0 <= idx < len(args.configs):
-                add(args.configs[idx], essential=True)
+                add(
+                    args.configs[idx],
+                    essential=True,
+                    protected=filename_selected("config", "configs"),
+                )
             elif show_configs:
                 # Only the configs actually drawn (--show_configs) identify
                 # this plot; configs loaded solely for --operation/--combine
                 # don't need to be spelled out in the filename.
                 shown = [c for c in args.configs if c in show_configs]
-                add("_".join(shown) if shown else "_".join(args.configs), essential=True)
+                add(
+                    "_".join(shown) if shown else "_".join(args.configs),
+                    essential=True,
+                    protected=filename_selected("config", "configs"),
+                )
             else:
-                add("_".join(args.configs), essential=True)
+                add(
+                    "_".join(args.configs),
+                    essential=True,
+                    protected=filename_selected("config", "configs"),
+                )
 
     if hasattr(args, "project") and args.project:
         for proj in args.project:
             if proj:
-                add(proj)
+                add(proj, protected=filename_selected("project", "projects"))
+
+    if hasattr(args, "project_offset") and args.project_offset not in (None, 0):
+        add(
+            f"project_offset_{args.project_offset:g}",
+            protected=filename_selected("project_offset"),
+        )
+
+    if hasattr(args, "project_scale") and args.project_scale not in (None, 1):
+        add(
+            f"project_scale_{args.project_scale:g}",
+            protected=filename_selected("project_scale"),
+        )
 
     if hasattr(args, "names") and args.names:
         if args.names is not None:
             if idx is not None and 0 <= idx < len(args.names):
-                add(args.names[idx], essential=True)
+                add(
+                    args.names[idx],
+                    essential=True,
+                    protected=filename_selected("name", "names"),
+                )
             else:
-                add("_".join(args.names), essential=True)
+                add(
+                    "_".join(args.names),
+                    essential=True,
+                    protected=filename_selected("name", "names"),
+                )
 
     if hasattr(args, "x") and args.x and isinstance(args.x, str):
-        add(args.x)
+        add(args.x, protected=filename_selected("x"))
 
     if hasattr(args, "y") and args.y and isinstance(args.y, str):
-        add(args.y)
+        add(args.y, protected=filename_selected("y"))
 
     if hasattr(args, "z") and args.z and isinstance(args.z, str):
-        add(args.z)
+        add(args.z, protected=filename_selected("z"))
 
     if hasattr(args, "errory") and args.errory:
         add("error")
 
     if hasattr(args, "variables") and args.variables:
-        add("_".join(args.variables))
+        add(
+            "_".join(args.variables),
+            protected=filename_selected("variable", "variables"),
+        )
 
     if hasattr(args, "iterable") and args.iterable:
         if (hasattr(args, "select") and args.select is None) and (
@@ -94,22 +144,46 @@ def make_name_from_args(
                 if val:  # Check if val has content
                     iterable_parts.append(f"{val}")
             if iterable_parts:  # Only add if iterable_parts is not empty
-                add("_".join(iterable_parts))
+                add(
+                    "_".join(iterable_parts),
+                    protected=filename_selected("iterable"),
+                )
         else:
             if args.iterable:  # Check if args.iterable has content
-                add(f"{args.iterable}")
+                add(f"{args.iterable}", protected=filename_selected("iterable"))
 
     if hasattr(args, "select") and args.select:
+        # --filename_select names --select keys that must survive the
+        # length-based trimming below (e.g. to keep two runs that only
+        # differ in one select/save_values pair from colliding on the same
+        # output filename). Without it, select/save_values are joined into
+        # one expendable blob exactly as before.
+        filename_select = filename_select_values
         if hasattr(args, "save_values") and args.save_values:
-            # Join each select item with its corresponding save-values item
-            select_parts = []
-            for sel, val in zip(args.select, args.save_values):
-                if sel and val:  # Check if both sel and val have content
-                    select_parts.append(f"{sel}_{val}")
-            if select_parts:  # Only add if select_parts is not empty
-                add("_".join(select_parts))
+            if filename_select:
+                for sel, val in zip(args.select, args.save_values):
+                    if sel and val:
+                        selected = str(sel).casefold() in filename_select
+                        add(
+                            f"{sel}_{val}",
+                            essential=selected,
+                            protected=selected,
+                        )
+            else:
+                # Join each select item with its corresponding save-values item
+                select_parts = []
+                for sel, val in zip(args.select, args.save_values):
+                    if sel and val:  # Check if both sel and val have content
+                        select_parts.append(f"{sel}_{val}")
+                if select_parts:  # Only add if select_parts is not empty
+                    add("_".join(select_parts))
         else:
-            if args.select:  # Check if args.select has content
+            if filename_select:
+                for sel in args.select:
+                    if sel:
+                        selected = str(sel).casefold() in filename_select
+                        add(sel, essential=selected, protected=selected)
+            elif args.select:  # Check if args.select has content
                 add("_".join(args.select))
 
     if hasattr(args, "operation") and args.operation:
@@ -138,6 +212,32 @@ def make_name_from_args(
     if hasattr(args, "invert_style") and args.invert_style:
         add("invert_style")
 
+    # Some plot behavior is controlled by flags that otherwise have no
+    # filename representation. Keep explicitly selected active options
+    # distinguishable without changing names for unselected options.
+    filename_option_specs = (
+        ("combined_contours_only", False, None),
+        ("fill_contours", False, None),
+        ("contour_smoothing_sigma", True, 0),
+        ("background_smoothing_sigma", True, 0),
+        ("contour_sigmas", True, None),
+    )
+    for option_name, include_value, default in filename_option_specs:
+        if not filename_selected(option_name) or not hasattr(args, option_name):
+            continue
+
+        option_value = getattr(args, option_name)
+        if include_value:
+            if option_value is None or option_value == default:
+                continue
+            if isinstance(option_value, (list, tuple)):
+                value_text = "-".join(str(value) for value in option_value)
+            else:
+                value_text = f"{option_value:g}" if isinstance(option_value, float) else str(option_value)
+            add(f"{option_name}_{value_text}", protected=True)
+        elif option_value:
+            add(option_name, protected=True)
+
     MAX_LEN = 150
     suffix_part = ("_" + suffix) if suffix is not None else ""
 
@@ -150,7 +250,11 @@ def make_name_from_args(
         # the main offender) until the name fits, keeping datafile/configs/
         # names intact so runs that only differ in those stay distinct.
         droppable_by_size = sorted(
-            (i for i, (_, essential) in enumerate(name_parts) if not essential),
+            (
+                i
+                for i, (_, essential) in enumerate(name_parts)
+                if not essential and i not in protected_parts
+            ),
             key=lambda i: -len(name_parts[i][0]),
         )
         for i in droppable_by_size:
@@ -158,13 +262,38 @@ def make_name_from_args(
                 break
             dropped.add(i)
 
+    if protected_parts and len(joined(dropped)) + len(suffix_part) > MAX_LEN:
+        # Explicit --filename_select fields have priority over ordinary
+        # essential fields. Drop long config/name components before allowing
+        # protected selection fields to be truncated.
+        droppable_essential = sorted(
+            (
+                i
+                for i, (_, essential) in enumerate(name_parts)
+                if essential and i not in protected_parts and i not in dropped
+            ),
+            key=lambda i: -len(name_parts[i][0]),
+        )
+        for i in droppable_essential:
+            if len(joined(dropped)) + len(suffix_part) <= MAX_LEN:
+                break
+            dropped.add(i)
+
     export_name = joined(dropped)
     if len(export_name) + len(suffix_part) > MAX_LEN:
-        # Even the essential parts alone don't fit; hard-truncate them so the
-        # suffix (which carries the file extension, e.g. "table.tex") always
-        # survives intact.
-        budget = max(MAX_LEN - len(suffix_part), 0)
-        export_name = export_name[:budget].rstrip("_")
+        if protected_parts:
+            # Preserve every explicitly selected field, even if this requires
+            # exceeding MAX_LEN. Truncating here would defeat --filename_select.
+            export_name = "_".join(
+                text
+                for i, (text, _) in enumerate(name_parts)
+                if i in protected_parts and i not in dropped
+            )
+        else:
+            # Even the essential parts alone don't fit; hard-truncate them so
+            # the suffix always survives intact.
+            budget = max(MAX_LEN - len(suffix_part), 0)
+            export_name = export_name[:budget].rstrip("_")
 
     if suffix is not None:
         export_name = export_name + "_" + suffix

@@ -20,7 +20,6 @@ from lib.functions import resolution
 import matplotlib.lines as mlines
 import matplotlib.patches as mpatches
 import math
-import sys
 
 from lib.plot import (
     apply_legend_style,
@@ -33,36 +32,6 @@ from lib.plot import (
     place_point_label,
 )
 from common_args import add_common_args, map_iterable_label, map_iterable_color, resolve_axis_label
-
-
-def _extract_path_override(argv):
-    cleaned = []
-    path_override = None
-    idx = 0
-    while idx < len(argv):
-        token = argv[idx]
-        if token.startswith("--path="):
-            path_override = token.split("=", 1)[1]
-            idx += 1
-            continue
-
-        if token == "--path":
-            if idx + 1 < len(argv) and not argv[idx + 1].startswith("-"):
-                path_override = argv[idx + 1]
-                idx += 2
-                continue
-            cleaned.append(token)
-            idx += 1
-            continue
-
-        cleaned.append(token)
-        idx += 1
-
-    return path_override, cleaned
-
-
-_PATH_OVERRIDE, _CLEANED_ARGV = _extract_path_override(sys.argv[1:])
-sys.argv = [sys.argv[0], *_CLEANED_ARGV]
 
 
 # Import with args parser
@@ -81,6 +50,7 @@ add_common_args(
         "select",
         "save_values",
         "remove_value",
+        "filename_select",
         "x",
         "y",
         "reduce",
@@ -109,6 +79,8 @@ add_common_args(
         "note",
         "multiply",
         "debug",
+        "errory",
+        "errory_type",
     ],
     overrides={
         "datafile": {
@@ -133,21 +105,6 @@ add_common_args(
             "help": "Explicit plot type override (scatter, line, bar, barh, step, plot, errorbar)",
         },
     },
-)
-
-if "--path" not in parser._option_string_actions:
-    parser.add_argument(
-        "--path",
-        type=str,
-        default=None,
-        help="Base path for --datafile lookups. Relative values resolve inside input/data/ (e.g. --path studies)",
-    )
-
-parser.add_argument(
-    "--errorx",
-    action="store_true",
-    help="Include error bars on x-axis",
-    default=False,
 )
 
 parser.add_argument(
@@ -365,8 +322,6 @@ parser.add_argument(
 )
 
 args = parser.parse_args()
-if not hasattr(args, "path") or args.path is None:
-    args.path = _PATH_OVERRIDE
 
 _MISSING_ITERABLE_MAPPING_WARNING_SHOWN = False
 
@@ -467,6 +422,32 @@ def _resolve_comparable_color(index, args, n_total=None, reverse=None):
     return f"C{index}"
 
 
+def _expand_singletons_for_explode(frame, columns):
+    """Broadcast one-value plot arrays to match longer x/y arrays."""
+    frame = frame.copy()
+    for row_index, row in frame.iterrows():
+        lengths = []
+        for column in columns:
+            value = row[column]
+            if isinstance(value, (list, tuple, np.ndarray, pd.Series)):
+                lengths.append(len(value))
+            else:
+                lengths.append(1)
+
+        target_length = max(lengths, default=1)
+        if target_length <= 1:
+            continue
+
+        for column, length in zip(columns, lengths):
+            value = row[column]
+            if length == 1:
+                if isinstance(value, (list, tuple, np.ndarray, pd.Series)):
+                    value = value[0]
+                frame.at[row_index, column] = [value] * target_length
+
+    return frame
+
+
 def _apply_iterable_legend(
     ax,
     iterable_title,
@@ -553,6 +534,12 @@ def main():
         )
         return
 
+    # Real NaN values in the "Variable" column are excluded by default.
+    # Explicitly requesting "None" in --variables opts back in, converting
+    # those NaNs to the literal string "None" so they survive filtering.
+    if args.variables is not None and "None" in args.variables and "Variable" in df.columns:
+        df["Variable"] = df["Variable"].fillna("None")
+
     # Select the entries in the dataframe with with name matching args.names and nake a plot for each iterable
     if args.variables is None:
         n_vars, nrows, ncols = 1, 1, 1
@@ -633,8 +620,13 @@ def main():
             else df_config[iterable_column].unique()
         )
         _color_mapping_name = getattr(args, "iterable_color_mapping", None)
-        if _color_mapping_name is not None:
-            _mapping_dict = get_mapping_dict(_color_mapping_name)
+        _label_mapping_name = getattr(args, "iterable_mapping", None)
+        # --iterable_color_mapping already implies a draw/legend order; when it's
+        # absent, fall back to --iterable_mapping's own key order so the legend
+        # still matches the mapping dict instead of first-seen data order.
+        _order_mapping_name = _color_mapping_name if _color_mapping_name is not None else _label_mapping_name
+        if _order_mapping_name is not None:
+            _mapping_dict = get_mapping_dict(_order_mapping_name)
             if _mapping_dict is not None:
                 _in_map = [v for v in _mapping_dict if v in set(iterable_values)]
                 _not_in_map = [v for v in iterable_values if v not in set(_mapping_dict)]
@@ -772,7 +764,8 @@ def main():
                         if _comparable_active_s and _comparable_value_s is not None:
                             _df_sv = _df_sv[_df_sv[comparable_col] == _comparable_value_s]
                         _sub_sv = filter_dataframe(_df_sv, args)
-                        _ecols = ([args.x, args.y, "Error"] if "Error" in _sub_sv.columns else [args.x, args.y])
+                        _ecols = ([args.x, args.y, "Error"] if args.errory and "Error" in _sub_sv.columns else [args.x, args.y])
+                        _sub_sv = _expand_singletons_for_explode(_sub_sv, _ecols)
                         _sub_sv = _sub_sv.explode(column=_ecols)
                         if _sub_sv.empty:
                             continue
@@ -865,13 +858,11 @@ def main():
 
                     subset = filter_dataframe(df_iterable_comparable, args)
 
-                    subset = subset.explode(
-                        column=(
-                            [args.x, args.y, "Error"]
-                            if "Error" in subset.columns
-                            else [args.x, args.y]
-                        )
-                    )
+                    explode_columns = [args.x, args.y]
+                    if args.errory and "Error" in subset.columns:
+                        explode_columns.append("Error")
+                    subset = _expand_singletons_for_explode(subset, explode_columns)
+                    subset = subset.explode(column=explode_columns)
                     if subset.empty:
                         rprint(
                             f"[yellow]Warning:[/yellow] No data for iterable {args.iterable}={iterable}, {comparable_col}={comparable_value}, Variable={variable}. Skipping."
@@ -888,7 +879,7 @@ def main():
                         x = subset[args.x].astype(float).to_numpy()
                         x_bin = x[1] - x[0] if len(x) > 1 else 1
                         x_edges = np.linspace(x[0] - x_bin / 2, x[-1] + x_bin / 2, len(x) + 1)
-                        x_error = (
+                        y_error = (
                             subset[f"Error"].astype(float).to_numpy()
                             if f"Error" in subset.columns
                             else None
@@ -897,21 +888,21 @@ def main():
                         x = x[mask]
                         y = y[mask]
                         x_edges = x_edges[np.append(mask, True) | np.append(True, mask)]
-                        if x_error is not None:
-                            x_error = x_error[mask]
+                        if y_error is not None:
+                            y_error = y_error[mask]
                         extrapolated_mask = pd.array(extrap_raw_c[mask], dtype="boolean").fillna(False).astype(bool).__array__() if extrap_raw_c is not None else np.zeros(len(x), dtype=bool)
 
                     except ValueError:
                         x = subset[args.x].astype(str)
-                        x_error = None
+                        y_error = None
                         extrapolated_mask = np.zeros(len(x), dtype=bool)
 
                     if extrapolated_mask.any() and not args.extrapolate:
                         keep = ~extrapolated_mask
                         x = x[keep]
                         y = y[keep]
-                        if isinstance(x_error, np.ndarray):
-                            x_error = x_error[keep]
+                        if isinstance(y_error, np.ndarray):
+                            y_error = y_error[keep]
                         extrapolated_mask = np.zeros(len(x), dtype=bool)
 
                     last_x = x
@@ -989,7 +980,7 @@ def main():
                                     ax_current,
                                     x,
                                     y=y,
-                                    errory=x_error,
+                                    errory=y_error,
                                     label=plot_label,
                                     color=line_color,
                                     plot_type="line",
@@ -1016,7 +1007,7 @@ def main():
 
                         continue
 
-                    if x_error is not None and args.errorx:
+                    if y_error is not None and args.errory:
                         rprint(
                             f"\tPlotting {len(x)} points with error bars for {args.iterable}={iterable_label}, Variable={variable}"
                         )
@@ -1026,7 +1017,7 @@ def main():
                                 ax_current,
                                 x,
                                 y=y,
-                                errory=x_error,
+                                errory=y_error,
                                 label=plot_label,
                                 color=line_color,
                                 plot_type="bar",
@@ -1039,7 +1030,7 @@ def main():
                                 ax_current,
                                 x,
                                 y=y,
-                                errory=x_error,
+                                errory=y_error,
                                 label=plot_label,
                                 color=line_color,
                                 plot_type="errorbar",
@@ -1078,13 +1069,11 @@ def main():
 
             subset = filter_dataframe(df_iterable, args)
 
-            subset = subset.explode(
-                column=(
-                    [args.x, args.y, "Error"]
-                    if "Error" in subset.columns
-                    else [args.x, args.y]
-                )
-            )
+            explode_columns = [args.x, args.y]
+            if args.errory and "Error" in subset.columns:
+                explode_columns.append("Error")
+            subset = _expand_singletons_for_explode(subset, explode_columns)
+            subset = subset.explode(column=explode_columns)
             if subset.empty:
                 rprint(
                     f"[yellow]Warning:[/yellow] No data for iterable {args.iterable}={iterable}, Variable={variable}. Skipping."
@@ -1101,33 +1090,33 @@ def main():
                 x = subset[args.x].astype(float).to_numpy()
                 x_bin = x[1] - x[0] if len(x) > 1 else 1
                 x_edges = np.linspace(x[0] - x_bin / 2, x[-1] + x_bin / 2, len(x) + 1)
-                x_error = (
+                y_error = (
                     subset[f"Error"].astype(float).to_numpy()
                     if f"Error" in subset.columns
                     else None
                 )
                 mask = ~np.isnan(x) & ~np.isnan(y)
-                # Remove indices in x, x_error and y where any of them is NaN
+                # Remove indices in x, y_error and y where any of them is NaN
                 x = x[mask]
                 y = y[mask]
                 x_edges = x_edges[
                     np.append(mask, True) | np.append(True, mask)
                 ]  # Keep edges corresponding to valid x values
-                if x_error is not None:
-                    x_error = x_error[mask]
+                if y_error is not None:
+                    y_error = y_error[mask]
                 extrapolated_mask = pd.array(extrap_raw[mask], dtype="boolean").fillna(False).astype(bool).__array__() if extrap_raw is not None else np.zeros(len(x), dtype=bool)
 
             except ValueError:
                 x = subset[args.x].astype(str)
-                x_error = None
+                y_error = None
                 extrapolated_mask = np.zeros(len(x), dtype=bool)
 
             if extrapolated_mask.any() and not args.extrapolate:
                 keep = ~extrapolated_mask
                 x = x[keep]
                 y = y[keep]
-                if isinstance(x_error, np.ndarray):
-                    x_error = x_error[keep]
+                if isinstance(y_error, np.ndarray):
+                    y_error = y_error[keep]
                 extrapolated_mask = np.zeros(len(x), dtype=bool)
 
             last_x = x
@@ -1200,7 +1189,7 @@ def main():
                         ax_current,
                         x,
                         y=y,
-                        errory=x_error,
+                        errory=y_error,
                         label=plot_label,
                         color=iterable_color,
                         plot_type="errorbar",
@@ -1253,7 +1242,7 @@ def main():
 
                 continue
 
-            if x_error is not None and args.errorx:
+            if y_error is not None and args.errory:
                 rprint(
                     f"\tPlotting {len(x)} points with error bars for {args.iterable}={iterable_label}, Variable={variable}"
                 )
@@ -1263,7 +1252,7 @@ def main():
                         ax_current,
                         x,
                         y=y,
-                        errory=x_error,
+                        errory=y_error,
                         label=iterable_label if idx == n_vars - 1 else None,
                         color=iterable_color,
                         plot_type="bar",
@@ -1289,7 +1278,7 @@ def main():
                             ax_current,
                             x,
                             y=y,
-                            errory=x_error,
+                            errory=y_error,
                             label=iterable_label if idx == n_vars - 1 else None,
                             color=iterable_color,
                             plot_type="errorbar",
@@ -1362,9 +1351,10 @@ def main():
                         if _comparable_active and comparable_value is not None:
                             df_sv = df_sv[df_sv[comparable_col] == comparable_value]
                         subset_sv = filter_dataframe(df_sv, args)
-                        explode_cols = (
-                            [args.x, args.y, "Error"] if "Error" in subset_sv.columns else [args.x, args.y]
-                        )
+                        explode_cols = [args.x, args.y]
+                        if args.errory and "Error" in subset_sv.columns:
+                            explode_cols.append("Error")
+                        subset_sv = _expand_singletons_for_explode(subset_sv, explode_cols)
                         subset_sv = subset_sv.explode(column=explode_cols)
                         if subset_sv.empty:
                             continue

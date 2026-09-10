@@ -39,6 +39,7 @@ add_common_args(
         "select",
         "save_values",
         "remove_value",
+        "filename_select",
         "x",
         "y",
         "reduce",
@@ -305,6 +306,23 @@ parser.add_argument(
 )
 
 parser.add_argument(
+    "--bottom_plot_type",
+    type=str,
+    default=None,
+    choices=["step", "plot", "line", "scatter", "errorbar"],
+    help="Plot type for the lower subplot only, overriding --plot_type there "
+    "(e.g. draw the top panel as step histograms but the bottom panel as "
+    "scatter points). Defaults to --plot_type when not given.",
+)
+
+parser.add_argument(
+    "--bottom_zero_line",
+    action="store_true",
+    default=False,
+    help="Draw a horizontal red reference line at y=0 on the lower subplot",
+)
+
+parser.add_argument(
     "--no_lower_plot",
     action="store_true",
     default=False,
@@ -342,6 +360,16 @@ parser.add_argument(
     dest="stack_reverse_requested",
     action="store_false",
     help="Keep stacked order as plotted",
+)
+
+parser.add_argument(
+    "--iterable_mapping",
+    type=str,
+    default=None,
+    help=(
+        "Optional mapping dictionary name from plot_params mappings used to "
+        "rename iterable values in legend labels"
+    ),
 )
 
 parser.add_argument(
@@ -403,6 +431,54 @@ parser.add_argument(
 )
 
 parser.add_argument(
+    "--comparable_operation",
+    type=str,
+    default=None,
+    choices=[
+        "subtract",
+        "relative_difference",
+        "absolute_relative_difference",
+        "asymmetry",
+        "ratio",
+    ],
+    help=(
+        "When set, compute this operation between comparable values (e.g., Gaussian - Asimov) "
+        "for each iterable line, and display the result in the bottom panel. "
+        "Uses --comparable_reference_index and --comparable_operation_line_index to select which "
+        "comparable values to compare."
+    ),
+)
+
+parser.add_argument(
+    "--comparable_reference_index",
+    type=int,
+    default=0,
+    help="Reference index among comparable values for --comparable_operation (default 0 = first comparable value).",
+)
+
+parser.add_argument(
+    "--comparable_operation_line_index",
+    type=int,
+    default=1,
+    help="Index of the comparable value to compare against the reference for --comparable_operation (default 1).",
+)
+
+parser.add_argument(
+    "--bottom_logy",
+    action="store_true",
+    default=False,
+    help="Use logarithmic scale for the bottom panel y-axis.",
+)
+
+parser.add_argument(
+    "--bottom_log_format",
+    type=str,
+    default=None,
+    choices=["scientific", "plain"],
+    help="Format for bottom panel y-axis tick labels: 'scientific' for scientific notation, 'plain' for decimal (default: plain).",
+)
+
+parser.add_argument(
     "--comparable_fill_strength",
     action="store_true",
     default=False,
@@ -444,9 +520,34 @@ def _resolve_comparable_fill_alpha(index, args, n_total=None):
         alpha = min(alpha * fill_alpha[0], 1.0)
     return alpha
 
+def _normalize_error_column(subset, value_col, error_col):
+    """Make error_col safe to explode alongside value_col: pandas.explode()
+    requires every exploded column to have matching per-row list lengths, but
+    some rows carry a scalar None in the error column (e.g. a component
+    missing an error entirely) instead of a same-length list. Replace those
+    rows' error entry with a NaN-filled list matching value_col's length so
+    the explode succeeds and that row's error values simply come out NaN
+    (rather than crashing the whole extraction).
+    """
+    def _normalize(row):
+        y_val = row[value_col]
+        err_val = row[error_col]
+        y_len = len(y_val) if isinstance(y_val, (list, tuple, np.ndarray)) else None
+        if isinstance(err_val, (list, tuple, np.ndarray)) and y_len is not None and len(err_val) == y_len:
+            return list(err_val)
+        if y_len is not None:
+            return [np.nan] * y_len
+        return err_val
+
+    subset = subset.copy()
+    subset[error_col] = subset.apply(_normalize, axis=1)
+    return subset
+
 def _extract_line_arrays(subset, x_col, y_col, error_col=None):
     has_error_col = bool(error_col) and error_col in subset.columns
     explode_cols = [x_col, y_col] + ([error_col] if has_error_col else [])
+    if has_error_col:
+        subset = _normalize_error_column(subset, y_col, error_col)
     expanded = subset.explode(column=explode_cols)
     if expanded.empty:
         return None, None, None
@@ -469,25 +570,32 @@ def _extract_line_arrays(subset, x_col, y_col, error_col=None):
 
     return x, y, y_err
 
-def _extract_bottom_column_arrays(subset, x_col, bottom_col):
-    expanded = subset.explode(column=[x_col, bottom_col])
+def _extract_bottom_column_arrays(subset, x_col, bottom_col, error_col=None):
+    has_error_col = bool(error_col) and error_col in subset.columns
+    explode_cols = [x_col, bottom_col] + ([error_col] if has_error_col else [])
+    if has_error_col:
+        subset = _normalize_error_column(subset, bottom_col, error_col)
+    expanded = subset.explode(column=explode_cols)
     if expanded.empty:
-        return None, None
+        return None, None, None
 
     try:
         x = expanded[x_col].astype(float).to_numpy()
         y = expanded[bottom_col].astype(float).to_numpy()
+        y_err = expanded[error_col].astype(float).to_numpy() if has_error_col else None
     except ValueError:
-        return None, None
+        return None, None, None
 
     mask = ~np.isnan(x) & ~np.isnan(y)
     x = x[mask]
     y = y[mask]
+    if y_err is not None:
+        y_err = y_err[mask]
 
     if x.size == 0 or y.size == 0:
-        return None, None
+        return None, None, None
 
-    return x, y
+    return x, y, y_err
 
 def _resolve_bottom_series_label(subset, bottom_col, fallback_label):
     label_col = f"{bottom_col}Label"
@@ -945,6 +1053,9 @@ def main():
             shared_ax_bottom = shared_fig.add_subplot(shared_gs[1], sharex=shared_ax_top)
             shared_ax_top.tick_params(labelbottom=False)
     last_kdx = len(configs) - 1
+    
+    # For comparable_operation with overlay_names, collect all residuals across iterations
+    all_comparable_op_residuals = [] if getattr(args, "comparable_operation", None) and overlay_names else None
 
     for kdx, (config, name) in enumerate(zip(configs, names)):
         if config is not None and name is None:
@@ -1005,6 +1116,9 @@ def main():
 
         selected_plot_type = getattr(args, "plot_type", "step")
         plot_kwargs = resolve_plot_kwargs(selected_plot_type)
+        bottom_plot_kwargs = resolve_plot_kwargs(
+            getattr(args, "bottom_plot_type", None) or selected_plot_type
+        )
 
         # Comparable mode: overlay a second line-shape dimension from this column
         comparable_col = getattr(args, "comparable", None)
@@ -1041,7 +1155,7 @@ def main():
         bottom_arrays = []
         top_by_comparable = {}   # comparable_val -> ([labels], [arrays], [colors])
         top_errors_by_comparable = {}  # comparable_val -> [errors], parallel to top_by_comparable's arrays list
-        bottom_by_comparable = {}  # comparable_val -> [(label, arr)]
+        bottom_by_comparable = {}  # comparable_val -> [(label, arr, color, error)]
         stacked_bottom = None
         stacked_bottom_by_comparable = {}
         x_reference = None
@@ -1059,7 +1173,12 @@ def main():
                 continue
 
             df_iterable = df_config[(df_config[args.iterable] == iterable)]
-            label = map_iterable_label(iterable, args.iterable, unique_iterables_count=iterable_values.size)
+            label = map_iterable_label(
+                iterable,
+                args.iterable,
+                getattr(args, "iterable_mapping", None),
+                iterable_values.size,
+            )
             mapped_color = map_iterable_color(iterable, getattr(args, "iterable_color_mapping", None))
             line_color = (
                 f"C{iterable_index}"
@@ -1138,8 +1257,8 @@ def main():
                     if bottom_column is not None and bottom_column in subset_comparable.columns:
                         local_sub = subset_comparable[subset_comparable[bottom_column].notna()]
                         if not local_sub.empty:
-                            x_b, y_b = _extract_bottom_column_arrays(
-                                local_sub, args.x, bottom_column
+                            x_b, y_b, y_b_err = _extract_bottom_column_arrays(
+                                local_sub, args.x, bottom_column, error_col=f"{bottom_column}Error"
                             )
                             if x_b is not None and y_b is not None:
                                 if x_b.size == x_reference.size and np.allclose(
@@ -1149,7 +1268,7 @@ def main():
                                         local_sub, bottom_column, label
                                     )
                                     bottom_by_comparable.setdefault(comparable_val, []).append(
-                                        (b_label, y_b, line_color)
+                                        (b_label, y_b, line_color, y_b_err)
                                     )
             else:
                 subset = filter_dataframe(df_iterable, args)
@@ -1225,10 +1344,11 @@ def main():
                             )
                         continue
 
-                    x_bottom, y_bottom = _extract_bottom_column_arrays(
+                    x_bottom, y_bottom, y_bottom_err = _extract_bottom_column_arrays(
                         local_bottom_subset,
                         args.x,
                         bottom_column,
+                        error_col=f"{bottom_column}Error",
                     )
                     if x_bottom is None or y_bottom is None:
                         if args.debug:
@@ -1251,7 +1371,7 @@ def main():
                         label,
                     )
 
-                    bottom_arrays.append((bottom_label, y_bottom))
+                    bottom_arrays.append((bottom_label, y_bottom, y_bottom_err))
 
         has_lines = bool(top_by_comparable) if comparable_col is not None else len(top_arrays) > 0
         if not has_lines:
@@ -1345,7 +1465,7 @@ def main():
                                     color=getattr(args, "reference_sum_color", None),
                                     linestyle=comparable_ls,
                                     **comparable_style_kwargs,
-                                    **plot_kwargs,
+                                    **bottom_plot_kwargs,
                                 )
                             bottom_has_content = True
                         bottom_series = group_result
@@ -1376,80 +1496,165 @@ def main():
                                 label=overlay_label if overlay_names else operation_label,
                                 color=overlay_color if overlay_names else getattr(args, "reference_sum_color", None),
                                 linestyle=(overlay_linestyle if overlay_names and overlay_linestyle else args.plot_style),
-                                **plot_kwargs,
+                                **bottom_plot_kwargs,
                             )
                     bottom_series = group_result
                     bottom_has_content = bool(bottom_series)
             elif comparable_col is not None and top_by_comparable:
-                operation_label = _bottom_legend_label(
-                    _resolve_bottom_default_label(bottom_column, bottom_column)
-                    if bottom_column is not None
-                    else _resolve_bottom_default_label(
-                        operation or "", _default_bottom_label(operation or "")
-                    )
-                )
-                for sdx, comparable_val in enumerate(comparable_values_arr):
-                    if comparable_val not in top_by_comparable:
-                        continue
-                    comparable_ls, comparable_lw = _resolve_comparable_style(sdx, args, n_total=comparable_values_arr.size)
-                    comparable_style_kwargs = {"linewidth": comparable_lw} if comparable_lw is not None else {}
-
-                    if bottom_column is not None:
-                        bottom_s_raw = bottom_by_comparable.get(comparable_val, [])
-                        bottom_s = [(lbl, vals) for lbl, vals, _c in bottom_s_raw]
-                        bottom_colors = [c for _lbl, _vals, c in bottom_s_raw]
-                    else:
-                        labels_at, arrays_at, colors_at = top_by_comparable[comparable_val]
-                        ref_sum_values = getattr(args, "reference_sum", None)
-                        ref_sum_display_label = getattr(args, "reference_sum_label", None)
-                        bottom_s = compute_bottom_series(
-                            labels_at, arrays_at, operation, reference_index=ref_index,
-                            reference_sum_labels=ref_sum_values,
-                            reference_sum_display_label=ref_sum_display_label,
+                # Check if we should compute operation between comparable values
+                comparable_op = getattr(args, "comparable_operation", None)
+                if comparable_op is not None:
+                    # Compute operation between comparable values for each iterable
+                    ref_idx = getattr(args, "comparable_reference_index", 0)
+                    op_idx = getattr(args, "comparable_operation_line_index", 1)
+                    
+                    # top_by_comparable is keyed by comparable_val, but we need to iterate by iterable_val
+                    # We need to restructure: build a dict keyed by iterable value
+                    # that contains the comparable lines for that iterable
+                    
+                    # Build: for each iterable value, collect all comparable values
+                    top_by_iterable = {}
+                    for comparable_val, (labels, arrays, colors) in top_by_comparable.items():
+                        for iter_idx, iterable_val in enumerate(iterable_values):
+                            if iter_idx >= len(labels):
+                                continue
+                            if iterable_val not in top_by_iterable:
+                                top_by_iterable[iterable_val] = ([], [], [])
+                            top_by_iterable[iterable_val][0].append(labels[iter_idx])
+                            top_by_iterable[iterable_val][1].append(arrays[iter_idx])
+                            top_by_iterable[iterable_val][2].append(colors[iter_idx] if iter_idx < len(colors) else None)
+                    
+                    for sdx, iterable_val in enumerate(iterable_values):
+                        if iterable_val not in top_by_iterable:
+                            continue
+                        
+                        labels_at, arrays_at, colors_at = top_by_iterable[iterable_val]
+                        
+                        if len(arrays_at) < 2 or op_idx >= len(arrays_at):
+                            continue
+                        
+                        # Compute the operation between two specific comparable lines
+                        y_ref = arrays_at[ref_idx]
+                        y_op = arrays_at[op_idx]
+                        y_out = _compute_pairwise(y_ref, y_op, comparable_op)
+                        
+                        label_ref = labels_at[ref_idx] if ref_idx < len(labels_at) else f"comparable_{ref_idx}"
+                        label_op = labels_at[op_idx] if op_idx < len(labels_at) else f"comparable_{op_idx}"
+                        
+                        # Get comparable value names for the label
+                        comparable_values = list(top_by_comparable.keys())
+                        ref_comparable_name = comparable_values[ref_idx] if ref_idx < len(comparable_values) else f"comparable_{ref_idx}"
+                        op_comparable_name = comparable_values[op_idx] if op_idx < len(comparable_values) else f"comparable_{op_idx}"
+                        
+                        # Single label for all residual lines
+                        operation_label = "Residual"
+                        
+                        comparable_ls, comparable_lw = _resolve_comparable_style(
+                            sdx, args, n_total=iterable_values.size
                         )
-                        if operation in {"sum", "mean", "rms"}:
-                            bottom_colors = [None] * len(bottom_s)
+                        comparable_style_kwargs = {"linewidth": comparable_lw} if comparable_lw is not None else {}
+                        
+                        # For overlay_names with comparable_operation, collect residuals for later plotting
+                        if all_comparable_op_residuals is not None:
+                            all_comparable_op_residuals.append({
+                                'x': x_reference,
+                                'y': y_out,
+                                'label': operation_label,
+                                'color': colors_at[op_idx] if op_idx < len(colors_at) else None,
+                                'linestyle': comparable_ls,
+                                'style_kwargs': comparable_style_kwargs,
+                                'plot_kwargs': bottom_plot_kwargs,
+                                'config': iterable_val,
+                            })
                         else:
-                            # Look up each source line's top-panel color by
-                            # its (now plain source-name) output label
-                            # instead of position: --reference_sum collapses
-                            # several source lines into one output entry, so
-                            # positional-index alignment with colors_at no
-                            # longer holds once that's active.
-                            color_by_output_label = {
-                                str(lbl): color for lbl, color in zip(labels_at, colors_at)
-                            }
-                            if ref_sum_values:
-                                ref_sum_display = ref_sum_display_label or " + ".join(
-                                    str(s) for s in ref_sum_values
-                                )
-                                color_by_output_label[str(ref_sum_display)] = (
-                                    getattr(args, "reference_sum_color", None)
-                                )
-                            bottom_colors = [
-                                color_by_output_label.get(lbl) for lbl, _vals in bottom_s
-                            ]
-
-                    for idx, (_label, values) in enumerate(bottom_s):
-                        # Labeled by operation (e.g. "Excess Probability"),
-                        # not by source component: every line here is the
-                        # same operation applied to a different component/
-                        # sum, so one legend entry names *what* is plotted;
-                        # color (looked up per-line above) still ties each
-                        # line back to its component via the top panel.
-                        plot_data(
-                            args,
-                            op_ax,
-                            x_reference,
-                            y=values,
-                            label=(operation_label if idx == 0 and sdx == 0 else None),
-                            color=bottom_colors[idx] if idx < len(bottom_colors) else None,
-                            linestyle=comparable_ls,
-                            **comparable_style_kwargs,
-                            **plot_kwargs,
-                        )
+                            # Normal plotting (not overlay_names with comparable_operation)
+                            plot_data(
+                                args,
+                                op_ax,
+                                x_reference,
+                                y=y_out,
+                                errory=None,
+                                label=operation_label if sdx == 0 else None,
+                                color=colors_at[op_idx] if op_idx < len(colors_at) else None,
+                                linestyle=comparable_ls,
+                                **comparable_style_kwargs,
+                                **bottom_plot_kwargs,
+                            )
                         bottom_has_content = True
-                    bottom_series = bottom_s
+                        bottom_series = [(operation_label, y_out, None)]
+                    
+                else:
+                    operation_label = _bottom_legend_label(
+                        _resolve_bottom_default_label(bottom_column, bottom_column)
+                        if bottom_column is not None
+                        else _resolve_bottom_default_label(
+                            operation or "", _default_bottom_label(operation or "")
+                        )
+                    )
+                    for sdx, comparable_val in enumerate(comparable_values_arr):
+                        if comparable_val not in top_by_comparable:
+                            continue
+                        comparable_ls, comparable_lw = _resolve_comparable_style(sdx, args, n_total=comparable_values_arr.size)
+                        comparable_style_kwargs = {"linewidth": comparable_lw} if comparable_lw is not None else {}
+
+                        if bottom_column is not None:
+                            bottom_s_raw = bottom_by_comparable.get(comparable_val, [])
+                            bottom_s = [(lbl, vals, errs) for lbl, vals, _c, errs in bottom_s_raw]
+                            bottom_colors = [c for _lbl, _vals, c, _errs in bottom_s_raw]
+                        else:
+                            labels_at, arrays_at, colors_at = top_by_comparable[comparable_val]
+                            ref_sum_values = getattr(args, "reference_sum", None)
+                            ref_sum_display_label = getattr(args, "reference_sum_label", None)
+                            bottom_s = compute_bottom_series(
+                                labels_at, arrays_at, operation, reference_index=ref_index,
+                                reference_sum_labels=ref_sum_values,
+                                reference_sum_display_label=ref_sum_display_label,
+                            )
+                            if operation in {"sum", "mean", "rms"}:
+                                bottom_colors = [None] * len(bottom_s)
+                            else:
+                                # Look up each source line's top-panel color by
+                                # its (now plain source-name) output label
+                                # instead of position: --reference_sum collapses
+                                # several source lines into one output entry, so
+                                # positional-index alignment with colors_at no
+                                # longer holds once that's active.
+                                color_by_output_label = {
+                                    str(lbl): color for lbl, color in zip(labels_at, colors_at)
+                                }
+                                if ref_sum_values:
+                                    ref_sum_display = ref_sum_display_label or " + ".join(
+                                        str(s) for s in ref_sum_values
+                                    )
+                                    color_by_output_label[str(ref_sum_display)] = (
+                                        getattr(args, "reference_sum_color", None)
+                                    )
+                                bottom_colors = [
+                                    color_by_output_label.get(lbl) for lbl, _vals in bottom_s
+                                ]
+                            bottom_s = [(lbl, vals, None) for lbl, vals in bottom_s]
+
+                        for idx, (_label, values, errs) in enumerate(bottom_s):
+                            # Labeled by operation (e.g. "Excess Probability"),
+                            # not by source component: every line here is the
+                            # same operation applied to a different component/
+                            # sum, so one legend entry names *what* is plotted;
+                            # color (looked up per-line above) still ties each
+                            # line back to its component via the top panel.
+                            plot_data(
+                                args,
+                                op_ax,
+                                x_reference,
+                                y=values,
+                                errory=errs,
+                                label=(operation_label if idx == 0 and sdx == 0 else None),
+                                color=bottom_colors[idx] if idx < len(bottom_colors) else None,
+                                linestyle=comparable_ls,
+                                **comparable_style_kwargs,
+                                **bottom_plot_kwargs,
+                            )
+                            bottom_has_content = True
+                        bottom_series = bottom_s
             else:
                 if bottom_column is not None:
                     bottom_series = bottom_arrays
@@ -1457,14 +1662,17 @@ def main():
                         _resolve_bottom_default_label(bottom_column, bottom_column)
                     )
                 else:
-                    bottom_series = compute_bottom_series(
-                        top_labels,
-                        top_arrays,
-                        operation,
-                        reference_index=ref_index,
-                        reference_sum_labels=getattr(args, "reference_sum", None),
-                        reference_sum_display_label=getattr(args, "reference_sum_label", None),
-                    )
+                    bottom_series = [
+                        (lbl, vals, None)
+                        for lbl, vals in compute_bottom_series(
+                            top_labels,
+                            top_arrays,
+                            operation,
+                            reference_index=ref_index,
+                            reference_sum_labels=getattr(args, "reference_sum", None),
+                            reference_sum_display_label=getattr(args, "reference_sum_label", None),
+                        )
+                    ]
 
                     operation_label = _bottom_legend_label(
                         _resolve_bottom_default_label(
@@ -1472,7 +1680,7 @@ def main():
                         )
                     )
 
-                for idx, (_label, values) in enumerate(bottom_series):
+                for idx, (_label, values, errs) in enumerate(bottom_series):
                     # Labeled by operation, not source component -- see the
                     # comparable-branch loop above.
                     plot_data(
@@ -1480,6 +1688,7 @@ def main():
                         op_ax,
                         x_reference,
                         y=values,
+                        errory=errs,
                         label=(
                             (overlay_label if overlay_names else operation_label)
                             if idx == 0
@@ -1487,11 +1696,11 @@ def main():
                         ),
                         color=overlay_color if overlay_names else None,
                         linestyle=(overlay_linestyle if overlay_names and overlay_linestyle else args.plot_style),
-                        **plot_kwargs,
+                        **bottom_plot_kwargs,
                     )
                 bottom_has_content = bool(bottom_series)
 
-            if ax_bottom is not None:
+            if ax_bottom is not None and getattr(args, "bottom_zero_line", False):
                 ax_bottom.axhline(y=0, color="r", zorder=-1)
 
         if overlay_names and kdx != last_kdx:
@@ -1504,17 +1713,22 @@ def main():
             fontsize=ysublabelfontsize,
         )
         if ax_bottom is not None:
-            bottom_ylabel = (
-                args.bottom_labely
-                if args.bottom_labely is not None
-                else (
-                    _resolve_bottom_default_label(bottom_column, bottom_column)
-                    if bottom_column is not None
-                    else _resolve_bottom_default_label(
-                        operation or "", _default_bottom_label(operation or "")
+            # Use custom label if comparable_operation is set
+            comparable_op = getattr(args, "comparable_operation", None)
+            if comparable_op is not None:
+                bottom_ylabel = "Residual"
+            else:
+                bottom_ylabel = (
+                    args.bottom_labely
+                    if args.bottom_labely is not None
+                    else (
+                        _resolve_bottom_default_label(bottom_column, bottom_column)
+                        if bottom_column is not None
+                        else _resolve_bottom_default_label(
+                            operation or "", _default_bottom_label(operation or "")
+                        )
                     )
                 )
-            )
             ax_bottom.set_ylabel(
                 str(bottom_ylabel),
                 fontsize=ysublabelfontsize,
@@ -1544,12 +1758,21 @@ def main():
             ax_top.set_xscale("log")
             if ax_bottom is not None:
                 ax_bottom.set_xscale("log")
+        if ax_bottom is not None and getattr(args, "bottom_logy", False):
+            ax_bottom.set_yscale("log")
+        
+        # Handle bottom_log_format for scientific notation
+        if ax_bottom is not None and getattr(args, "bottom_log_format", None) == "scientific":
+            from matplotlib.ticker import ScalarFormatter
+            ax_bottom.yaxis.set_major_formatter(ScalarFormatter(useMathText=True))
+            ax_bottom.ticklabel_format(axis='y', style='sci', scilimits=(0,0))
 
         legend_title = args.labelz if args.labelz is not None else args.iterable
         leg1 = apply_legend_style(
             ax_top,
             title=legend_title,
             capitalize_labels=getattr(args, "capitalize_legend", False),
+            loc="upper right",
         )
         if comparable_col is not None and comparable_values_arr.size > 0:
             ax_top.add_artist(leg1)
@@ -1588,7 +1811,25 @@ def main():
             apply_legend_style(
                 ax_bottom,
                 capitalize_labels=getattr(args, "capitalize_legend", False),
+                loc="upper left",
             )
+        
+        # Plot collected residuals for comparable_operation with overlay_names
+        if all_comparable_op_residuals is not None and len(all_comparable_op_residuals) > 0:
+            for i, residual in enumerate(all_comparable_op_residuals):
+                plot_data(
+                    args,
+                    shared_ax_bottom if overlay_names else ax_bottom,
+                    residual['x'],
+                    y=residual['y'],
+                    errory=None,
+                    label=residual['label'] if i == 0 else None,  # Only first line gets label
+                    color=residual['color'],
+                    linestyle=residual['linestyle'],
+                    **residual['style_kwargs'],
+                    **residual['plot_kwargs'],
+                )
+            bottom_has_content = True
 
         draw_vertical_lines(
             ax_top,

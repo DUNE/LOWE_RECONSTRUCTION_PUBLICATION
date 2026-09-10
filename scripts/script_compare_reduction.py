@@ -40,6 +40,7 @@ add_common_args(
         "select",
         "save_values",
         "remove_value",
+        "filename_select",
         "bins",
         "percentile",
         "labelx",
@@ -66,6 +67,8 @@ add_common_args(
         "note",
         "multiply",
         "debug",
+        "errory",
+        "errory_type",
     ],
     overrides={
         "datafile": {"required": True},
@@ -743,6 +746,12 @@ def main():
                 lambda v: np.asarray(v) * args.multiply if v is not None else v
             )
 
+    # Real NaN values in the "Variable" column are excluded by default.
+    # Explicitly requesting "None" in --variables opts back in, converting
+    # those NaNs to the literal string "None" so they survive filtering.
+    if args.variables is not None and "None" in args.variables and "Variable" in df.columns:
+        df["Variable"] = df["Variable"].fillna("None")
+
     # Select the entries in the dataframe with with name matching args.names and nake a plot for each iterable
     if args.panels is not None:
         ncols = len(args.panels)
@@ -825,6 +834,9 @@ def main():
             row_idx = _row_index_with_data(subset, x_col)
             x = subset[x_col].values[row_idx]  # Convert to NumPy array
             y = subset[args.y].values[row_idx]  # Convert to NumPy array
+            y_error_col = f"{args.y}Error"
+            has_y_error = args.errory and y_error_col in subset.columns
+            y_error = subset[y_error_col].values[row_idx] if has_y_error else None
 
             # Sample the y values according to the specified x values and create a boxplot of the y values for each x bin
             # If the x values are int create bins for each int value, otherwise create bins according to the specified number of bins
@@ -914,6 +926,7 @@ def main():
                 if x_is_scalar and y_is_scalar:
                     # Nothing to reduce -- the single stored value is the point.
                     y_scatter = [float(y)]
+                    error_scatter = [float(y_error)] if has_y_error else None
                 else:
                     operation = args.operation or args.default_operation or _operation_config or "mean"
                     if operation.lower() not in ["mean", "average", "sum", "max", "min"]:
@@ -928,6 +941,7 @@ def main():
                         # Single fixed x (no scan): collapse the whole
                         # per-event y array into the one point via --operation.
                         y_scatter = [op_func(y)]
+                        error_scatter = [op_func(y_error)] if has_y_error else None
                     else:
                         mask_func = (
                             (lambda i: x >= bins[i])
@@ -935,6 +949,11 @@ def main():
                             else (lambda i: (x >= bins[i]) & (x < bins[i + 1]))
                         )
                         y_scatter = [op_func(y[mask_func(i)]) for i in range(len(bins) - 1)]
+                        error_scatter = (
+                            [op_func(y_error[mask_func(i)]) for i in range(len(bins) - 1)]
+                            if has_y_error
+                            else None
+                        )
 
                     if args.operation is None:
                         source = "flag" if args.default_operation else "config"
@@ -942,7 +961,9 @@ def main():
                             f"[yellow]Warning:[/yellow] No operation specified. Using default from {source}: {operation}."
                         )
 
-                selected_plot_type = getattr(args, "plot_type", None) or "scatter_points"
+                selected_plot_type = getattr(args, "plot_type", None) or (
+                    "errorbar" if error_scatter is not None else "scatter_points"
+                )
                 plot_kwargs = resolve_plot_kwargs(selected_plot_type)
 
                 plot_data(
@@ -950,6 +971,7 @@ def main():
                     ax_current,
                     bin_centers,
                     y=y_scatter,
+                    errory=error_scatter,
                     label=(
                         f"{args.y}: {variable}"
                         if variable is not None
