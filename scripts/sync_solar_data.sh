@@ -38,7 +38,18 @@
 #   --force                  Overwrite existing local .pkl files (default: skip)
 #   --dry-run                Show what would be synced without copying anything
 #   --show-sources           Print resolved source directories and exit
+#   -y, --yes                Skip the "Proceed with download?" confirmation
+#                            prompt — required for unattended/non-interactive runs
 #   -h, --help               Show this help and exit
+#
+# Non-interactive SSH auth:
+#   --ssh-password-file PATH  File containing the SSH password, fed to every
+#                            ssh/rsync connection via sshpass instead of
+#                            prompting on the terminal. Default: ~/.solar_sync_pass
+#                            (used automatically when it exists; requires
+#                            'sshpass' to be installed; chmod 600 recommended).
+#                            Falls back to normal interactive ssh auth when
+#                            the file is absent.
 #
 # Content filters (each flag accepts one value; repeat to allow multiple):
 #   --config VALUE           Include only files matching this detector config
@@ -84,6 +95,7 @@
 #   ./sync_solar_data.sh --energy SolarEnergy --force
 #   ./sync_solar_data.sh --study default --exclude-study unc_bkg0
 #   ./sync_solar_data.sh --analysis daynight --name marley --folder truncated
+#   ./sync_solar_data.sh --yes --force   # unattended run, no prompts
 #   ./sync_solar_data.sh --show-sources
 #   ./sync_solar_data.sh --list-themes
 #   ./sync_solar_data.sh --theme daynight --publication
@@ -116,6 +128,8 @@ KNOWN_STUDY_DIRS=(
     energy_maink energy_spk
     charge_Q50 charge_Q100 charge_Q200 charge_Q500
     fiduc_truth bkg_gamma
+    nuisance_nominal nuisance_sin13 nuisance_escale
+    membrane_veto_off
 )
 
 # Returns the study label if $1 (a full tmp path) lives inside a known study
@@ -138,6 +152,13 @@ PNFS="$DEFAULT_PNFS"
 FORCE=false
 DRY_RUN=false
 SHOW_SOURCES=false
+AUTO_YES=false
+
+# Password file for non-interactive SSH auth (see the "Non-interactive auth"
+# section below). Not part of the repo — lives outside it by default so it
+# can never be accidentally committed.
+DEFAULT_SSH_PASSWORD_FILE="$HOME/.solar_sync_pass"
+SSH_PASSWORD_FILE="$DEFAULT_SSH_PASSWORD_FILE"
 
 INCLUDE_CONFIGS=()
 EXCLUDE_CONFIGS=()
@@ -164,6 +185,8 @@ while [[ $# -gt 0 ]]; do
         --force)           FORCE=true;                   shift   ;;
         --dry-run)         DRY_RUN=true;                 shift   ;;
         --show-sources)    SHOW_SOURCES=true;            shift   ;;
+        -y|--yes)          AUTO_YES=true;                shift   ;;
+        --ssh-password-file) SSH_PASSWORD_FILE="$2";      shift 2 ;;
         --config)          INCLUDE_CONFIGS+=("$2");      shift 2 ;;
         --exclude-config)  EXCLUDE_CONFIGS+=("$2");      shift 2 ;;
         --name)            INCLUDE_NAMES+=("$2");        shift 2 ;;
@@ -289,7 +312,45 @@ SSH_CTL_DIR="$HOME/.ssh/ctrl"
 mkdir -p "$SSH_CTL_DIR"
 chmod 700 "$SSH_CTL_DIR"
 SSH_OPTS="-o ControlMaster=auto -o ControlPath=$SSH_CTL_DIR/%C -o ControlPersist=300"
-RSYNC_E=(-e "ssh $SSH_OPTS")
+
+# --- Non-interactive SSH auth (optional) ---------------------------------------
+# If a password file is present, feed it to every ssh/rsync connection via
+# sshpass instead of prompting on the terminal — needed to run this script
+# unattended (e.g. from an agent with no interactive stdin). Falls back to
+# the normal ssh prompt/key auth when the file doesn't exist.
+#
+# sshpass can only ever answer ONE password prompt per ssh process — a second
+# prompt (e.g. from a ProxyJump hop that also needs a password) gets
+# misread as "first attempt failed" and aborted, even with the correct
+# password. If REMOTE_HOST resolves through a ProxyJump hop, split that hop
+# into its own ssh process via an explicit ProxyCommand override, wrapped in
+# its own independent sshpass — so each ssh process only ever sees one prompt.
+SSH_CMD="ssh"
+if [[ -f "$SSH_PASSWORD_FILE" ]]; then
+    if ! command -v sshpass >/dev/null 2>&1; then
+        echo "ERROR: $SSH_PASSWORD_FILE exists but 'sshpass' is not installed." >&2
+        echo "       Install it (e.g. 'sudo apt install sshpass'), or remove/rename" >&2
+        echo "       the password file to fall back to interactive auth." >&2
+        exit 1
+    fi
+    PASS_FILE_PERM="$(stat -c '%a' "$SSH_PASSWORD_FILE" 2>/dev/null || stat -f '%Lp' "$SSH_PASSWORD_FILE" 2>/dev/null || true)"
+    if [[ -n "$PASS_FILE_PERM" && "$PASS_FILE_PERM" != "600" ]]; then
+        echo "WARNING: $SSH_PASSWORD_FILE is not chmod 600 (found: $PASS_FILE_PERM)." >&2
+        echo "         Run: chmod 600 '$SSH_PASSWORD_FILE'" >&2
+    fi
+
+    SSHPASS_SSH="sshpass -f $SSH_PASSWORD_FILE ssh"
+    JUMP_HOST="$(ssh -G "$REMOTE_HOST" 2>/dev/null | awk '$1=="proxyjump"{print $2; exit}')"
+    if [[ -n "$JUMP_HOST" && "$JUMP_HOST" != "none" ]]; then
+        SSH_CMD="$SSHPASS_SSH -o 'ProxyCommand=$SSHPASS_SSH -W %h:%p $JUMP_HOST'"
+        echo "==> Using non-interactive SSH auth via $SSH_PASSWORD_FILE (through jump host $JUMP_HOST)"
+    else
+        SSH_CMD="$SSHPASS_SSH"
+        echo "==> Using non-interactive SSH auth via $SSH_PASSWORD_FILE"
+    fi
+fi
+
+RSYNC_E=(-e "$SSH_CMD $SSH_OPTS")
 
 _close_ssh() {
     for host in "$REMOTE_HOST" "$PNFS_HOST"; do
@@ -571,8 +632,10 @@ fi
 
 $DRY_RUN && { echo "    (dry-run — no files will be written)"; exit 0; }
 
-read -r -p "Proceed with download? [y/N] " _confirm
-[[ "$_confirm" =~ ^[Yy]$ ]] || { echo "Aborted."; exit 2; }
+if ! $AUTO_YES; then
+    read -r -p "Proceed with download? [y/N] " _confirm
+    [[ "$_confirm" =~ ^[Yy]$ ]] || { echo "Aborted."; exit 2; }
+fi
 
 # --- Download each source directory -------------------------------------------
 echo "--> Downloading ${PREVIEW_COUNT} file(s) (${TOTAL_FMT})..."

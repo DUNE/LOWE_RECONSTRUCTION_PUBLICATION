@@ -19,6 +19,10 @@
 #                                 theme (passed to sync_solar_data.sh; repeatable)
 #   --publication                 Also sync index.json publication_export files
 #   --list-themes                 Print available index.json themes and exit
+#   --yes-sync                    Skip the sync "Proceed with download?" prompt
+#                                 (required for unattended/non-interactive runs)
+#   --ssh-password-file PATH      Non-interactive SSH auth for the sync (see
+#                                 sync_solar_data.sh --help); default: ~/.solar_sync_pass
 #   --tables                     Also run the matching table script set
 #   -h, --help                   Show this help and exit
 #
@@ -55,7 +59,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 VENV="$SCRIPT_DIR/.venv/bin/activate"
-SYNC_SCRIPT="$SCRIPT_DIR/sync_solar_data.sh"
+SYNC_SCRIPT="$SCRIPT_DIR/scripts/sync_solar_data.sh"
 
 SCRIPT_SET=""
 DO_SYNC=false
@@ -69,6 +73,8 @@ FILTER_VARS=()
 SYNC_THEMES=()
 SYNC_PUBLICATION=false
 SYNC_LIST_THEMES=false
+SYNC_YES=false
+SYNC_SSH_PASSWORD_FILE=""
 
 # --- Argument parsing ---------------------------------------------------------
 while [[ $# -gt 0 ]]; do
@@ -82,6 +88,8 @@ while [[ $# -gt 0 ]]; do
         --theme)          SYNC_THEMES+=("$2"); shift 2 ;;
         --publication)    SYNC_PUBLICATION=true; shift ;;
         --list-themes)    SYNC_LIST_THEMES=true; shift ;;
+        --yes-sync)       SYNC_YES=true; shift ;;
+        --ssh-password-file) SYNC_SSH_PASSWORD_FILE="$2"; shift 2 ;;
         --tables)         DO_TABLES=true; shift ;;
         --flags)
             shift
@@ -111,6 +119,7 @@ if $SYNC_LIST_THEMES; then
     SYNC_ARGS=(--list-themes)
     [[ -n "$REMOTE_ARG" ]] && SYNC_ARGS+=(--remote "$REMOTE_ARG")
     [[ -n "$PNFS_ARG"   ]] && SYNC_ARGS+=(--pnfs   "$PNFS_ARG")
+    [[ -n "$SYNC_SSH_PASSWORD_FILE" ]] && SYNC_ARGS+=(--ssh-password-file "$SYNC_SSH_PASSWORD_FILE")
     exec bash "$SYNC_SCRIPT" "${SYNC_ARGS[@]}"
 fi
 
@@ -146,6 +155,8 @@ if $DO_SYNC; then
     $FORCE_SYNC             && SYNC_ARGS+=(--force)
     $DRY_RUN_SYNC           && SYNC_ARGS+=(--dry-run)
     $SYNC_PUBLICATION       && SYNC_ARGS+=(--publication)
+    $SYNC_YES               && SYNC_ARGS+=(--yes)
+    [[ -n "$SYNC_SSH_PASSWORD_FILE" ]] && SYNC_ARGS+=(--ssh-password-file "$SYNC_SSH_PASSWORD_FILE")
     for theme in "${SYNC_THEMES[@]}"; do SYNC_ARGS+=(--theme "$theme"); done
 
     # Translate --flags / --variables pairs into sync_solar_data.sh filter flags.
