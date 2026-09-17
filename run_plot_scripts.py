@@ -93,6 +93,8 @@ if __name__ == "__main__":
         if args.debug:
             full_script += " -d"
 
+        if full_script.startswith("%"):
+            continue  # Skip lines starting with '%', which are likely comments or special commands
         exit_code, captured_output = run_script(full_script)
 
         if exit_code != 0:

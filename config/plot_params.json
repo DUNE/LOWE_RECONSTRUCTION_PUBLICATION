@@ -191,6 +191,10 @@
       "Z": "Z (cm)",
       "None": "Combined XYZ (cm)"
     },
+    "threshold_dict": {
+      "Electron": "$T_e > 5$ MeV",
+      "Neutrino": "$E_\\nu > 5$ MeV"
+    },
     "stage_dict": {
       "Truth": "Truth",
       "Raw": "Total",
@@ -326,9 +330,9 @@
       "DayNight_Counts_charge_Q50": "Q > 50 ADC",
       "DayNight_Counts_charge_Q100": "Q > 100 ADC",
       "DayNight_Counts_charge_Q500": "Q > 500 ADC",
-      "Sensitivity_SolarEnergy": "Reference",
-      "Sensitivity_SolarEnergy_oscpoint_solar": "Solar Best-Fit $\\Delta m^2_{21}$",
-      "Sensitivity_SolarEnergy_oscpoint_reactor": "Reactor $\\Delta m^2_{21}$",
+      "Sensitivity_Contours": "Reference",
+      "Sensitivity_Contours_oscpoint_solar": "Solar Best-Fit $\\Delta m^2_{21}$",
+      "Sensitivity_Contours_oscpoint_reactor": "Reactor $\\Delta m^2_{21}$",
       "nuisance_nominal": "No Nuisances",
       "nuisance_sin13": "$\\sin^{2}\\theta_{13}$ Pull Only",
       "nuisance_escale": "Energy Scale Only",
@@ -341,7 +345,9 @@
       "SolarEnergy_Sensitivity_Templates": "Reference",
       "HEP_AdaptiveRebin_Comparison": "Reference",
       "HEP_AdaptiveRebin_Comparison_metric_raw": "Raw Histogram",
-      "HEP_AdaptiveRebin_Comparison_metric_smoothed": "Smoothed Histogram"
+      "HEP_AdaptiveRebin_Comparison_metric_smoothed": "Smoothed Histogram",
+      "bkgmodel_reduced": "Shielded",
+      "bkgmodel_nominal": "Extrapolated"
     },
     "interaction_names": {
       "CC": "CC: $\\nu$ Ar40",

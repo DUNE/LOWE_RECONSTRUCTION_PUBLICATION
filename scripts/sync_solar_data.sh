@@ -21,10 +21,12 @@
 # so all files are safely flattened by basename into input/data/.
 #
 # Study-variant files live one directory level deeper on the remote, under a
-# study subdirectory (e.g. .../truncated/charge_Q100/{config}_{name}_{datafile}.pkl)
-# — see KNOWN_STUDY_DIRS below. Since that raw basename is identical to the
-# nominal file's, it's flattened into input/data/studies/ with the study
-# label appended to the stem (..._charge_Q100.pkl) to keep it distinct;
+# study subdirectory (e.g. .../truncated/charge_Q100/{config}_{name}_{datafile}.pkl
+# or .../bkgmodel_nominal/{config}_{name}_Sensitivity_Results.pkl for the 9.2.5
+# background model normalization study) — see KNOWN_STUDY_DIRS below.
+# Since that raw basename is identical to the nominal file's, it's flattened
+# into input/data/studies/ with the study label appended to the stem
+# (..._charge_Q100.pkl, ..._bkgmodel_nominal.pkl) to keep it distinct;
 # nominal (root-level) files stay flat in input/data/ under their own name.
 #
 # Usage:
@@ -61,11 +63,11 @@
 #   --energy VALUE           Include only files whose name contains this energy label
 #   --exclude-energy VALUE   Exclude files whose name contains this energy label
 #   --study VALUE             Include only files under this study subdirectory
-#                              (e.g. default, unc_bkg0, charge_Q100, oscpoint_solar
-#                              — the variant folder some outputs are grouped under,
-#                              one level above the .pkl file). Files with no study
-#                              subdirectory at all are left untouched by this filter
-#                              — it only rejects files under a *different* study.
+#                              (e.g. default, unc_bkg0, charge_Q100, oscpoint_solar,
+#                              bkgmodel_nominal, bkgmodel_reduced — the variant folder
+#                              some outputs are grouped under, one level above the .pkl file).
+#                              Files with no study subdirectory at all are left untouched
+#                              by this filter — it only rejects files under a *different* study.
 #   --exclude-study VALUE     Exclude files under this study subdirectory
 #   --analysis VALUE           Include only files belonging to this physics
 #                              analysis: daynight, hep, or sensitivity. Matched
@@ -115,10 +117,11 @@ SOLAR_INDEX_PY="$SCRIPT_DIR/src/lib/solar_index.py"
 KNOWN_THEME_DIRS=(daynight hep sensitivity)
 
 # Study/systematic-variant subdirectory names, one level above the .pkl file
-# on the remote. Used only to route flattened files into input/data/studies/
-# vs input/data/ at sync time (and to derive the appended filename suffix) —
-# consumers resolve the same split via an existence-based fallback instead
-# (see src/lib/imports.py), so this list only needs to grow here.
+# on the remote (includes bkgmodel_nominal/bkgmodel_reduced for the 9.2.5
+# background model normalization study). Used only to route flattened files into
+# input/data/studies/ vs input/data/ at sync time (and to derive the appended
+# filename suffix) — consumers resolve the same split via an existence-based
+# fallback instead (see src/lib/imports.py), so this list only needs to grow here.
 KNOWN_STUDY_DIRS=(
     default
     metric_raw metric_smoothed
@@ -127,6 +130,7 @@ KNOWN_STUDY_DIRS=(
     oscpoint_solar oscpoint_reactor
     energy_maink energy_spk
     charge_Q50 charge_Q100 charge_Q200 charge_Q500
+    bkgmodel_nominal bkgmodel_reduced
     fiduc_truth bkg_gamma
     nuisance_nominal nuisance_sin13 nuisance_escale
     membrane_veto_off

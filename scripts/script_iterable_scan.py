@@ -321,6 +321,33 @@ parser.add_argument(
     ),
 )
 
+parser.add_argument(
+    "--compact",
+    action="store_true",
+    default=False,
+    help="Remove repeated y-axis labels/ticks on inner panels to save space and enlarge plots",
+)
+
+parser.add_argument(
+    "--variable_label_map",
+    type=str,
+    default=None,
+    help=(
+        "JSON string mapping variable values to custom subplot titles. "
+        "Example: --variable_label_map '{\"MainOpFlashErrorY\":\"Error Y\",\"MainOpFlashErrorZ\":\"Error Z\"}'"
+    ),
+)
+
+parser.add_argument(
+    "--vertical_per_variable",
+    type=str,
+    default=None,
+    help=(
+        "JSON string mapping variable names to their vertical line positions. "
+        "Example: --vertical_per_variable '{\"MainOpFlashErrorY\":[100],\"MainOpFlashErrorZ\":[100],\"MainOpFlashR\":[141]}'"
+    ),
+)
+
 args = parser.parse_args()
 
 _MISSING_ITERABLE_MAPPING_WARNING_SHOWN = False
@@ -513,6 +540,24 @@ def _apply_iterable_legend(
 def main():
     # For each configuration provided combine the data files and plot the results
     df = import_data(args)
+
+    # Parse variable label map if provided
+    variable_label_map = None
+    if getattr(args, "variable_label_map", None) is not None:
+        try:
+            import json
+            variable_label_map = json.loads(args.variable_label_map)
+        except (json.JSONDecodeError, Exception) as e:
+            rprint(f"[yellow]Warning:[/yellow] Failed to parse --variable_label_map: {e}. Using original variable names.")
+
+    # Parse vertical per variable map if provided
+    vertical_per_variable = None
+    if getattr(args, "vertical_per_variable", None) is not None:
+        try:
+            import json
+            vertical_per_variable = json.loads(args.vertical_per_variable)
+        except (json.JSONDecodeError, Exception) as e:
+            rprint(f"[yellow]Warning:[/yellow] Failed to parse --vertical_per_variable: {e}. Using default vertical lines.")
 
     if df.empty:
         rprint("[yellow]Warning:[/yellow] No datafiles found. Exiting...")
@@ -1452,8 +1497,12 @@ def main():
             label_subset = subset_by_variable.get(idx, df)
 
             if n_vars > 1:
+                # Use custom label from variable_label_map if available
+                subtitle = variable if variable is not None else ""
+                if variable_label_map is not None and variable in variable_label_map:
+                    subtitle = variable_label_map[variable]
                 ax_current.set_title(
-                    variable if variable is not None else "",
+                    subtitle,
                     fontsize=subtitlefontsize,
                 )
 
@@ -1478,15 +1527,19 @@ def main():
                     # but long feature names still need extra left margin below.
                     _has_categorical_ylabels = True
 
-            (
-                ax_current.set_ylabel(
-                    resolve_axis_label(args.labelx, args.x, label_subset)
-                    if args.plot_type == "barh"
-                    else resolve_axis_label(args.labely, args.y, label_subset)
+            # For compact mode, only leftmost column gets y-axis labels/ticks
+            _show_ylabel = not args.compact or (idx % ncols == 0)
+            if _show_ylabel:
+                (
+                    ax_current.set_ylabel(
+                        resolve_axis_label(args.labelx, args.x, label_subset)
+                        if args.plot_type == "barh"
+                        else resolve_axis_label(args.labely, args.y, label_subset)
+                    )
                 )
-                if idx % ncols == 0
-                else None
-            )
+            else:
+                ax_current.set_ylabel("")
+                ax_current.tick_params(labelleft=False)
 
             if args.y == "Efficiency" or args.labely == "Efficiency (%)":
                 ax_current.set_ylim(0, 105)
@@ -1546,12 +1599,21 @@ def main():
                 colors=getattr(args, "horizontal_color", None),
                 fontsize=linelabelfontsize,
             )
+            # Use per-variable vertical lines if provided, otherwise use global vertical lines
+            _vertical_values = getattr(args, "vertical", None)
+            if vertical_per_variable is not None and variable in vertical_per_variable:
+                _vertical_values = vertical_per_variable[variable]
+            
+            _vertical_labels = getattr(args, "vertical_label", None)
+            _vertical_styles = getattr(args, "vertical_style", None)
+            _vertical_colors = getattr(args, "vertical_color", None)
+            
             draw_vertical_lines(
                 ax_current,
-                getattr(args, "vertical", None),
-                labels=getattr(args, "vertical_label", None),
-                styles=getattr(args, "vertical_style", None),
-                colors=getattr(args, "vertical_color", None),
+                _vertical_values,
+                labels=_vertical_labels,
+                styles=_vertical_styles,
+                colors=_vertical_colors,
                 fontsize=linelabelfontsize,
             )
 
@@ -1630,6 +1692,10 @@ def main():
         if plot_title:
             add_centered_suptitle(fig, plot_title, fontsize=titlefontsize)
         # dunestyle.WIP()
+
+        # Adjust layout for compact mode
+        if args.compact and ncols > 1:
+            fig.tight_layout()
 
         apply_note_to_figure(fig, getattr(args, "note", None))
 

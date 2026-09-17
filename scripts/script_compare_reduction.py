@@ -179,30 +179,34 @@ parser.add_argument(
     nargs="+",
     type=str,
     default=None,
-    help="Per-panel vertical reference line: one x-value per --panels entry (in that panel's own x "
-    "units), or 'none' to skip a panel. Drawn in addition to any --vertical lines, which apply to "
-    "every panel unshifted.",
+    help="Per-panel vertical reference line(s): one entry per --panels entry (in that panel's own x "
+    "units), or 'none' to skip a panel. An entry may hold several comma-separated x-values (e.g. "
+    "'26.8,63.5') to draw multiple reference lines in that panel. Drawn in addition to any --vertical "
+    "lines, which apply to every panel unshifted.",
 )
 parser.add_argument(
     "--panel_vertical_label",
     nargs="+",
     type=str,
     default=None,
-    help="Label for each --panel_vertical line, one per --panels entry ('' for no label).",
+    help="Label(s) for each --panel_vertical entry, one per --panels entry ('' for no label); "
+    "comma-separate multiple labels to match multiple comma-separated values in --panel_vertical.",
 )
 parser.add_argument(
     "--panel_vertical_style",
     nargs="+",
     type=str,
     default=None,
-    help="Linestyle for each --panel_vertical line, one per --panels entry (default '--').",
+    help="Linestyle(s) for each --panel_vertical entry, one per --panels entry (default '--'); "
+    "comma-separate multiple styles to match multiple comma-separated values in --panel_vertical.",
 )
 parser.add_argument(
     "--panel_vertical_color",
     nargs="+",
     type=str,
     default=None,
-    help="Color for each --panel_vertical line, one per --panels entry (default 'gray').",
+    help="Color(s) for each --panel_vertical entry, one per --panels entry (default 'gray'); "
+    "comma-separate multiple colors to match multiple comma-separated values in --panel_vertical.",
 )
 
 parser.add_argument(
@@ -240,8 +244,10 @@ args = parser.parse_args()
 
 
 def _parse_panel_line_values(raw_values, flag_name):
-    """Parse a --panel_vertical/--panel_horizontal value list: floats, with
-    'none'/'skip'/'' as an explicit per-panel sentinel meaning "no line here"."""
+    """Parse a --panel_vertical/--panel_horizontal value list into one list of
+    floats per --panels entry. Each raw entry may be 'none'/'skip'/'' (no line
+    in that panel), a single number, or several comma-separated numbers (to
+    draw multiple reference lines in that panel)."""
     if raw_values is None:
         return None
     parsed = []
@@ -249,15 +255,35 @@ def _parse_panel_line_values(raw_values, flag_name):
         if str(raw).strip().lower() in ("none", "skip", ""):
             parsed.append(None)
         else:
-            try:
-                parsed.append(float(raw))
-            except ValueError:
-                parser.error(f"{flag_name} values must be numbers or 'none' to skip a panel, got '{raw}'")
+            values = []
+            for piece in str(raw).split(","):
+                try:
+                    values.append(float(piece))
+                except ValueError:
+                    parser.error(
+                        f"{flag_name} values must be numbers or 'none' to skip a panel, got '{piece}' in '{raw}'"
+                    )
+            parsed.append(values)
     return parsed
+
+
+def _parse_panel_line_strings(raw_values):
+    """Parse a --panel_vertical_label/_style/_color list into one list of
+    strings per --panels entry, splitting each raw entry on commas to match
+    multiple comma-separated values in the corresponding --panel_vertical entry."""
+    if raw_values is None:
+        return None
+    return [str(raw).split(",") for raw in raw_values]
 
 
 args.panel_vertical = _parse_panel_line_values(args.panel_vertical, "--panel_vertical")
 args.panel_horizontal = _parse_panel_line_values(args.panel_horizontal, "--panel_horizontal")
+args.panel_vertical_label = _parse_panel_line_strings(args.panel_vertical_label)
+args.panel_vertical_style = _parse_panel_line_strings(args.panel_vertical_style)
+args.panel_vertical_color = _parse_panel_line_strings(args.panel_vertical_color)
+args.panel_horizontal_label = _parse_panel_line_strings(args.panel_horizontal_label)
+args.panel_horizontal_style = _parse_panel_line_strings(args.panel_horizontal_style)
+args.panel_horizontal_color = _parse_panel_line_strings(args.panel_horizontal_color)
 
 if args.panels is None and args.x is None:
     parser.error("the following arguments are required: -x/--x (or use --panels)")
@@ -564,13 +590,13 @@ def run_compact_mode(df, configs, names, default_operation_config):
                 ax_current.axvline(offset, color="black", linewidth=1.4, zorder=10)
 
             if args.panel_vertical is not None and args.panel_vertical[pidx] is not None:
-                shifted_v = args.panel_vertical[pidx] - lo + offset
+                shifted_v = [v - lo + offset for v in args.panel_vertical[pidx]]
                 draw_vertical_lines(
                     ax_current,
-                    [shifted_v],
-                    labels=[args.panel_vertical_label[pidx]] if args.panel_vertical_label is not None else None,
-                    styles=[args.panel_vertical_style[pidx]] if args.panel_vertical_style is not None else None,
-                    colors=[args.panel_vertical_color[pidx]] if args.panel_vertical_color is not None else None,
+                    shifted_v,
+                    labels=args.panel_vertical_label[pidx] if args.panel_vertical_label is not None else None,
+                    styles=args.panel_vertical_style[pidx] if args.panel_vertical_style is not None else None,
+                    colors=args.panel_vertical_color[pidx] if args.panel_vertical_color is not None else None,
                     fontsize=linelabelfontsize,
                 )
 
@@ -1073,19 +1099,19 @@ def main():
                 if args.panel_horizontal is not None and args.panel_horizontal[idx] is not None:
                     draw_horizontal_lines(
                         ax_current,
-                        [args.panel_horizontal[idx]],
-                        labels=[args.panel_horizontal_label[idx]] if args.panel_horizontal_label is not None else None,
-                        styles=[args.panel_horizontal_style[idx]] if args.panel_horizontal_style is not None else None,
-                        colors=[args.panel_horizontal_color[idx]] if args.panel_horizontal_color is not None else None,
+                        args.panel_horizontal[idx],
+                        labels=args.panel_horizontal_label[idx] if args.panel_horizontal_label is not None else None,
+                        styles=args.panel_horizontal_style[idx] if args.panel_horizontal_style is not None else None,
+                        colors=args.panel_horizontal_color[idx] if args.panel_horizontal_color is not None else None,
                         fontsize=linelabelfontsize,
                     )
                 if args.panel_vertical is not None and args.panel_vertical[idx] is not None:
                     draw_vertical_lines(
                         ax_current,
-                        [args.panel_vertical[idx]],
-                        labels=[args.panel_vertical_label[idx]] if args.panel_vertical_label is not None else None,
-                        styles=[args.panel_vertical_style[idx]] if args.panel_vertical_style is not None else None,
-                        colors=[args.panel_vertical_color[idx]] if args.panel_vertical_color is not None else None,
+                        args.panel_vertical[idx],
+                        labels=args.panel_vertical_label[idx] if args.panel_vertical_label is not None else None,
+                        styles=args.panel_vertical_style[idx] if args.panel_vertical_style is not None else None,
+                        colors=args.panel_vertical_color[idx] if args.panel_vertical_color is not None else None,
                         fontsize=linelabelfontsize,
                     )
 

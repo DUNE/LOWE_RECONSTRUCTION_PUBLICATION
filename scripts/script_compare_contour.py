@@ -47,7 +47,15 @@ A typical dataframe row should look like:
 
 The macro draws the z matrix as an image-like background and overlays contours
 from the same z values. When `--operation squared_sum` is used, the combined
-contour/background is computed bin-by-bin as `sqrt(sum_i(z_i^2))`.
+contour is computed bin-by-bin from the individual maps:
+
+  * `--contour_level_mode z_values` expects z in significance units (sigma) and
+    combines as `sqrt(sum_i(z_i^2))`, drawing contours at the requested sigmas.
+  * `--contour_level_mode sigma_probability` expects z as delta-chi-square and
+    combines as `sum_i(z_i) - min(sum_i(z_i))` (independent datasets add in
+    chi-square; the minimum is re-subtracted so the combined best fit sits at
+    zero), drawing contours at `sigma^2` (1, 4, 9 ...), which corresponds to
+    39.3%, 86.5% and 98.9% coverage for a two-parameter scan.
 """
 
 from _bootstrap import ensure_src_path
@@ -227,6 +235,30 @@ parser.add_argument(
 )
 
 parser.add_argument(
+    "--unified_colors",
+    action="store_true",
+    default=False,
+    help="Use consistent color scheme across all panels instead of rotating palette offset",
+)
+
+parser.add_argument(
+    "--iterable_label_map",
+    type=str,
+    default=None,
+    help=(
+        "JSON string mapping iterable values to custom labels. "
+        "Example: --iterable_label_map '{\"Sensitivity_Contours_unc_sig0\":\"Signal Unc. 0%\",\"Sensitivity_Contours_unc_sig2\":\"Signal Unc. 2%\"}'"
+    ),
+)
+
+parser.add_argument(
+    "--compact",
+    action="store_true",
+    default=False,
+    help="Remove repeated y-axis labels/ticks on inner panels to save space and enlarge plots",
+)
+
+parser.add_argument(
     "--background",
     type=str,
     default="all",
@@ -253,9 +285,14 @@ parser.add_argument(
 parser.add_argument(
     "--contour_level_mode",
     type=str,
-    default="z_values",
+    default="sigma_probability",
     choices=["z_values", "sigma_probability"],
-    help="How contour levels are computed: exact z values or cumulative sigma probability thresholds",
+    help=(
+        "How contour levels are computed. 'z_values': z is already in sigma units and "
+        "contours are drawn at the exact --contour_sigmas values. 'sigma_probability': "
+        "z is a delta-chi-square map and contours are drawn at sigma^2 (equivalent to "
+        "contouring sqrt(z) at sigma)."
+    ),
 )
 
 parser.add_argument(
@@ -349,12 +386,6 @@ parser.add_argument(
 args = parser.parse_args()
 
 
-SIGMA_TO_CUMULATIVE = {
-    1.0: 0.3934693402873666,
-    2.0: 0.8646647167633873,
-    3.0: 0.9888910034617577,
-}
-
 # The actual DUNE-styled color cycle: dune.mplstyle (auto-applied by `from lib
 # import *`, which enables dunestyle on import) sets this as axes.prop_cycle,
 # and it's what every other plot in the repo draws its "Cn" colors from (e.g.
@@ -401,13 +432,6 @@ def resolve_band_hues(base_color, level_count, offset=0):
     return [base_color] * level_count
 
 
-def sigma_to_cumulative_probability(sigma):
-    rounded = round(float(sigma), 6)
-    if rounded in SIGMA_TO_CUMULATIVE:
-        return SIGMA_TO_CUMULATIVE[rounded]
-    return 1.0 - np.exp(-(float(sigma) ** 2) / 2.0)
-
-
 def resolve_contour_linestyles(level_count, fallback_style):
     styles = getattr(args, "contour_linestyles", None)
     if not styles:
@@ -422,31 +446,23 @@ def resolve_contour_linestyles(level_count, fallback_style):
 
 
 def compute_contour_levels(image, sigmas):
-    if getattr(args, "contour_level_mode", "z_values") == "z_values":
-        levels = [float(level) for level in sigmas if np.isfinite(level)]
-        return sorted(set(levels))
+    """Return sorted contour levels for `image` given sigma-equivalent `sigmas`.
 
-    flat = np.asarray(image, dtype=float).ravel()
-    flat = flat[np.isfinite(flat)]
-    flat = flat[flat > 0]
+    * z_values: the map is already in sigma units, so the levels are the sigmas.
+    * sigma_probability: the map is delta-chi-square, so the level for sigma is
+      sigma^2. Contouring z at sigma^2 is identical to contouring sqrt(z) at
+      sigma because sqrt is monotonic on a non-negative map.
+    """
+    mode = getattr(args, "contour_level_mode", "z_values")
+    finite_sigmas = [float(level) for level in sigmas if np.isfinite(level)]
 
-    if flat.size == 0:
-        return []
+    if mode == "z_values":
+        return sorted(set(finite_sigmas))
 
-    descending = np.sort(flat)[::-1]
-    cumsum = np.cumsum(descending)
-    total = cumsum[-1]
+    if mode == "sigma_probability":
+        return sorted(set(level ** 2 for level in finite_sigmas))
 
-    levels = []
-    for sigma in sigmas:
-        target = sigma_to_cumulative_probability(sigma) * total
-        index = np.searchsorted(cumsum, target, side="left")
-        index = min(index, descending.size - 1)
-        threshold = float(descending[index])
-        if threshold > 0:
-            levels.append(threshold)
-
-    return sorted(set(levels))
+    raise ValueError(f"Unknown contour level mode: {mode}")
 
 
 def smooth_contour_image(z):
@@ -783,6 +799,16 @@ def aggregate_config_grid(df_config):
     if reference_grid is None:
         return None
 
+    # Multiple rows in one group are combined additively. In delta-chi2 mode
+    # that is a chi2 combination, so re-center on the joint minimum as well.
+    if (
+        len(df_config) > 1
+        and getattr(args, "contour_level_mode", "z_values") == "sigma_probability"
+    ):
+        group_min = np.nanmin(summed_z)
+        if np.isfinite(group_min) and group_min > 0:
+            summed_z = summed_z - group_min
+
     return {"x": reference_grid[0], "y": reference_grid[1], "z": summed_z}
 
 
@@ -904,6 +930,14 @@ def main():
         )
         return
 
+    if args.density and args.contour_level_mode == "sigma_probability":
+        rprint(
+            "[red]Error:[/red] --density normalizes each map to unit sum, which destroys the "
+            "delta-chi-square scale required by --contour_level_mode sigma_probability. "
+            "Drop --density or use --contour_level_mode z_values."
+        )
+        return
+
     if args.combined_contours_only and args.operation != "squared_sum":
         rprint(
             "[yellow]Warning:[/yellow] --combined_contours_only requires --operation squared_sum; ignoring the flag."
@@ -933,6 +967,21 @@ def main():
 
     variables = args.variables if args.variables is not None else [None]
     filtered_df = filter_dataframe(df, args)
+    
+    # Apply custom label mapping to the iterable column if provided
+    if args.iterable is not None and args.iterable_label_map is not None:
+        try:
+            import json
+            label_map = json.loads(args.iterable_label_map)
+            # Remap the values in the dataframe column first
+            if args.iterable in filtered_df.columns:
+                filtered_df = filtered_df.copy()
+                filtered_df[args.iterable] = filtered_df[args.iterable].astype(str).map(
+                    lambda x: label_map.get(str(x), str(x))
+                )
+        except (json.JSONDecodeError, Exception) as e:
+            rprint(f"[yellow]Warning:[/yellow] Failed to parse --iterable_label_map: {e}. Using original labels.")
+    
     iterables = (
         filtered_df[args.iterable].unique() if args.iterable is not None else [None]
     )
@@ -1030,11 +1079,17 @@ def main():
                     x_range_local, y_range_local = extract_extent(x_grid, y_grid)
                     sum_background = sum_background + z_grid
                     if args.operation == "squared_sum":
-                        combined_z = combined_z + np.square(z_grid)
+                        if args.contour_level_mode == "sigma_probability":
+                            combined_z = combined_z + z_grid
+                        else:
+                            combined_z = combined_z + np.square(z_grid)
                 elif grids_match(reference_grid, (x_grid, y_grid)):
                     sum_background = sum_background + z_grid
                     if args.operation == "squared_sum":
-                        combined_z = combined_z + np.square(z_grid)
+                        if args.contour_level_mode == "sigma_probability":
+                            combined_z = combined_z + z_grid
+                        else:
+                            combined_z = combined_z + np.square(z_grid)
                 elif needs_shared_grid:
                     rprint(
                         "[red]Error:[/red] Configuration grids do not share the same x/y coordinates, so they cannot be combined on one contour plot."
@@ -1077,7 +1132,20 @@ def main():
             continue
 
         if args.operation == "squared_sum":
-            combined_z = np.sqrt(combined_z)
+            if args.contour_level_mode == "sigma_probability":
+                # Each input is delta-chi2 relative to its own best fit, so the
+                # plain sum only reaches zero when every dataset shares the same
+                # minimum. Re-subtract the global minimum so the combined map is
+                # a proper delta-chi2 for the joint fit.
+                combined_min = np.nanmin(combined_z)
+                if np.isfinite(combined_min) and combined_min > 0:
+                    if args.debug:
+                        rprint(
+                            f"[blue]Info:[/blue] Combined delta-chi2 minimum {combined_min:.4g} > 0; re-centering to zero."
+                        )
+                    combined_z = combined_z - combined_min
+            else:
+                combined_z = np.sqrt(combined_z)
         else:
             combined_z = sum_background
 
@@ -1196,7 +1264,7 @@ def main():
                 # Rotate the DUNE palette's starting hue by panel index so each
                 # subplot panel cycles through a different offset instead of
                 # every panel independently restarting at the same color.
-                panel_color_offset = panel_idx % len(DUNE_COLOR_PALETTE)
+                panel_color_offset = 0 if args.unified_colors else panel_idx % len(DUNE_COLOR_PALETTE)
 
                 combined_linewidth = (
                     args.combined_linewidth
@@ -1341,8 +1409,12 @@ def main():
             ax_current.set_title(plot_subtitle, fontsize=subtitlefontsize)
 
         ax_current.set_xlabel(resolve_axis_label(args.labelx, args.x, subset))
-        if idx == 0:
+        if panel_idx == 0:
             ax_current.set_ylabel(resolve_axis_label(args.labely, args.y, subset))
+        else:
+            ax_current.set_ylabel("")
+            if args.compact:
+                ax_current.tick_params(labelleft=False)
 
         if args.matchx and matched_ranges[0] is not None:
             ax_current.set_xlim(matched_ranges[0])
@@ -1396,6 +1468,10 @@ def main():
     add_centered_suptitle(fig, plot_title, fontsize=titlefontsize)
 
     apply_note_to_figure(fig, getattr(args, "note", None))
+
+    # Adjust layout for compact mode
+    if args.compact and ncols > 1:
+        fig.tight_layout()
 
     output_file = make_name_from_args(args, prefix=None, suffix="contour.png")
     default_output_dir = os.path.join(os.path.dirname(__file__), "..", "output", "plots")

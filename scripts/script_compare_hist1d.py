@@ -18,7 +18,7 @@ from lib.format import make_subtitle_from_args, make_title_from_args, make_confi
 from lib.imports import import_data, prepare_import
 from lib.plot import apply_scientific_threshold_formatter, apply_legend_style, plot_data, create_common_subplots, apply_note_to_figure, add_centered_suptitle, draw_vertical_lines, draw_horizontal_lines, place_point_label
 
-from common_args import add_common_args, resolve_axis_label
+from common_args import add_common_args, resolve_axis_label, parse_plot_label
 
 # Import with args parser
 parser = argparse.ArgumentParser(
@@ -89,9 +89,136 @@ parser.add_argument(
     help="Column name for weight data",
 )
 
+parser.add_argument(
+    "--panel_rangex",
+    nargs="+",
+    type=float,
+    default=None,
+    help="Per-panel x-axis histogram range as flattened min max pairs, two values per --variables "
+    "entry (e.g. 0 90 0 90 0 800 for three panels). Falls back to --rangex/--percentile/auto-range "
+    "if omitted.",
+)
+
+parser.add_argument(
+    "--panel_title",
+    nargs="+",
+    type=parse_plot_label,
+    default=None,
+    help="Per-panel title, one per --variables entry, shown above each subplot instead of the default subtitle.",
+)
+
+parser.add_argument(
+    "--panel_labelx",
+    nargs="+",
+    type=parse_plot_label,
+    default=None,
+    help="Per-panel x-axis label, one per --variables entry. Falls back to --labelx applied to every "
+    "panel, or an auto-resolved label if neither is given.",
+)
+
+parser.add_argument(
+    "--panel_vertical",
+    nargs="+",
+    type=str,
+    default=None,
+    help="Per-panel vertical reference line(s): one entry per --variables entry (in that panel's own x "
+    "units), or 'none' to skip a panel. An entry may hold several comma-separated x-values (e.g. "
+    "'26.8,63.5') to draw multiple reference lines in that panel. Drawn in addition to any --vertical "
+    "lines, which apply to every panel unshifted.",
+)
+parser.add_argument(
+    "--panel_vertical_label",
+    nargs="+",
+    type=str,
+    default=None,
+    help="Label(s) for each --panel_vertical entry, one per --variables entry ('' for no label); "
+    "comma-separate multiple labels to match multiple comma-separated values in --panel_vertical.",
+)
+parser.add_argument(
+    "--panel_vertical_style",
+    nargs="+",
+    type=str,
+    default=None,
+    help="Linestyle(s) for each --panel_vertical entry, one per --variables entry (default '--'); "
+    "comma-separate multiple styles to match multiple comma-separated values in --panel_vertical.",
+)
+parser.add_argument(
+    "--panel_vertical_color",
+    nargs="+",
+    type=str,
+    default=None,
+    help="Color(s) for each --panel_vertical entry, one per --variables entry (default 'gray'); "
+    "comma-separate multiple colors to match multiple comma-separated values in --panel_vertical.",
+)
 
 
 args = parser.parse_args()
+
+
+def _parse_panel_line_values(raw_values, flag_name):
+    """Parse a --panel_vertical value list into one list of floats per
+    --variables entry. Each raw entry may be 'none'/'skip'/'' (no line in
+    that panel), a single number, or several comma-separated numbers (to draw
+    multiple reference lines in that panel)."""
+    if raw_values is None:
+        return None
+    parsed = []
+    for raw in raw_values:
+        if str(raw).strip().lower() in ("none", "skip", ""):
+            parsed.append(None)
+        else:
+            values = []
+            for piece in str(raw).split(","):
+                try:
+                    values.append(float(piece))
+                except ValueError:
+                    parser.error(
+                        f"{flag_name} values must be numbers or 'none' to skip a panel, got '{piece}' in '{raw}'"
+                    )
+            parsed.append(values)
+    return parsed
+
+
+def _parse_panel_line_strings(raw_values):
+    """Parse a --panel_vertical_label/_style/_color list into one list of
+    strings per --variables entry, splitting each raw entry on commas to
+    match multiple comma-separated values in --panel_vertical."""
+    if raw_values is None:
+        return None
+    return [str(raw).split(",") for raw in raw_values]
+
+
+args.panel_vertical = _parse_panel_line_values(args.panel_vertical, "--panel_vertical")
+args.panel_vertical_label = _parse_panel_line_strings(args.panel_vertical_label)
+args.panel_vertical_style = _parse_panel_line_strings(args.panel_vertical_style)
+args.panel_vertical_color = _parse_panel_line_strings(args.panel_vertical_color)
+
+if args.panel_rangex is not None and args.variables is not None and len(args.panel_rangex) != 2 * len(args.variables):
+    parser.error(
+        f"--panel_rangex must provide exactly 2 values per --variables entry "
+        f"({2 * len(args.variables)} expected, got {len(args.panel_rangex)})."
+    )
+if args.panel_title is not None and args.variables is not None and len(args.panel_title) != len(args.variables):
+    parser.error(
+        f"--panel_title must provide exactly one value per --variables entry "
+        f"({len(args.variables)} expected, got {len(args.panel_title)})."
+    )
+if args.panel_labelx is not None and args.variables is not None and len(args.panel_labelx) != len(args.variables):
+    parser.error(
+        f"--panel_labelx must provide exactly one value per --variables entry "
+        f"({len(args.variables)} expected, got {len(args.panel_labelx)})."
+    )
+for _flag_name, _values in (
+    ("--panel_vertical", args.panel_vertical),
+    ("--panel_vertical_label", args.panel_vertical_label),
+    ("--panel_vertical_style", args.panel_vertical_style),
+    ("--panel_vertical_color", args.panel_vertical_color),
+):
+    if _values is not None and args.variables is not None and len(_values) != len(args.variables):
+        parser.error(
+            f"{_flag_name} must provide exactly one value per --variables entry "
+            f"({len(args.variables)} expected, got {len(_values)})."
+        )
 
 
 def main():
@@ -140,7 +267,11 @@ def main():
             df_config = df.copy()
 
         # rprint(f"Dataframe entries for this config and iterable: {len(df_config)}, Unique iterable values: {df_config[args.iterable].unique()}")
-        hist_range = None
+        # Keyed by panel index rather than a single shared value -- panels
+        # backed by --variables commonly hold columns on very different
+        # scales (e.g. a hit count vs. a distance in cm), so the auto/
+        # percentile-derived range from one panel must not leak into another.
+        hist_range_by_idx = {}
         variables = args.variables if args.variables is not None else [None]
         iterables = args.iterable if args.iterable is not None else [None]
         iterable_values = (
@@ -220,14 +351,19 @@ def main():
                 elif args.operation == "rms":
                     x = np.sqrt(x / len(args.x))
             # print(x)
-            if hist_range is None:
-                if args.percentile is None:
-                    hist_range = (np.min(x).astype(float), np.max(x).astype(float))
+            if idx not in hist_range_by_idx:
+                if args.panel_rangex is not None:
+                    hist_range_by_idx[idx] = (args.panel_rangex[2 * idx], args.panel_rangex[2 * idx + 1])
+                elif args.rangex is not None:
+                    hist_range_by_idx[idx] = (args.rangex[0], args.rangex[1])
+                elif args.percentile is None:
+                    hist_range_by_idx[idx] = (np.min(x).astype(float), np.max(x).astype(float))
                 else:
-                    hist_range = (
+                    hist_range_by_idx[idx] = (
                         np.percentile(x, args.percentile[0]).astype(float),
                         np.percentile(x, args.percentile[1]).astype(float),
                     )
+            hist_range = hist_range_by_idx[idx]
 
             # print(hist_range)
             hist, bins = np.histogram(
@@ -274,21 +410,25 @@ def main():
                 ax_current = ax[idx]
 
             if ncols > 1:
-                plot_subtitle = make_subtitle_from_args(args, idx)
+                plot_subtitle = args.panel_title[idx] if args.panel_title is not None else make_subtitle_from_args(args, idx)
                 ax_current.set_title(
                     plot_subtitle,
                     fontsize=subtitlefontsize,
                 )
 
-            ax_current.set_xlabel(resolve_axis_label(args.labelx, None, df))
+            ax_current.set_xlabel(
+                args.panel_labelx[idx] if args.panel_labelx is not None else resolve_axis_label(args.labelx, None, df)
+            )
             (
                 ax_current.set_ylabel(resolve_axis_label(args.labely, None, df))
                 if idx == 0
                 else None
             )
 
-            if args.rangex is None:
-                ax.set_xlim(hist_range)
+            if args.panel_rangex is not None:
+                ax_current.set_xlim(args.panel_rangex[2 * idx], args.panel_rangex[2 * idx + 1])
+            elif args.rangex is None:
+                ax_current.set_xlim(hist_range_by_idx.get(idx))
             else:
                 ax_current.set_xlim(args.rangex[0], args.rangex[1])
 
@@ -326,6 +466,16 @@ def main():
                 colors=getattr(args, "vertical_color", None),
                 fontsize=linelabelfontsize,
             )
+
+            if args.panel_vertical is not None and args.panel_vertical[idx] is not None:
+                draw_vertical_lines(
+                    ax_current,
+                    args.panel_vertical[idx],
+                    labels=args.panel_vertical_label[idx] if args.panel_vertical_label is not None else None,
+                    styles=args.panel_vertical_style[idx] if args.panel_vertical_style is not None else None,
+                    colors=args.panel_vertical_color[idx] if args.panel_vertical_color is not None else None,
+                    fontsize=linelabelfontsize,
+                )
 
             point_values = parse_point_pairs(getattr(args, "point", None))
             point_labels, point_label_warning = normalize_point_labels(
