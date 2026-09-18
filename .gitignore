@@ -213,6 +213,9 @@ notebooks/*.ipynb
 input/data/*.csv
 input/data/*.pkl
 input/data/*/*.pkl
+input/data/**/*.pkl
+# SOLAR sync: remote mirror kept by scripts/sync_solar_data.sh (studies/ tree is covered above)
+input/data/.solar_mirror/
 input/captions/*.txt
 
 # Imported script_lists expect the one named example_scripts.txt

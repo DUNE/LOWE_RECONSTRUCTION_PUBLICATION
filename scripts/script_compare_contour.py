@@ -69,7 +69,7 @@ from rich import print as rprint
 from lib import *
 from lib.exports import make_name_from_args, save_figure_to_paths
 from lib.format import make_subtitle_from_args, make_title_from_args
-from lib.imports import import_data, prepare_import
+from lib.imports import import_data, prepare_import, cut_mismatch_flags
 from lib.plot import apply_scientific_threshold_formatter, apply_legend_style, create_common_subplots, apply_note_to_figure, add_centered_suptitle, draw_vertical_lines, draw_horizontal_lines, place_point_label
 
 from lib.selection import filter_dataframe
@@ -924,6 +924,11 @@ def main():
 
     validate_filter_inputs(df)
 
+    # Sensitivity contours are only comparable at the same NHits/OpHits/AdjCl
+    # working point. import_data() already logged the mismatch; here the
+    # affected (Config, _Datafile) groups get a legend marker as well.
+    cut_mismatch = cut_mismatch_flags(df, quiet=True)
+
     if args.variables is not None and args.iterable is not None:
         rprint(
             "[red]Error:[/red] Both variables and iterable arguments were provided. Please use only one."
@@ -1110,10 +1115,15 @@ def main():
                         datafile_label, "_Datafile", getattr(args, "iterable_mapping", None)
                     )
                     label = f"{build_config_label(config, name, iterable)}, {datafile_display}"
+                    if (config, datafile_label) in cut_mismatch:
+                        label += " [cuts differ]"
                 else:
                     color = config_color[config] if config in config_color else f"C{cdx % 10}"
                     linestyle = config_line[config] if config in config_line else "-"
                     label = build_config_label(config, name, iterable)
+                    _group_datafile = df_group["_Datafile"].iloc[0] if "_Datafile" in df_group.columns else None
+                    if (config, _group_datafile) in cut_mismatch:
+                        label += " [cuts differ]"
 
                 payloads.append(
                     {

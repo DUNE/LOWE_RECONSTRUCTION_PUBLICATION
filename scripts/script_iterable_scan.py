@@ -486,20 +486,26 @@ def _apply_iterable_legend(
     comparable_alpha_map=None,
     **loc_kwargs,
 ):
-    """Draw the iterable legend. When a comparable overlay is active, fold its
-    linestyle key into the *same* legend (as a second, bold-headed section)
-    rather than a separate legend artist, so matplotlib's own placement search
-    (loc="best") treats both as one block and every entry shares one left edge.
+    """Draw the iterable legend as its own artist, and -- when a comparable
+    overlay is active -- a second, independent legend artist for it. This
+    mirrors script_compare_line_operation.py's layout (primary legend kept
+    alive via ax.add_artist, secondary legend drawn separately) instead of
+    folding both into one combined legend block.
     """
+    primary_loc_kwargs = dict(loc_kwargs) if loc_kwargs else {"loc": "upper right"}
+    leg1 = apply_legend_style(
+        ax,
+        title=iterable_title,
+        handles=handles,
+        labels=labels,
+        capitalize_labels=capitalize_labels,
+        **primary_loc_kwargs,
+    )
+
     if not comparable_style_map and not comparable_alpha_map:
-        return apply_legend_style(
-            ax,
-            title=iterable_title,
-            handles=handles,
-            labels=labels,
-            capitalize_labels=capitalize_labels,
-            **loc_kwargs,
-        )
+        return leg1
+
+    ax.add_artist(leg1)
 
     if comparable_alpha_map:
         secondary_proxies = [
@@ -514,27 +520,15 @@ def _apply_iterable_legend(
         ]
         secondary_labels = list(comparable_style_map.keys())
 
-    _secondary_header = comparable_col is not None
-    combined_handles = (
-        [mlines.Line2D([], [], linestyle="none", marker="none")]
-        + list(handles)
-        + ([mlines.Line2D([], [], linestyle="none", marker="none")] if _secondary_header else [])
-        + secondary_proxies
-    )
-    combined_labels = (
-        [str(iterable_title)]
-        + list(labels)
-        + ([str(comparable_col)] if _secondary_header else [])
-        + secondary_labels
-    )
-
+    secondary_title = None if comparable_col is None else str(comparable_col)
+    secondary_loc = "lower left" if primary_loc_kwargs.get("loc") == "upper left" else "lower right"
     return apply_legend_style(
         ax,
-        title=None,
-        handles=combined_handles,
-        labels=combined_labels,
-        capitalize_labels=capitalize_labels,
-        **loc_kwargs,
+        title=secondary_title,
+        handles=secondary_proxies,
+        labels=secondary_labels,
+        capitalize_labels=False,
+        loc=secondary_loc,
     )
 
 def main():

@@ -7,18 +7,19 @@
 #
 # Required:
 #   -s, --script-set NAME        Batch to run: solar, thesis, lowe, reco, all
+#                                e.g. results for the SOLAR study result plots
 #                                (must match a file in input/plots/{NAME}_scripts.txt)
 #
 # Options:
 #   --sync                       Pull latest .pkl data from remote before plotting
 #   --remote HOST:PATH           Override default SOLAR remote (passed to sync_solar_data.sh)
-#   --pnfs HOST:PATH             Override default PNFS root (passed to sync_solar_data.sh)
+#   --pnfs HOST:PATH             Deprecated (ignored by sync_solar_data.sh)
 #   --force-sync                 Overwrite existing local data files during sync
 #   --dry-run-sync               Show what sync would do without copying files
-#   --theme VALUE                 Also sync index.json files tagged with this
-#                                 theme (passed to sync_solar_data.sh; repeatable)
-#   --publication                 Also sync index.json publication_export files
-#   --list-themes                 Print available index.json themes and exit
+#   --prune-legacy-sync          Delete flat input/data/studies/*.pkl files of the
+#                                 old sync layout after routing (see sync_solar_data.sh)
+#   --theme/--publication/--list-themes  Deprecated: index.json discovery was
+#                                 removed from sync_solar_data.sh; accepted and ignored
 #   --yes-sync                    Skip the sync "Proceed with download?" prompt
 #                                 (required for unattended/non-interactive runs)
 #   --ssh-password-file PATH      Non-interactive SSH auth for the sync (see
@@ -36,9 +37,9 @@
 #   Each pair (DIM, VAL) translates to --DIM VAL on sync_solar_data.sh:
 #     name     → --name VAL        (include only files matching sample name)
 #     config   → --config VAL      (include only files matching detector config)
-#     folder   → --folder VAL      (include only files whose path contains folder)
-#     energy   → --energy VAL      (include only files matching energy label)
-#     study    → --study VAL       (include only files under this study subdirectory)
+#     folder   → --folder VAL      (background folder: truncated, nominal, reduced)
+#     energy   → --energy VAL      (cutflow energy label, e.g. SolarEnergy)
+#     study    → --study VAL       (study label or group, e.g. charge_Q50 or charge)
 #     analysis → --analysis VAL    (include only files in this physics analysis:
 #                                    daynight, hep, or sensitivity)
 #   Prefix with 'no-' to exclude instead:
@@ -75,6 +76,7 @@ SYNC_PUBLICATION=false
 SYNC_LIST_THEMES=false
 SYNC_YES=false
 SYNC_SSH_PASSWORD_FILE=""
+SYNC_PRUNE_LEGACY=false
 
 # --- Argument parsing ---------------------------------------------------------
 while [[ $# -gt 0 ]]; do
@@ -89,6 +91,7 @@ while [[ $# -gt 0 ]]; do
         --publication)    SYNC_PUBLICATION=true; shift ;;
         --list-themes)    SYNC_LIST_THEMES=true; shift ;;
         --yes-sync)       SYNC_YES=true; shift ;;
+        --prune-legacy-sync) SYNC_PRUNE_LEGACY=true; shift ;;
         --ssh-password-file) SYNC_SSH_PASSWORD_FILE="$2"; shift 2 ;;
         --tables)         DO_TABLES=true; shift ;;
         --flags)
@@ -156,6 +159,7 @@ if $DO_SYNC; then
     $DRY_RUN_SYNC           && SYNC_ARGS+=(--dry-run)
     $SYNC_PUBLICATION       && SYNC_ARGS+=(--publication)
     $SYNC_YES               && SYNC_ARGS+=(--yes)
+    $SYNC_PRUNE_LEGACY      && SYNC_ARGS+=(--prune-legacy)
     [[ -n "$SYNC_SSH_PASSWORD_FILE" ]] && SYNC_ARGS+=(--ssh-password-file "$SYNC_SSH_PASSWORD_FILE")
     for theme in "${SYNC_THEMES[@]}"; do SYNC_ARGS+=(--theme "$theme"); done
 

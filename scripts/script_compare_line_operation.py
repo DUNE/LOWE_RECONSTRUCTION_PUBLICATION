@@ -401,6 +401,12 @@ parser.add_argument(
 )
 
 parser.add_argument(
+    "--no_bottom_legend",
+    action="store_true",
+    help="Suppress the legend drawn on the bottom (lower-series) panel.",
+)
+
+parser.add_argument(
     "--comparable_linestyles",
     nargs="+",
     type=str,
@@ -1807,7 +1813,7 @@ def main():
                 capitalize_labels=False,
                 loc="lower right",
             )
-        if ax_bottom is not None and bottom_has_content:
+        if ax_bottom is not None and bottom_has_content and not getattr(args, "no_bottom_legend", False):
             apply_legend_style(
                 ax_bottom,
                 capitalize_labels=getattr(args, "capitalize_legend", False),

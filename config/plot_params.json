@@ -22,9 +22,9 @@
       "height": 6,
       "margins_inches": {
         "left": 0.96,
-        "right": 0.40,
+        "right": 0.4,
         "bottom": 0.72,
-        "top": 0.60,
+        "top": 0.6,
         "wspace": 0.25,
         "hspace": 0.15
       },
@@ -173,19 +173,26 @@
       "neutron": "Neutron",
       "radiological": "Radiological"
     },
+    "component_names": {
+      "gamma": "Gamma",
+      "neutron": "Neutron",
+      "radiological": "Radiological",
+      "hep": "$hep$",
+      "8B": "$⁸B$"
+    },
     "appearance_terms": {
       "P(nu_mu->nu_e)": "$P(\\nu_\\mu\\to\\nu_e)$",
       "T1 (atmospheric)": "$T_1$ (atmospheric)",
       "T2 (interference)": "$T_2$ (interference)",
       "T3 (solar)": "$T_3$ (solar)"
     },
-    "coordinate_efficiency":{
+    "coordinate_efficiency": {
       "X": "X (\\%)",
       "Y": "Y (\\%)",
       "Z": "Z (\\%)",
       "None": "Combined XYZ (\\%)"
     },
-    "coordinate_unit":{
+    "coordinate_unit": {
       "X": "X (cm)",
       "Y": "Y (cm)",
       "Z": "Z (cm)",
@@ -269,7 +276,7 @@
       "o15": "C6",
       "f17": "C7"
     },
-    "cs_dict":{
+    "cs_dict": {
       "marley": "Marley"
     },
     "sn_dict": {
@@ -307,6 +314,7 @@
       "oscpoint_reactor": "Reactor $\\Delta m^2_{21}$",
       "energy_maink": "MainK Energy",
       "energy_spk": "SignalParticleK Energy",
+      "charge_Q0": "Q > 0 ADC",
       "charge_Q50": "Q > 50 ADC",
       "charge_Q100": "Q > 100 ADC",
       "charge_Q200": "Q > 200 ADC",
@@ -347,7 +355,52 @@
       "HEP_AdaptiveRebin_Comparison_metric_raw": "Raw Histogram",
       "HEP_AdaptiveRebin_Comparison_metric_smoothed": "Smoothed Histogram",
       "bkgmodel_reduced": "Shielded",
-      "bkgmodel_nominal": "Extrapolated"
+      "bkgmodel_nominal": "Extrapolated",
+      "bkg_gamma_cluster": "$\\gamma$ Bkg: Cluster Energy",
+      "bkg_gamma_total": "$\\gamma$ Bkg: Total Energy",
+      "legacy_fit": "Legacy Fit",
+      "SolarEnergy_DayNight_Cutflow": "Reference",
+      "SolarEnergy_HEP_Cutflow": "Reference",
+      "SolarEnergy_Sensitivity_Cutflow": "Reference",
+      "Sensitivity_10Y_Contours": "Reference",
+      "Sensitivity_Contours_nuisance_nominal": "No Nuisances",
+      "Sensitivity_Contours_nuisance_sin13": "$\\sin^{2}\\theta_{13}$ Pull Only",
+      "Sensitivity_Contours_nuisance_escale": "Energy Scale Only",
+      "Sensitivity_Contours_unc_sig0": "$\\sigma_{sig}$ = 0%",
+      "Sensitivity_Contours_unc_sig2": "$\\sigma_{sig}$ = 2%",
+      "Sensitivity_Contours_unc_sig6": "$\\sigma_{sig}$ = 6%",
+      "Sensitivity_Contours_unc_bkg0": "$\\sigma_{bkg}$ = 0%",
+      "Sensitivity_Contours_unc_bkg4": "$\\sigma_{bkg}$ = 4%",
+      "Sensitivity_Contours_unc_bkg6": "$\\sigma_{bkg}$ = 6%",
+      "Sensitivity_Contours_fiduc_truth": "MC-Truth Fiducial",
+      "Sensitivity_Contours_charge_Q0": "Q > 0 ADC",
+      "Sensitivity_Contours_charge_Q50": "Q > 50 ADC",
+      "Sensitivity_Contours_charge_Q100": "Q > 100 ADC",
+      "Sensitivity_Contours_charge_Q500": "Q > 500 ADC",
+      "Sensitivity_Contours_bkgmodel_nominal": "Extrapolated",
+      "Sensitivity_Contours_bkgmodel_reduced": "Shielded",
+      "Sensitivity_Contours_membrane_veto_off": "No Membrane Veto",
+      "Sensitivity_Contours_legacy_fit": "Legacy Fit",
+      "Sensitivity_Contours_energy_spk": "SignalParticleK Energy",
+      "Sensitivity_10Y_Contours_nuisance_nominal": "No Nuisances",
+      "Sensitivity_10Y_Contours_nuisance_sin13": "$\\sin^{2}\\theta_{13}$ Pull Only",
+      "Sensitivity_10Y_Contours_nuisance_escale": "Energy Scale Only",
+      "Sensitivity_10Y_Contours_unc_sig0": "$\\sigma_{sig}$ = 0%",
+      "Sensitivity_10Y_Contours_unc_sig2": "$\\sigma_{sig}$ = 2%",
+      "Sensitivity_10Y_Contours_unc_sig6": "$\\sigma_{sig}$ = 6%",
+      "Sensitivity_10Y_Contours_unc_bkg0": "$\\sigma_{bkg}$ = 0%",
+      "Sensitivity_10Y_Contours_unc_bkg4": "$\\sigma_{bkg}$ = 4%",
+      "Sensitivity_10Y_Contours_unc_bkg6": "$\\sigma_{bkg}$ = 6%",
+      "Sensitivity_10Y_Contours_fiduc_truth": "MC-Truth Fiducial",
+      "Sensitivity_10Y_Contours_charge_Q0": "Q > 0 ADC",
+      "Sensitivity_10Y_Contours_charge_Q50": "Q > 50 ADC",
+      "Sensitivity_10Y_Contours_charge_Q100": "Q > 100 ADC",
+      "Sensitivity_10Y_Contours_charge_Q500": "Q > 500 ADC",
+      "Sensitivity_10Y_Contours_bkgmodel_nominal": "Extrapolated",
+      "Sensitivity_10Y_Contours_bkgmodel_reduced": "Shielded",
+      "Sensitivity_10Y_Contours_membrane_veto_off": "No Membrane Veto",
+      "Sensitivity_10Y_Contours_legacy_fit": "Legacy Fit",
+      "Sensitivity_10Y_Contours_energy_spk": "SignalParticleK Energy"
     },
     "interaction_names": {
       "CC": "CC: $\\nu$ Ar40",
@@ -359,6 +412,24 @@
       "xs_nuebar_e": "ES: $\\bar{\\nu}_e$ e",
       "xs_numu_nutau_e": "ES: $\\nu_{\\mu ,\\nu_\\tau}$ e",
       "xs_nc_nue_Ar40": "NC: $\\nu_x$ Ar40"
+    },
+    "contour_exposure_dict": {
+      "Sensitivity_Contours": "30 yr",
+      "Sensitivity_10Y_Contours": "10 yr"
+    },
+    "solar_component_color": {
+      "Solar": "C0",
+      "Solar Day": "C1",
+      "Solar Night": "C0",
+      "Solar (osc)": "C0",
+      "hep": "C0",
+      "8B": "C1",
+      "gamma": "C2",
+      "Gamma": "C2",
+      "neutron": "C4",
+      "Neutron": "C4",
+      "radiological": "C3",
+      "Radiological": "C3"
     }
   }
 }
