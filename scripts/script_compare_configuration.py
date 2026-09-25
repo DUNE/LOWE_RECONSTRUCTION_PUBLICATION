@@ -756,7 +756,7 @@ def main():
                     elif errory_sym == "symmetric":
                         err = np.interp(
                             target_x,
-                            (x + args.project_offset) * args.project_scale,
+                            (x * args.project_scale) + args.project_offset,
                             errory,
                             left=0,
                             right=0,

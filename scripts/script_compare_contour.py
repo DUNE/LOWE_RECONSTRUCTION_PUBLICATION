@@ -62,6 +62,8 @@ from _bootstrap import ensure_src_path
 
 ensure_src_path()
 
+import copy
+
 from matplotlib.lines import Line2D
 from matplotlib.colors import LogNorm, Normalize, to_rgba, to_rgb
 from rich import print as rprint
@@ -69,7 +71,7 @@ from rich import print as rprint
 from lib import *
 from lib.exports import make_name_from_args, save_figure_to_paths
 from lib.format import make_subtitle_from_args, make_title_from_args
-from lib.imports import import_data, prepare_import, cut_mismatch_flags
+from lib.imports import import_data, normalize_datafiles, prepare_import, cut_mismatch_flags
 from lib.plot import apply_scientific_threshold_formatter, apply_legend_style, create_common_subplots, apply_note_to_figure, add_centered_suptitle, draw_vertical_lines, draw_horizontal_lines, place_point_label
 
 from lib.selection import filter_dataframe
@@ -190,6 +192,58 @@ parser.add_argument(
     default=None,
     choices=["squared_sum"],
     help="Combine configuration z-grids before drawing a combined contour",
+)
+
+parser.add_argument(
+    "--project",
+    nargs="+",
+    type=str,
+    default=None,
+    help=(
+        "Configs added once more as extra detectors (e.g. the Phase II HD "
+        "modules), loaded from --project_datafile, rescaled in exposure by "
+        "--project_scale and combined with the --configs maps by "
+        "--operation squared_sum"
+    ),
+)
+
+parser.add_argument(
+    "--project_datafile",
+    type=str,
+    default=None,
+    help="Datafile the --project maps are read from (defaults to the first --datafile entry)",
+)
+
+parser.add_argument(
+    "--project_scale",
+    type=float,
+    default=1,
+    help=(
+        "Exposure scale factor for the --project maps: projected exposure = "
+        "project_scale x the Exposure of --project_datafile. Without "
+        "--project_reference, delta-chi2 scales linearly with exposure "
+        "(significance with its square root)"
+    ),
+)
+
+parser.add_argument(
+    "--project_reference",
+    type=str,
+    default=None,
+    help=(
+        "Optional second datafile of the --project configs at another exposure "
+        "(e.g. Sensitivity_Contours next to Sensitivity_10Y_Contours). The "
+        "projection then follows the per-bin power law delta-chi2 ~ T^k "
+        "measured between the two exposures (k clipped to [0, 1]) instead of "
+        "the purely statistical k = 1"
+    ),
+)
+
+parser.add_argument(
+    "--project_label",
+    type=str,
+    default=None,
+    help="Legend suffix for the projected contours (defaults to 'Projected, <exposure> yr')",
 )
 
 parser.add_argument(
@@ -812,6 +866,97 @@ def aggregate_config_grid(df_config):
     return {"x": reference_grid[0], "y": reference_grid[1], "z": summed_z}
 
 
+def load_projected_data(configs, names):
+    """Load the --project configs from --project_datafile (+ --project_reference).
+
+    Each projected config reuses the --name it is paired with in --configs, or
+    the first --name when it is not one of the --configs.
+    """
+    if not args.project:
+        return pd.DataFrame()
+
+    name_by_config = {config: name for config, name in zip(configs, names)}
+    proj_args = copy.copy(args)
+    proj_args.configs = list(args.project)
+    proj_args.names = (
+        None
+        if names[0] is None
+        else [name_by_config.get(config, names[0]) for config in args.project]
+    )
+    base_datafile = args.project_datafile or normalize_datafiles(args.datafile)[0]
+    proj_args.datafile = [base_datafile]
+    if args.project_reference is not None:
+        proj_args.datafile.append(args.project_reference)
+    paths = normalize_datafiles(getattr(args, "path", None))
+    proj_args.path = paths[:1] or None
+    proj_args.name_columns = False
+
+    proj_df = import_data(proj_args)
+    if proj_df.empty:
+        rprint("[yellow]Warning:[/yellow] No data found for the --project configs.")
+    return proj_df
+
+
+def _group_exposure(df_group, label):
+    if "Exposure" not in df_group.columns:
+        return None
+    exposures = pd.to_numeric(df_group["Exposure"], errors="coerce").dropna().unique()
+    if len(exposures) != 1:
+        raise ValueError(f"{label}: expected one Exposure value, found {list(exposures)}.")
+    return float(exposures[0])
+
+
+def project_config_grid(df_group):
+    """Rescale one config's map to `--project_scale` times its exposure.
+
+    Works in delta-chi2 (z itself in sigma_probability mode, z^2 in z_values
+    mode). Statistics alone give delta-chi2 ~ T. With --project_reference the
+    per-bin exponent k = ln(chi2_ref / chi2_base) / ln(T_ref / T_base) is
+    used instead (clipped to [0, 1]; k = 1 where either map is ~0), which
+    keeps the systematics-driven saturation seen between the two exposures.
+    """
+    base_datafile = args.project_datafile or normalize_datafiles(args.datafile)[0]
+    base_rows = df_group[df_group["_Datafile"] == base_datafile]
+    grid = aggregate_config_grid(base_rows)
+    if grid is None:
+        return None, None
+
+    in_sigma = args.contour_level_mode == "z_values"
+    chi2_base = np.square(grid["z"]) if in_sigma else grid["z"]
+    scale = float(args.project_scale)
+    base_exposure = _group_exposure(base_rows, base_datafile)
+    target_exposure = base_exposure * scale if base_exposure is not None else None
+
+    exponent = np.ones_like(chi2_base)
+    if args.project_reference is not None:
+        ref_rows = df_group[df_group["_Datafile"] == args.project_reference]
+        ref_grid = aggregate_config_grid(ref_rows)
+        if ref_grid is None:
+            raise ValueError(f"No {args.project_reference} map for the projection reference.")
+        if not grids_match((grid["x"], grid["y"]), (ref_grid["x"], ref_grid["y"])):
+            raise ValueError("--project_reference grid does not match the --project_datafile grid.")
+        ref_exposure = _group_exposure(ref_rows, args.project_reference)
+        if base_exposure is None or ref_exposure is None or ref_exposure == base_exposure:
+            raise ValueError(
+                "--project_reference needs an Exposure column that differs from the base datafile's."
+            )
+        if not min(base_exposure, ref_exposure) <= target_exposure <= max(base_exposure, ref_exposure):
+            rprint(
+                f"[yellow]Warning:[/yellow] Projected exposure {target_exposure:g} yr lies outside "
+                f"[{base_exposure:g}, {ref_exposure:g}] yr; the power law is extrapolated."
+            )
+        chi2_ref = np.square(ref_grid["z"]) if in_sigma else ref_grid["z"]
+        valid = (chi2_base > 1e-6) & (chi2_ref > 1e-6)
+        exponent[valid] = np.log(chi2_ref[valid] / chi2_base[valid]) / np.log(
+            ref_exposure / base_exposure
+        )
+        exponent = np.clip(exponent, 0.0, 1.0)
+
+    chi2_projected = chi2_base * np.power(scale, exponent)
+    grid["z"] = np.sqrt(chi2_projected) if in_sigma else chi2_projected
+    return grid, target_exposure
+
+
 def draw_image_background(ax, fig, x, y, z, df=None):
     positive = smooth_background_image(z)
     if args.logz:
@@ -973,17 +1118,32 @@ def main():
     variables = args.variables if args.variables is not None else [None]
     filtered_df = filter_dataframe(df, args)
     
+    projected_df = load_projected_data(configs, names)
+    if not projected_df.empty:
+        projected_df = filter_dataframe(projected_df, args)
+    if args.project and args.operation != "squared_sum":
+        rprint(
+            "[yellow]Warning:[/yellow] --project maps are only combined with --operation squared_sum; "
+            "without it they are drawn but not added to any combination."
+        )
+
     # Apply custom label mapping to the iterable column if provided
     if args.iterable is not None and args.iterable_label_map is not None:
         try:
             import json
             label_map = json.loads(args.iterable_label_map)
             # Remap the values in the dataframe column first
-            if args.iterable in filtered_df.columns:
-                filtered_df = filtered_df.copy()
-                filtered_df[args.iterable] = filtered_df[args.iterable].astype(str).map(
+            def remap_iterable(frame):
+                if args.iterable not in frame.columns:
+                    return frame
+                frame = frame.copy()
+                frame[args.iterable] = frame[args.iterable].astype(str).map(
                     lambda x: label_map.get(str(x), str(x))
                 )
+                return frame
+
+            filtered_df = remap_iterable(filtered_df)
+            projected_df = remap_iterable(projected_df)
         except (json.JSONDecodeError, Exception) as e:
             rprint(f"[yellow]Warning:[/yellow] Failed to parse --iterable_label_map: {e}. Using original labels.")
     
@@ -1019,6 +1179,14 @@ def main():
             )
             continue
 
+        # Same panel split for the --project maps.
+        projected_subset = projected_df
+        if not projected_subset.empty:
+            if variable is not None:
+                projected_subset = projected_subset[projected_subset["Variable"] == variable]
+            if iterable is not None and args.iterable in projected_subset.columns:
+                projected_subset = projected_subset[projected_subset[args.iterable] == iterable]
+
         payloads = []
         sum_background = None
         combined_z = None
@@ -1026,6 +1194,8 @@ def main():
         x_range_local = None
         y_range_local = None
 
+        # (cdx, config, name, datafile_label, rows, projected) per contour item.
+        items = []
         for cdx, (config, name) in enumerate(zip(configs, names)):
             df_config = subset.copy()
             if config is not None:
@@ -1058,85 +1228,109 @@ def main():
                 datafile_groups = [(None, df_config)]
 
             for datafile_label, df_group in datafile_groups:
-                try:
-                    grid = aggregate_config_grid(df_group)
-                except ValueError as exc:
-                    rprint(f"[red]Error:[/red] {exc}")
+                items.append((cdx, config, name, datafile_label, df_group, False))
+
+        if not projected_subset.empty:
+            for pdx, config in enumerate(args.project):
+                df_group = projected_subset[projected_subset["Config"] == config]
+                if df_group.empty:
+                    rprint(f"[yellow]Warning:[/yellow] No --project data for Config={config}. Skipping.")
                     continue
+                name = df_group["Name"].iloc[0] if "Name" in df_group.columns else None
+                items.append((len(configs) + pdx, config, name, None, df_group, True))
 
-                if grid is None:
-                    continue
-
-                x_grid = grid["x"]
-                y_grid = grid["y"]
-                z_grid = grid["z"]
-
-                # Background summation and --operation squared_sum both need every
-                # item on shared x/y coordinates; pure contour-line overlays (the
-                # common case for comparing study variants with --background none)
-                # don't, since each contour is drawn from its own payload's grid.
-                needs_shared_grid = args.background in ("all", "combined") or args.operation == "squared_sum"
-
-                if reference_grid is None:
-                    reference_grid = (x_grid, y_grid)
-                    sum_background = np.zeros_like(z_grid, dtype=float)
-                    combined_z = np.zeros_like(z_grid, dtype=float)
-                    x_range_local, y_range_local = extract_extent(x_grid, y_grid)
-                    sum_background = sum_background + z_grid
-                    if args.operation == "squared_sum":
-                        if args.contour_level_mode == "sigma_probability":
-                            combined_z = combined_z + z_grid
-                        else:
-                            combined_z = combined_z + np.square(z_grid)
-                elif grids_match(reference_grid, (x_grid, y_grid)):
-                    sum_background = sum_background + z_grid
-                    if args.operation == "squared_sum":
-                        if args.contour_level_mode == "sigma_probability":
-                            combined_z = combined_z + z_grid
-                        else:
-                            combined_z = combined_z + np.square(z_grid)
-                elif needs_shared_grid:
-                    rprint(
-                        "[red]Error:[/red] Configuration grids do not share the same x/y coordinates, so they cannot be combined on one contour plot."
-                    )
-                    continue
-                # else: grid mismatch, but nothing downstream needs the shared
-                # background/combined_z — fall through and draw this item's own
-                # contour from its own grid.
-
-                if datafile_label is not None:
-                    item_idx = len(payloads)
-                    color = (
-                        map_iterable_color(datafile_label, getattr(args, "iterable_color_mapping", None))
-                        or f"C{item_idx % 10}"
-                    )
-                    linestyle = _DATAFILE_LINESTYLE_CYCLE[item_idx % len(_DATAFILE_LINESTYLE_CYCLE)]
-                    datafile_display = map_iterable_label(
-                        datafile_label, "_Datafile", getattr(args, "iterable_mapping", None)
-                    )
-                    label = f"{build_config_label(config, name, iterable)}, {datafile_display}"
-                    if (config, datafile_label) in cut_mismatch:
-                        label += " [cuts differ]"
+        for cdx, config, name, datafile_label, df_group, projected in items:
+            try:
+                if projected:
+                    grid, projected_exposure = project_config_grid(df_group)
                 else:
-                    color = config_color[config] if config in config_color else f"C{cdx % 10}"
-                    linestyle = config_line[config] if config in config_line else "-"
-                    label = build_config_label(config, name, iterable)
-                    _group_datafile = df_group["_Datafile"].iloc[0] if "_Datafile" in df_group.columns else None
-                    if (config, _group_datafile) in cut_mismatch:
-                        label += " [cuts differ]"
+                    grid = aggregate_config_grid(df_group)
+            except ValueError as exc:
+                rprint(f"[red]Error:[/red] {exc}")
+                continue
 
-                payloads.append(
-                    {
-                        "x": x_grid,
-                        "y": y_grid,
-                        "z": z_grid,
-                        "color": color,
-                        "linestyle": linestyle,
-                        "label": label,
-                        "config": config,
-                        "name": name,
-                    }
+            if grid is None:
+                continue
+
+            x_grid = grid["x"]
+            y_grid = grid["y"]
+            z_grid = grid["z"]
+
+            # Background summation and --operation squared_sum both need every
+            # item on shared x/y coordinates; pure contour-line overlays (the
+            # common case for comparing study variants with --background none)
+            # don't, since each contour is drawn from its own payload's grid.
+            needs_shared_grid = args.background in ("all", "combined") or args.operation == "squared_sum"
+
+            if reference_grid is None:
+                reference_grid = (x_grid, y_grid)
+                sum_background = np.zeros_like(z_grid, dtype=float)
+                combined_z = np.zeros_like(z_grid, dtype=float)
+                x_range_local, y_range_local = extract_extent(x_grid, y_grid)
+                sum_background = sum_background + z_grid
+                if args.operation == "squared_sum":
+                    if args.contour_level_mode == "sigma_probability":
+                        combined_z = combined_z + z_grid
+                    else:
+                        combined_z = combined_z + np.square(z_grid)
+            elif grids_match(reference_grid, (x_grid, y_grid)):
+                sum_background = sum_background + z_grid
+                if args.operation == "squared_sum":
+                    if args.contour_level_mode == "sigma_probability":
+                        combined_z = combined_z + z_grid
+                    else:
+                        combined_z = combined_z + np.square(z_grid)
+            elif needs_shared_grid:
+                rprint(
+                    "[red]Error:[/red] Configuration grids do not share the same x/y coordinates, so they cannot be combined on one contour plot."
                 )
+                continue
+            # else: grid mismatch, but nothing downstream needs the shared
+            # background/combined_z — fall through and draw this item's own
+            # contour from its own grid.
+
+            if projected:
+                color = config_color[config] if config in config_color else f"C{cdx % 10}"
+                linestyle = "--"
+                suffix = args.project_label or (
+                    f"Projected, {projected_exposure:g} yr"
+                    if projected_exposure is not None
+                    else "Projected"
+                )
+                label = f"{build_config_label(config, name, iterable)} ({suffix})"
+            elif datafile_label is not None:
+                item_idx = len(payloads)
+                color = (
+                    map_iterable_color(datafile_label, getattr(args, "iterable_color_mapping", None))
+                    or f"C{item_idx % 10}"
+                )
+                linestyle = _DATAFILE_LINESTYLE_CYCLE[item_idx % len(_DATAFILE_LINESTYLE_CYCLE)]
+                datafile_display = map_iterable_label(
+                    datafile_label, "_Datafile", getattr(args, "iterable_mapping", None)
+                )
+                label = f"{build_config_label(config, name, iterable)}, {datafile_display}"
+                if (config, datafile_label) in cut_mismatch:
+                    label += " [cuts differ]"
+            else:
+                color = config_color[config] if config in config_color else f"C{cdx % 10}"
+                linestyle = config_line[config] if config in config_line else "-"
+                label = build_config_label(config, name, iterable)
+                _group_datafile = df_group["_Datafile"].iloc[0] if "_Datafile" in df_group.columns else None
+                if (config, _group_datafile) in cut_mismatch:
+                    label += " [cuts differ]"
+
+            payloads.append(
+                {
+                    "x": x_grid,
+                    "y": y_grid,
+                    "z": z_grid,
+                    "color": color,
+                    "linestyle": linestyle,
+                    "label": label,
+                    "config": config,
+                    "name": name,
+                }
+            )
 
         if not payloads or reference_grid is None:
             continue

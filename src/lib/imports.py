@@ -8,9 +8,14 @@ import pandas as pd
 from rich import print as rprint
 
 
-# Local layout written by scripts/sync_solar_data.sh (see src/lib/solar_studies.py):
-#   input/data/{config}_{name}_{kind}.pkl                          reference copy
-#   input/data/studies/{folder}/{label}/{config}_{name}_{kind}.pkl   every (folder, label)
+# Local layout written by scripts/sync_solar_data.sh (see src/lib/solar_studies.py
+# and docs/input_data_layout.md):
+#   input/data/studies/{folder}/{label}/{config}_{name}_{kind}.pkl   every (folder, label); a bare
+#                                                                    --datafile falls back to truncated/default
+#   input/data/{subdir}/{config}_{name}_{kind}.pkl                   flat families (--path {subdir},
+#                                                                    e.g. vertex/resolution, workflow/calibration)
+# Nothing is synced flat into input/data itself; local-only inputs live in topic
+# folders (pde/, theory/, pandora/, lowe/, ...) and unused files in archive/.
 STUDIES_DIRNAME = "studies"
 STUDY_FOLDER_ORDER = ("truncated", "nominal", "reduced")
 DEFAULT_STUDY_LABEL = "default"
@@ -36,9 +41,18 @@ def normalize_datafiles(datafile):
     return [datafile]
 
 
+_INPUT_DATA_ROOT = None
+
+
+def set_input_data_root(path):
+    """Use ``path`` instead of ``input/data`` as the root of every relative ``--path`` (None restores the default)."""
+    global _INPUT_DATA_ROOT
+    _INPUT_DATA_ROOT = None if path is None else Path(path)
+
+
 def resolve_input_data_dir(path_override=None):
     repo_root = Path(__file__).resolve().parents[2]
-    default_input_dir = repo_root / "input" / "data"
+    default_input_dir = _INPUT_DATA_ROOT if _INPUT_DATA_ROOT is not None else repo_root / "input" / "data"
 
     if path_override is None:
         return default_input_dir, True
@@ -238,6 +252,7 @@ def _load_datafile(datafile, datafile_entry, input_dir):
         folder, label = STUDY_FOLDER_ORDER[0], DEFAULT_STUDY_LABEL
 
     loaded_df["_Datafile"] = datafile_entry
+    loaded_df["_Source"] = str(datafile)
     loaded_df["_Folder"] = folder
     loaded_df["_Label"] = label
     return tag_study_from_datafile(loaded_df, datafile_entry, label)

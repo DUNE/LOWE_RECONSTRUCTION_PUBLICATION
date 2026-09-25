@@ -18,7 +18,7 @@ from lib.format import make_subtitle_from_args, make_title_from_args, make_confi
 from lib.imports import import_data, prepare_import
 from lib.plot import apply_scientific_threshold_formatter, apply_legend_style, plot_data, create_common_subplots, apply_note_to_figure, add_centered_suptitle, draw_vertical_lines, draw_horizontal_lines, place_point_label
 
-from common_args import add_common_args, resolve_axis_label, parse_plot_label
+from common_args import add_common_args, resolve_axis_label, parse_plot_label, map_iterable_label, map_iterable_color
 
 # Import with args parser
 parser = argparse.ArgumentParser(
@@ -152,6 +152,18 @@ parser.add_argument(
 )
 
 
+parser.add_argument(
+    "--iterable_mapping",
+    type=str,
+    default=None,
+    help="Optional mapping dictionary name from plot_params mappings used to rename --iterable values in the legend",
+)
+parser.add_argument(
+    "--iterable_color_mapping",
+    type=str,
+    default=None,
+    help="Optional mapping dictionary name from plot_params mappings used to set the --iterable line colors (Cn or rgb(r,g,b))",
+)
 args = parser.parse_args()
 
 
@@ -389,6 +401,10 @@ def main():
                 label = f"{iterable}"
                 color = f"C{jdx}" if two_line_mode else None
                 linestyle = None
+                if args.iterable_mapping is not None:
+                    label = map_iterable_label(iterable, args.iterable, args.iterable_mapping)
+                if args.iterable_color_mapping is not None:
+                    color = map_iterable_color(iterable, args.iterable_color_mapping) or color
             
             plot_data(
                 args,

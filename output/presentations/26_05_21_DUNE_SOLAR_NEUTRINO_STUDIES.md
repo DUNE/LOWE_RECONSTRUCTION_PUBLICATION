@@ -335,7 +335,7 @@ Showing the 1D projections of the 2D data maps (azimuth vs true $\nu_e$ energy) 
 
 <div class="two-col">
   <img src="../plots/sensitivity_counts_hd_1x2x6_centralapa_marley_energy_counts_component_logy_line_operation.png" alt="Latest oscillation parameter sensitivity plot with HD Phase I">
-  <img src="../plots/sensitivity_solarenergy_hd_1x2x6_centralapa_values_dm2_label_solar_variable_sin12_contour.png" alt="Latest oscillation parameter sensitivity plot with HD Phase I">
+  <img src="../plots/Sensitivity_Contours_hd_1x2x6_centralapa_values_dm2_label_solar_variable_sin12_contour.png" alt="Latest oscillation parameter sensitivity plot with HD Phase I">
 </div>
 
 ---
@@ -345,7 +345,7 @@ Showing the 1D projections of the 2D data maps (azimuth vs true $\nu_e$ energy) 
 Phase I predicts **modest $2\sigma$ separation** between the current best-fit values of $\Delta m^2_{21}$ from solar and reactor experiments.
 
 <div class="two-col">
-  <img src="../plots/sensitivity_solarenergy_values_dm2_label_solar_variable_sin12_contour.png" alt="Latest oscillation parameter sensitivity plot with HD Phase I">
+  <img src="../plots/Sensitivity_Contours_values_dm2_label_solar_variable_sin12_contour.png" alt="Latest oscillation parameter sensitivity plot with HD Phase I">
   <div>
     <ul>
       <li> Compared to other exerimental projections, DUNE's sensitivity is limited by the high statistics of the backgrounds and the non-ideal energy resolution in the low-energy range.</li>
@@ -598,10 +598,10 @@ HD modules show **modest $2\sigma$ separation** between the current best-fit val
 
 <div class="two-col">
   <div>
-    <img src="../plots/sensitivity_solarenergy_hd_1x2x6_centralapa_hd_1x2x6_lateralapa_values_dm2_label_solar_variable_sin12_contour.png" alt="Latest oscillation parameter sensitivity plot with HD Phase I">
+    <img src="../plots/Sensitivity_Contours_hd_1x2x6_centralapa_hd_1x2x6_lateralapa_values_dm2_label_solar_variable_sin12_contour.png" alt="Latest oscillation parameter sensitivity plot with HD Phase I">
   </div>
   <div>
-    <img src="../plots/sensitivity_solarenergy_vd_1x8x14_3view_30deg_nominal_vd_1x8x14_3view_30deg_shielded_values_dm2_label_solar_variable_sin12_contour.png" alt="Latest oscillation parameter sensitivity plot with VD Phase I">
+    <img src="../plots/Sensitivity_Contours_vd_1x8x14_3view_30deg_nominal_vd_1x8x14_3view_30deg_shielded_values_dm2_label_solar_variable_sin12_contour.png" alt="Latest oscillation parameter sensitivity plot with VD Phase I">
   </div>
 </div>
 

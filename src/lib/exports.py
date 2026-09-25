@@ -101,6 +101,12 @@ def make_name_from_args(
             protected=filename_selected("project_scale"),
         )
 
+    if getattr(args, "project_reference", None):
+        add(
+            f"project_reference_{args.project_reference}",
+            protected=filename_selected("project_reference"),
+        )
+
     if hasattr(args, "names") and args.names:
         if args.names is not None:
             if idx is not None and 0 <= idx < len(args.names):

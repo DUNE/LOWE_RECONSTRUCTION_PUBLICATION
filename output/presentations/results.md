@@ -318,10 +318,10 @@ HD modules show **modest $2\sigma$ separation** between the current best-fit val
 
 <div class="two-col">
   <div>
-    <img src="../plots/sensitivity_solarenergy_hd_1x2x6_centralapa_hd_1x2x6_lateralapa_values_dm2_label_solar_variable_sin12_contour.png" alt="Latest oscillation parameter sensitivity plot with HD Phase I">
+    <img src="../plots/Sensitivity_Contours_hd_1x2x6_centralapa_hd_1x2x6_lateralapa_values_dm2_label_solar_variable_sin12_contour.png" alt="Latest oscillation parameter sensitivity plot with HD Phase I">
   </div>
   <div>
-    <img src="../plots/sensitivity_solarenergy_vd_1x8x14_3view_30deg_nominal_vd_1x8x14_3view_30deg_shielded_values_dm2_label_solar_variable_sin12_contour.png" alt="Latest oscillation parameter sensitivity plot with VD Phase I">
+    <img src="../plots/Sensitivity_Contours_vd_1x8x14_3view_30deg_nominal_vd_1x8x14_3view_30deg_shielded_values_dm2_label_solar_variable_sin12_contour.png" alt="Latest oscillation parameter sensitivity plot with VD Phase I">
   </div>
 </div>
 

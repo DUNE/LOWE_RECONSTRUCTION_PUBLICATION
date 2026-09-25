@@ -66,8 +66,6 @@ def enable():
 		except NameError:
 			pass
 
-	print("DUNE plot style enabled")
-
 
 _IMPORT_FLAG_NAME = "DUNESTYLE_ENABLE_AUTOMATICALLY"
 if _IMPORT_FLAG_NAME not in builtins.__dict__ or builtins.__dict__[_IMPORT_FLAG_NAME]:

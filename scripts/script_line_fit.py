@@ -25,12 +25,21 @@ from lib.format import (
 from lib.imports import import_data, prepare_import
 from lib.functions import (
     resolution,
+    gauss,
     gaussian,
     double_gaussian,
     correction_func,
     quadratic_cut,
     quadratic_function,
 )
+
+# Datafiles that only record the fit by name (FitFunctionLabel), without a
+# pickled FitFunction callable, are resolved through this label -> function
+# lookup instead.
+FIT_FUNCTION_BY_LABEL = {
+    "Gaussian": gaussian,
+    "Double Gaussian": double_gaussian,
+}
 from lib.plot import apply_legend_style, plot_data, create_common_subplots, create_common_two_panel_figure, apply_note_to_figure, add_centered_suptitle, draw_vertical_lines, draw_horizontal_lines, place_point_label, format_ref_value
 
 from common_args import add_common_args, resolve_axis_label, resolve_plot_kwargs
@@ -286,11 +295,24 @@ def main():
             y = subset[args.y].values[0].astype(float)
 
             params = subset["Params"].iloc[0]
-            params_format = subset["ParamsFormat"].iloc[0]
+            params_format = (
+                subset["ParamsFormat"].iloc[0]
+                if "ParamsFormat" in subset.columns
+                else [".4g"] * len(params)
+            )
             params_labels = subset["ParamsLabel"].iloc[0]
             params_error = subset["ParamsError"].iloc[0]
             params_units = subset["ParamsUnit"].iloc[0] if "ParamsUnit" in subset.columns else None
-            func = subset["FitFunction"].iloc[0]
+            if "FitFunction" in subset.columns and callable(subset["FitFunction"].iloc[0]):
+                func = subset["FitFunction"].iloc[0]
+            else:
+                func = FIT_FUNCTION_BY_LABEL.get(fit_function_label)
+                if func is None:
+                    raise ValueError(
+                        f"No FitFunction column and no known function for "
+                        f"FitFunctionLabel={fit_function_label!r}. Add it to "
+                        f"FIT_FUNCTION_BY_LABEL in {os.path.basename(__file__)}."
+                    )
             fit = func(x, *params)
             y_error = None
 

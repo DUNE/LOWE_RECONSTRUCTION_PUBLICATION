@@ -42,7 +42,7 @@ Physics
 -------
 Flux
     B16-GS98 [1], built from the per-component spectra in
-    ``input/data/Solar_Neutrino_Spectrum.pkl`` with the pep and 7Be lines at
+    ``input/data/theory/Solar_Neutrino_Spectrum.pkl`` with the pep and 7Be lines at
     their true energies. Models without component spectra, such as the BS05(OP)
     file shipped with SNOwGLoBES, are folded off the 0.2 MeV SNOwGLoBES flux
     file instead, spreading each bin's flux uniformly across it.
@@ -418,7 +418,7 @@ def parse_args():
                              f"$MARLEY_CC_REACT, else $MARLEY/data/react/{MARLEY_CC_REACT})")
     parser.add_argument("--spectra", default=None,
                         help="Per-component solar spectra pickle "
-                             "(default: input/data/Solar_Neutrino_Spectrum.pkl)")
+                             "(default: input/data/theory/Solar_Neutrino_Spectrum.pkl)")
     parser.add_argument("--flux", default="solar_b16gs98_mixed",
                         help="Flux file stem in <snowglobes>/fluxes naming the solar model; "
                              "folded directly only with --method fluxfile")
@@ -471,7 +471,7 @@ def main():
     flux_tag = args.flux.replace("solar_", "").replace("_mixed", "")
     solar_model = args.solar_model or SOLAR_MODEL_LABELS.get(flux_tag, flux_tag)
     config = args.config or f"lar_{flux_tag}"
-    spectra_path = Path(args.spectra) if args.spectra else repo / "input" / "data" / "Solar_Neutrino_Spectrum.pkl"
+    spectra_path = Path(args.spectra) if args.spectra else repo / "input" / "data" / "theory" / "Solar_Neutrino_Spectrum.pkl"
     outdir = Path(args.outdir) if args.outdir else repo / "input" / "data" / "snowglobes"
     outdir.mkdir(parents=True, exist_ok=True)
 

@@ -100,6 +100,7 @@ def parse_args():
         Path(__file__).resolve().parents[1]
         / "input"
         / "data"
+        / "theory"
         / "appearance_terms_1300km.pkl"
     )
     parser.add_argument("--output", type=Path, default=default_output)

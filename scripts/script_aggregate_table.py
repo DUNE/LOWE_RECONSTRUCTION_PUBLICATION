@@ -120,6 +120,130 @@ parser.add_argument(
 
 
 parser.add_argument(
+    "--x_thresholds",
+    nargs="+",
+    type=float,
+    default=None,
+    help="Aggregate once per threshold, keeping x >= each value (the upper "
+    "edge is still taken from --rangex), and add one row per threshold. "
+    "Combine with --column_group to spread a second key over the columns, "
+    "e.g. --x_thresholds 5 8 10 15 --column_group Particle.",
+)
+
+parser.add_argument(
+    "--x_threshold_label",
+    type=str,
+    default="{:g}",
+    help="Format of the --x_thresholds row labels, filled with the threshold "
+    "value (default: '{:g}'), e.g. '\\qty{{{:g}}}{{\\mega\\electronvolt}}'",
+)
+
+parser.add_argument(
+    "--x_threshold_title",
+    type=str,
+    default="Threshold",
+    help="Header of the --x_thresholds row-label column (default: Threshold)",
+)
+
+parser.add_argument(
+    "--column_group",
+    type=str,
+    default=None,
+    help="Second column key (e.g. 'Stage'): the table gets a two-level column "
+    "header, one group of --variable_name columns per value of this column, "
+    "in the order of --column_group_order.",
+)
+
+parser.add_argument(
+    "--column_group_order",
+    nargs="+",
+    type=str,
+    default=None,
+    help="Values of --column_group to keep, in display order (default: all, sorted)",
+)
+
+parser.add_argument(
+    "--column_group_titles",
+    nargs="+",
+    type=str,
+    default=None,
+    help="Display titles for the --column_group_order values (default: the raw values)",
+)
+
+parser.add_argument(
+    "--row_order",
+    nargs="+",
+    type=str,
+    default=None,
+    help="Display order of the --row_name values inside each Geometry/Config block; "
+    "the blocks themselves follow the order of --configs.",
+)
+
+parser.add_argument(
+    "--block_rows",
+    action="store_true",
+    help="Blocked row layout: Geometry and Config are merged into one label shown "
+    "only on the first row of each block, with an \\addlinespace between blocks "
+    "(booktabs only, no \\hline/\\cmidrule).",
+)
+
+parser.add_argument(
+    "--decimals",
+    type=int,
+    default=None,
+    help="Number of decimals of the formatted values (default 2)",
+)
+
+parser.add_argument(
+    "--table_env",
+    type=str,
+    default="table*",
+    help="Float environment used when a caption is given (default: table*). "
+    "'none' writes only the \\begin{tabular}...\\end{tabular} block (no float, no "
+    "caption, no label) to a parallel file name with the suffix _tabular.tex, for "
+    "documents that supply their own float.",
+)
+
+parser.add_argument(
+    "--bare",
+    action="store_true",
+    help="Shorthand for --table_env none",
+)
+
+parser.add_argument(
+    "--label",
+    type=str,
+    default=None,
+    help="LaTeX label emitted as \\label{...} right after the caption "
+    "(ignored with --table_env none)",
+)
+
+parser.add_argument(
+    "--variable_titles",
+    nargs="+",
+    type=str,
+    default=None,
+    help="Display titles for the --variables columns, in the same order "
+    "(used with --column_group), e.g. '$x$ low' '$x$ high' '$y$' '$z$'",
+)
+
+parser.add_argument(
+    "--row_titles",
+    nargs="+",
+    type=str,
+    default=None,
+    help="Display titles for the --row_order values, in the same order "
+    "(e.g. Gamma Neutron Radiological)",
+)
+
+parser.add_argument(
+    "--output_name",
+    type=str,
+    default=None,
+    help="Fixed output file name (default: generated from the arguments)",
+)
+
+parser.add_argument(
     "--variable_units",
     nargs="+",
     type=str,
@@ -292,6 +416,9 @@ parser.add_argument(
 
 
 args = parser.parse_args()
+X_THRESHOLD_COLUMN = "XThreshold"
+if args.bare:
+    args.table_env = "none"
 
 
 def _resolve_caption_file(value):
@@ -408,6 +535,10 @@ def main():
         df[args.variable_name] = df[args.variable_name].fillna("None")
 
     subset = filter_dataframe(df, args)
+    group_values = []
+    if args.column_group:
+        group_values = args.column_group_order or sorted(subset[args.column_group].dropna().unique())
+        subset = subset[subset[args.column_group].isin(group_values)]
     # variables = args.variables if args.variables is not None else [None]
     # iterables = this_df[args.iterable].unique() if args.iterable is not None else [None]
 
@@ -449,12 +580,26 @@ def main():
     # True whenever the row index deviates from the classic Geometry/Config
     # layout, so the collapsing/relabeling logic below (which assumes exactly
     # that layout) needs to be skipped.
-    custom_rows = bool(args.row_name) or args.drop_config
+    if args.x_thresholds is not None:
+        row_index = row_index + [X_THRESHOLD_COLUMN]
+    custom_rows = bool(args.row_name) or args.drop_config or args.x_thresholds is not None
 
     df_config = subset.explode(column=cols)
     df_config = df_config.dropna(subset=cols + [args.variable_name])
 
-    if args.rangex is not None and args.x is not None:
+    if args.x_thresholds is not None and args.x is not None:
+        # One copy of the rows per threshold, each keeping x >= threshold (and
+        # x <= the --rangex upper edge, if given), tagged with its threshold.
+        df_config[args.x] = df_config[args.x].astype(float)
+        upper = args.rangex[1] if args.rangex is not None else np.inf
+        print(f"Applying x-axis thresholds {args.x_thresholds} (upper edge {upper})")
+        parts = []
+        for threshold in args.x_thresholds:
+            part = df_config[(df_config[args.x] >= threshold) & (df_config[args.x] <= upper)].copy()
+            part[X_THRESHOLD_COLUMN] = threshold
+            parts.append(part)
+        df_config = pd.concat(parts, ignore_index=True)
+    elif args.rangex is not None and args.x is not None:
         df_config[args.x] = df_config[args.x].astype(float)
         print(f"Applying x-axis range filter: {args.rangex[0]} to {args.rangex[1]}")
         df_config = df_config[
@@ -473,6 +618,7 @@ def main():
     # rather than inventing an error from the values themselves. --error_mode
     # std/sem are the exception: they derive an error from the spread of the
     # raw --y values instead, so they work even without a *Error column.
+    group_by_extra = [args.column_group] if group_values else []
     derives_error_from_spread = args.error_mode in ("std", "sem")
     has_error_column = (
         f"{args.y}Error" in df_config.columns or derives_error_from_spread
@@ -503,7 +649,7 @@ def main():
             else:
                 error_agg = lambda x: np.sqrt(np.sum(x**2)) / len(x)
 
-        df_table = df_config.groupby(row_index + [args.variable_name]).agg(
+        df_table = df_config.groupby(row_index + group_by_extra + [args.variable_name]).agg(
             {
                 args.y: [args.operation],
                 f"{args.y}Error": error_agg,
@@ -516,7 +662,7 @@ def main():
         df_table = df_table.drop(columns=[(f"{args.y}Error", "<lambda>")])
         df_table.columns = df_table.columns.droplevel(1)
     else:
-        df_table = df_config.groupby(row_index + [args.variable_name]).agg(
+        df_table = df_config.groupby(row_index + group_by_extra + [args.variable_name]).agg(
             {args.y: [args.operation]}
         )
 
@@ -525,11 +671,17 @@ def main():
         )
         df_table.columns = df_table.columns.droplevel(1)
 
+    if group_values:
+        df_table = df_table.reset_index()
+        group_key = [args.column_group, args.variable_name]
+    else:
+        group_key = args.variable_name
+
     if args.variable_title is not None:
         df_table = df_table.rename(columns={args.y: args.variable_title})
         df_table = df_table.pivot_table(
             index=row_index,
-            columns=args.variable_name,
+            columns=group_key,
             values=[args.variable_title],
             aggfunc="first",
         )
@@ -537,7 +689,7 @@ def main():
     else:
         df_table = df_table.pivot_table(
             index=row_index,
-            columns=args.variable_name,
+            columns=group_key,
             values=[args.y],
             aggfunc="first",
         )
@@ -568,6 +720,21 @@ def main():
     else:
         df_table.index.name = "Configuration"
 
+    # Label the --x_thresholds rows. The pivot has already sorted them
+    # numerically, so the labels are applied only now.
+    if args.x_thresholds is not None:
+        label = args.x_threshold_label.format
+        if isinstance(df_table.index, pd.MultiIndex):
+            level = df_table.index.names.index(X_THRESHOLD_COLUMN)
+            df_table.index = df_table.index.set_levels(
+                [label(v) for v in df_table.index.levels[level]], level=level
+            )
+        else:
+            df_table.index = df_table.index.map(label)
+        df_table.index.names = [
+            args.x_threshold_title if n == X_THRESHOLD_COLUMN else n for n in df_table.index.names
+        ]
+
     # Apply an optional display mapping to --row_name values (e.g. renaming
     # cutflow stage names), looked up by name from plot_params mappings. Rows
     # are also reordered to match the mapping's key order; any raw value not
@@ -591,13 +758,23 @@ def main():
             df_table = df_table.rename(index=row_mapping)
 
     # Sort columns as they appear in args.variables
-    df_table = df_table.reindex(columns=args.variables, level=1)
+    if group_values:
+        wanted = pd.MultiIndex.from_tuples(
+            [(df_table.columns.get_level_values(0)[0], g, v) for g in group_values for v in args.variables]
+        )
+        df_table = df_table.reindex(columns=wanted)
+    else:
+        df_table = df_table.reindex(columns=args.variables, level=1)
 
     # Optional mapping dictionary name from plot_params mappings used to
     # reorder the columns to match the mapping's key order (mirrors
     # --row_name_mapping); any raw value not covered by the mapping keeps
     # its relative position, appended after the mapped ones.
-    variable_mapping = get_mapping_dict(args.variable_mapping) or {} if args.variable_mapping else {}
+    variable_mapping = (
+        get_mapping_dict(args.variable_mapping) or {}
+        if args.variable_mapping and not group_values
+        else {}
+    )
     if variable_mapping:
         present_cols = list(dict.fromkeys(df_table.columns.get_level_values(1)))
         ordered_cols = [v for v in variable_mapping if v in present_cols] + [
@@ -626,7 +803,7 @@ def main():
         if args.variable_units is not None and args.variables is not None
         else {}
     )
-    if variable_mapping or args.name_columns or unit_map:
+    if (variable_mapping or args.name_columns or unit_map) and not group_values:
 
         def _display_column(raw):
             if raw in variable_mapping:
@@ -645,8 +822,32 @@ def main():
     # Drop rows with all NaN values
     df_table = df_table.dropna(how="all")
 
+    # Blocks follow --configs; rows inside a block follow --row_order
+    if args.block_rows and args.row_name:
+        config_rank = {config_dict.get(c, c): i for i, c in enumerate(args.configs)}
+        row_rank = {v: i for i, v in enumerate(args.row_order or [])}
+        keys = [
+            (config_rank.get(idx[-2], len(config_rank)), row_rank.get(idx[-1], len(row_rank)), idx[-1])
+            for idx in df_table.index
+        ]
+        df_table = df_table.iloc[sorted(range(len(keys)), key=keys.__getitem__)]
+
     # Make the "Configuration" index a column and drop the index
     df_table = df_table.reset_index()
+
+    if group_values:
+        # Two-level header: drop the constant value level and translate the group titles
+        titles = dict(zip(group_values, args.column_group_titles or group_values))
+        var_titles = dict(zip(args.variables, args.variable_titles or args.variables))
+        df_table.columns = pd.MultiIndex.from_tuples(
+            [(titles.get(c[1], c[1]), var_titles.get(c[2], c[2])) if c[1] != "" else (c[0], "") for c in df_table.columns]
+        )
+
+    if args.row_titles and args.row_order and args.row_name:
+        row_titles = dict(zip(args.row_order, args.row_titles))
+        for col in df_table.columns:
+            if col[0] == args.row_name:
+                df_table[col] = df_table[col].map(lambda v: row_titles.get(v, v))
 
     # Don't print the row index
     print(df_table.to_string(index=False))
@@ -660,8 +861,10 @@ def main():
     if args.emph is not None and 0 <= args.emph < df_table.shape[1]:
         df_table.iloc[:, args.emph] = "\\emph{" + df_table.iloc[:, args.emph] + "}"
 
-    output_filename = make_name_from_args(args, prefix=None, suffix="table.tex")
-    if args.no_tabular:
+    output_filename = args.output_name or make_name_from_args(args, prefix=None, suffix="table.tex")
+    if args.table_env == "none":
+        output_filename = output_filename.replace(".tex", "_tabular.tex")
+    elif args.no_tabular:
         output_filename = output_filename.replace(".tex", "_no_tabular.tex")
     elif args.no_table:
         output_filename = output_filename.replace(".tex", "_no_table.tex")
@@ -675,14 +878,52 @@ def main():
     else:
         caption = args.title
 
-    def _write_latex(path):
-        tabular = df_table.to_latex(
-            index=False,
-            column_format="l" + "c" * (df_table.shape[1] - 1),
-            multicolumn_format="c",
-            bold_rows=False,
-            escape=False,
+    def _blocked_tabular():
+        """Blocked booktabs tabular: group row, header row, one block per configuration."""
+        cols = list(df_table.columns)
+        n_lead = sum(1 for c in cols if c[1] == "")  # Geometry, Config, --row_name
+        value_cols = cols[n_lead:]
+        groups = []
+        for c in value_cols:
+            if groups and groups[-1][0] == c[0]:
+                groups[-1][1] += 1
+            else:
+                groups.append([c[0], 1])
+        lines = [f"\\begin{{tabular}}{{ll{'c' * len(value_cols)}}}", "\\toprule"]
+        lines.append(
+            " & "
+            + "".join(f" & \\multicolumn{{{n}}}{{c}}{{{t}}}" for t, n in groups)
+            + " \\\\"
         )
+        lines.append(
+            " & ".join(["Configuration", str(args.row_name)] + [c[1] for c in value_cols]) + " \\\\"
+        )
+        lines.append("\\midrule")
+        previous = None
+        for _, row in df_table.iterrows():
+            block = (row.iloc[0], row.iloc[1])
+            first = f"{block[0]} {block[1]}"
+            if block == previous:
+                first = ""
+            elif previous is not None:
+                lines.append("\\addlinespace")
+            previous = block
+            cells = [first, str(row.iloc[2])] + [str(v) for v in row.iloc[n_lead:]]
+            lines.append(" & ".join(cells) + " \\\\")
+        lines += ["\\bottomrule", "\\end{tabular}"]
+        return "\n".join(lines) + "\n"
+
+    def _write_latex(path):
+        if args.block_rows:
+            tabular = _blocked_tabular()
+        else:
+            tabular = df_table.to_latex(
+                index=False,
+                column_format="l" + "c" * (df_table.shape[1] - 1),
+                multicolumn_format="c",
+                bold_rows=False,
+                escape=False,
+            )
         if args.title:
             # Spanning header row across the full table width, right below \toprule.
             title_row = (
@@ -690,12 +931,14 @@ def main():
                 "\\midrule\n"
             )
             tabular = tabular.replace("\\toprule\n", "\\toprule\n" + title_row, 1)
-        if caption is not None:
+        if caption is not None and args.table_env != "none":
+            label = f"\\label{{{args.label}}}\n" if args.label else ""
             tabular = (
-                "\\begin{table*}[t]\n"
+                f"\\begin{{{args.table_env}}}[t]\n"
                 f"{tabular}"
                 f"\\caption{{{caption}}}\n"
-                "\\end{table*}\n"
+                f"{label}"
+                f"\\end{{{args.table_env}}}\n"
             )
         if args.no_table or args.no_tabular:
             tabular = _trim_environment_lines(

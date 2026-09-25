@@ -401,6 +401,25 @@ parser.add_argument(
 )
 
 parser.add_argument(
+    "--comparable_mapping",
+    type=str,
+    default=None,
+    help="Optional plot_params mapping name used to rename --comparable values in legend labels.",
+)
+
+parser.add_argument(
+    "--lower_series_donor",
+    nargs=2,
+    metavar=("FROM", "TO"),
+    default=None,
+    help=(
+        "Copy the --lower_series_data column (and its Error column) from the --iterable rows "
+        "equal to FROM onto the rows equal to TO, matched on every other column (e.g. "
+        "'Solar Day' 'Solar' so the significance panel survives removing Solar Day)."
+    ),
+)
+
+parser.add_argument(
     "--no_bottom_legend",
     action="store_true",
     help="Suppress the legend drawn on the bottom (lower-series) panel.",
@@ -1027,6 +1046,19 @@ def main():
     
     df = import_data(args)
 
+    _donor = getattr(args, "lower_series_donor", None)
+    if _donor and getattr(args, "lower_series_data", None) and args.iterable in df.columns:
+        _src, _dst = _donor
+        _cols = [c for c in (args.lower_series_data, f"{args.lower_series_data}Error") if c in df.columns]
+        _keys = [c for c in ("Config", "Name", "SpectrumType", "Study", "Variable") if c in df.columns]
+        for _idx in df.index[df[args.iterable] == _dst]:
+            _match = df[df[args.iterable] == _src]
+            for _k in _keys:
+                _match = _match[_match[_k] == df.at[_idx, _k]]
+            if len(_match):
+                for _c in _cols:
+                    df.at[_idx, _c] = _match.iloc[0][_c]
+
     if df.empty:
         rprint("[yellow]Warning:[/yellow] No datafiles found. Exiting...")
         return
@@ -1136,7 +1168,10 @@ def main():
                 )
                 comparable_col = None
             else:
-                comparable_values_arr = df_config[comparable_col].dropna().unique()
+                # Apply --select first so values it excludes do not claim a
+                # linestyle slot or a legend entry.
+                _filtered_for_comparable = filter_dataframe(df_config, args)
+                comparable_values_arr = _filtered_for_comparable[comparable_col].dropna().unique()
 
         stacked_requested = getattr(args, "stacked", False)
         stacked_enabled = stacked_requested and comparable_col is None
@@ -1456,7 +1491,7 @@ def main():
                                     x_reference,
                                     y=values,
                                     errory=errors,
-                                    label=f"{operation_label} ({comparable_val})",
+                                    label=f"{operation_label} ({map_iterable_label(comparable_val, comparable_col, getattr(args, 'comparable_mapping', None))})",
                                     color=getattr(args, "reference_sum_color", None) or f"C{sdx}",
                                     plot_type="errorbar",
                                     fmt="o",
@@ -1801,14 +1836,14 @@ def main():
                         color="black",
                         linestyle=_resolve_comparable_style(sdx, args, n_total=comparable_values_arr.size)[0],
                         linewidth=_resolve_comparable_style(sdx, args, n_total=comparable_values_arr.size)[1] or 1.5,
-                        label=str(val),
+                        label=map_iterable_label(val, comparable_col, getattr(args, "comparable_mapping", None)),
                     )
                     for sdx, val in enumerate(comparable_values_arr)
                 ]
             apply_legend_style(
                 ax_top,
                 handles=comparable_handles,
-                labels=[str(v) for v in comparable_values_arr],
+                labels=[map_iterable_label(v, comparable_col, getattr(args, "comparable_mapping", None)) for v in comparable_values_arr],
                 title=None if getattr(args, "comparable_title", None) == "None" else (getattr(args, "comparable_title", None) or comparable_col),
                 capitalize_labels=False,
                 loc="lower right",

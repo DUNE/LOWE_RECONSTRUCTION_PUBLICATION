@@ -72,7 +72,7 @@ MODELS = {
 
 
 def main():
-    output_dir = os.path.join(os.path.dirname(__file__), "..", "input", "data")
+    output_dir = os.path.join(os.path.dirname(__file__), "..", "input", "data", "pde")
 
     for name, spec in MODELS.items():
         popt, pcov = curve_fit(

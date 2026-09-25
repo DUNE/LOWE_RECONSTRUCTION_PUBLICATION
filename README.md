@@ -162,6 +162,23 @@ Run it with:
 python3 run_table_scripts.py -s my_tables
 ```
 
+## Truth-position study (thesis section on position information)
+
+Figures and tables from the SOLAR `truth_position` export (`export_repo/`: 80 pickles `{config}_all_{Kind}.pkl`, `README.md`, `meta.json`), built with the existing macros only.
+
+```bash
+./scripts/sync_solar_data.sh --truth-position          # fetch the export into input/data/truth_position/ (gitignored *.pkl)
+python scripts/truth_position_check.py                 # reference numbers, four-face sums and file structure must reproduce
+python run_plot_scripts.py -s truth_position           # input/plots/truth_position_scripts.txt  -> output/plots/truth_position/ (PNG)
+python run_table_scripts.py -s truth_position          # input/tables/truth_position_scripts.txt -> output/tables/ (.tex)
+```
+
+The plot list calls `script_iterable_scan.py` and `script_compare_hist1d.py`; the table list calls `script_aggregate_table.py`.
+Table captions and the caveats (raw weights only, definition of the truth pipeline, radiological MC counts, truth X outside the VD box,
+off-scale medians, HD central statistics) are in `input/captions/truth_position_*.txt`. The colours of the species and faces are the
+mappings `truth_species_color` and `truth_face_color` in `config/plot_params.json`. A description of every generated file for other
+agents is in [`docs/truth_position_outputs.md`](docs/truth_position_outputs.md).
+
 ## Optional External Output Paths
 
 Named command lists can be mapped to external output directories through [`config/output_paths.json`](config/output_paths.json).

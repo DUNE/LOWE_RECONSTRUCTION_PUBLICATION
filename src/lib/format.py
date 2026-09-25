@@ -249,7 +249,8 @@ def _format_value_with_paren_error(base_format, value, error):
         error_digits = int(round(abs(error) / 10 ** (value_exponent - mantissa_decimals)))
         if _too_many_digits(error_digits):
             return f"{format(value, base_format)} $\\pm$ {format(error, base_format)}"
-        return f"{mantissa_part}({error_digits})e{exponent_part}"
+        exponent_suffix = f"e{exponent_part}" if exponent_part else ""
+        return f"{mantissa_part}({error_digits}){exponent_suffix}"
 
     return format(value, base_format)
 
@@ -326,7 +327,7 @@ def format_value(row, args=None, threshold=1e-3):
     if _wants_scientific(mean, args):
         return f"{mean:.2e}"
 
-    return f"{mean:.2f}"
+    return f"{mean:.{getattr(args, 'decimals', None) if getattr(args, 'decimals', None) is not None else 2}f}"
 
 
 def make_config_label_from_args(args, config=None, name=None, iterable=None):

@@ -18,6 +18,17 @@ def gaussian(x, a, b, c):
     return a * np.exp(-0.5 * ((x - b) / c) ** 2)
 
 
+def gauss(x, coefficients, debug=False):
+    """
+    Gaussian function.
+    """
+    a = coefficients[0]
+    x0 = coefficients[1]
+    sigma = coefficients[2]
+    # return a/(sigma*math.sqrt(2*math.pi))*np.exp(-0.5*np.power((x-x0)/sigma,2))
+    return a * np.exp(-0.5 * np.power((x - x0) / sigma, 2))
+
+
 def double_gaussian(x, a_core, mu, sigma_core, a_tail, sigma_tail):
     """Double Gaussian: narrow core (intrinsic resolution) + broad tail component."""
     return (

@@ -165,7 +165,15 @@
       "CPA": "CPA",
       "APA": "APA",
       "Gamma": "Ext. Gamma",
-      "Neutron": "Ext. Neutron"
+      "Neutron": "Ext. Neutron",
+      "8B": "$⁸B$",
+      "HEP": "$hep$"
+    },
+    "background_source": {
+      "cavernwall": "Cavern Wall",
+      "foam": "Foam",
+      "cryostat": "Cryostat",
+      "cavern": "Cavern"
     },
     "component": {
       "marley": "Neutrino",
@@ -259,8 +267,8 @@
       "pep": "pep",
       "be7": "⁷Be",
       "b7": "⁷Be",
-      "b8": "⁸B",
-      "hep": "HEP",
+      "b8": "$⁸B$",
+      "hep": "$hep$",
       "n13": "¹³N",
       "o15": "¹⁵O",
       "f17": "¹⁷F"
@@ -312,13 +320,12 @@
       "default": "Reference",
       "oscpoint_solar": "Solar Best-Fit $\\Delta m^2_{21}$",
       "oscpoint_reactor": "Reactor $\\Delta m^2_{21}$",
-      "energy_maink": "MainK Energy",
-      "energy_spk": "SignalParticleK Energy",
-      "charge_Q0": "Q > 0 ADC",
-      "charge_Q50": "Q > 50 ADC",
-      "charge_Q100": "Q > 100 ADC",
-      "charge_Q200": "Q > 200 ADC",
-      "charge_Q500": "Q > 500 ADC",
+      "energy_maink": "Primary Cluster Energy",
+      "energy_spk": "Incoming Energy",
+      "charge_Q0": "$Q > Q_{0}$",
+      "charge_Q50": "$Q > Q_{min}$",
+      "charge_Q100": "$Q > 2Q_{min}$",
+      "charge_Q500": "$Q > 10Q_{min}$",
       "unc_bkg0": "$\\sigma_{bkg}$ = 0%",
       "unc_bkg4": "$\\sigma_{bkg}$ = 4%",
       "unc_bkg6": "$\\sigma_{bkg}$ = 6%",
@@ -359,6 +366,12 @@
       "bkg_gamma_cluster": "$\\gamma$ Bkg: Cluster Energy",
       "bkg_gamma_total": "$\\gamma$ Bkg: Total Energy",
       "legacy_fit": "Legacy Fit",
+      "Asimov": "Asimov",
+      "Gaussian": "Gaussian",
+      "ProfileLikelihood": "Profile Likelihood",
+      "Smoothed/MinScenario": "Minimum Scenario",
+      "Smoothed/CentralScenario": "Central Scenario",
+      "Smoothed/MaxScenario": "Maximum Scenario",
       "SolarEnergy_DayNight_Cutflow": "Reference",
       "SolarEnergy_HEP_Cutflow": "Reference",
       "SolarEnergy_Sensitivity_Cutflow": "Reference",
@@ -381,7 +394,7 @@
       "Sensitivity_Contours_bkgmodel_reduced": "Shielded",
       "Sensitivity_Contours_membrane_veto_off": "No Membrane Veto",
       "Sensitivity_Contours_legacy_fit": "Legacy Fit",
-      "Sensitivity_Contours_energy_spk": "SignalParticleK Energy",
+      "Sensitivity_Contours_energy_spk": "Incoming Energy",
       "Sensitivity_10Y_Contours_nuisance_nominal": "No Nuisances",
       "Sensitivity_10Y_Contours_nuisance_sin13": "$\\sin^{2}\\theta_{13}$ Pull Only",
       "Sensitivity_10Y_Contours_nuisance_escale": "Energy Scale Only",
@@ -430,6 +443,22 @@
       "Neutron": "C4",
       "radiological": "C3",
       "Radiological": "C3"
+    },
+    "truth_species_color": {
+      "marley": "C0",
+      "gamma": "C2",
+      "neutron": "C4",
+      "radiological": "C3"
+    },
+    "truth_face_color": {
+      "X low": "rgb(227,73,72)",
+      "X high": "rgb(237,161,0)",
+      "Y": "rgb(232,123,164)",
+      "Z": "rgb(0,131,0)"
+    },
+    "truth_position_source": {
+      "truth": "Truth position",
+      "reco": "Reco position"
     }
   }
 }
