@@ -107,6 +107,12 @@ def parse_args():
         help="Legend label for the upper line",
     )
     parser.add_argument(
+        "--lower_series_label",
+        type=str,
+        default=None,
+        help="Legend label for the lower-panel series (default: the --lower_series prefix)",
+    )
+    parser.add_argument(
         "--lower_labely",
         "--lower-labely",
         "--lower_label",
@@ -584,7 +590,7 @@ def main():
             row,
             lower_x_column,
             lower_y_column,
-            lower_series_prefix,
+            args.lower_series_label or lower_series_prefix,
             "C1",
             26,
             plot_style=args.lower_plot_style,

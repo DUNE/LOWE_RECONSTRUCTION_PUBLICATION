@@ -292,7 +292,7 @@ def main():
                     mappable.set_clim(*args.rangez)
                 cbar = fig.colorbar(mappable, ax=ax_current)
                 z_label = resolve_axis_label(args.labelz, args.z, subset)
-                cbar.set_label(z_label if not args.logz else f"{z_label} (log scale)")
+                cbar.set_label(z_label)
             else:
                 hist2d_kwargs = {"range": (x_range, y_range)}
                 if is_integer_valued(x) and is_integer_valued(y):
@@ -339,16 +339,16 @@ def main():
             if args.norm is not None:
                 norm_labels = {
                     "global": "Normalized Counts",
-                    "horizontal": "Normalized Counts (horizontal)",
-                    "vertical": "Normalized Counts (vertical)",
-                    "combined": "Normalized Counts (combined)",
+                    "horizontal": "Normalized Counts (Rows)",
+                    "vertical": "Normalized Counts (Columns)",
+                    "combined": "Normalized Counts (Rows + Columns)",
                 }
                 base_label = norm_labels[args.norm]
             elif args.density:
                 base_label = "Density"
             else:
                 base_label = "Counts"
-            cbar.set_label(base_label if not args.logz else f"{base_label} (log scale)")
+            cbar.set_label(base_label)
         cbar.ax.yaxis.set_label_position("right")  # Move label to the left
 
         for (idx, variable), (jdx, iterable) in product(

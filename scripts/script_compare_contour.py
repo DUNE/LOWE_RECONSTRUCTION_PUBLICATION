@@ -996,15 +996,14 @@ def build_config_label(config, name, iterable=None):
     elif args.configs is not None and len(set(args.configs)) > 1 and (
         args.names is None or len(set([n for n in args.names if n is not None])) <= 1
     ):
-        label = f"{geom}, {config_label}"
+        label = f"{geom} {config_label}"
     elif args.names is not None and len(set(args.names)) > 1 and (
         args.configs is None or len(set([c for c in args.configs if c is not None])) <= 1
     ):
         label = f"{geom}, {name}"
     else:
-        label = ", ".join(
-            [part for part in [geom, config_label, name] if part not in [None, "None"]]
-        )
+        head = " ".join(part for part in [geom, config_label] if part not in [None, "None"])
+        label = ", ".join(part for part in [head, name] if part not in [None, "None", ""])
 
     if iterable is not None:
         label += f", {iterable}"

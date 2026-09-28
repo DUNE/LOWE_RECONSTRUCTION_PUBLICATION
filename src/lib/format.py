@@ -124,6 +124,28 @@ def make_verbose_title_from_args(args):
     return " - ".join(title_parts) if title_parts else "Plot"
 
 
+def _title_case_words(text):
+    """Capitalise the first letter of each plain word ("X only" -> "X Only");
+    words starting with a symbol or math are left alone."""
+    if not isinstance(text, str):
+        return text
+    return " ".join(w[:1].upper() + w[1:] if w[:1].isalpha() else w for w in text.split(" "))
+
+
+def _panel_label(key, value):
+    """Panel subtitle for one iterable value: booleans read as "{key}" /
+    "Not {key}", numbers keep their key ("Energy: 10"), and named values
+    stand alone ("Reference", not "Study: Reference")."""
+    text = str(value).strip()
+    if text.lower() in {"true", "false"}:
+        return str(key) if text.lower() == "true" else f"Not {key}"
+    try:
+        float(text)
+    except ValueError:
+        return _title_case_words(text)
+    return f"{key}: {text}"
+
+
 def make_subtitle_from_args(args, iterables, plot_type="hist1d", idx=None):
     subtitle_parts = []
 
@@ -132,12 +154,12 @@ def make_subtitle_from_args(args, iterables, plot_type="hist1d", idx=None):
     else:
         if plot_type == "hist2d":
             if hasattr(args, "iterable") and args.iterable:
-                subtitle_parts.append(f"{args.iterable}: {iterables[idx]}")
+                subtitle_parts.append(_panel_label(args.iterable, iterables[idx]))
 
         else:
             if hasattr(args, "variables") and args.variables:
                 if idx is not None and 0 <= idx < len(args.variables):
-                    subtitle_parts.append(args.variables[idx])
+                    subtitle_parts.append(_title_case_words(args.variables[idx]))
                 else:
                     subtitle_parts.append("_".join(args.variables))
 
@@ -229,8 +251,11 @@ def _format_value_with_paren_error(base_format, value, error):
             value_str = format(value, f".{decimals}{type_char}")
         else:
             # format() can't take negative precision; pre-round to the
-            # resolved place (e.g. nearest thousand) and show 0 decimals
+            # resolved place (e.g. nearest thousand) and show 0 decimals.
+            # The last shown digit is then the ones place, so the error is
+            # written in ones too (45 +/- 23 -> "50(20)", not "50(2)").
             value_str = format(round(value, decimals), f".0{type_char}")
+            error_digits = int(round(abs(error), decimals))
         if _too_many_digits(error_digits):
             # Error dwarfs the value (e.g. an unconstrained/degenerate fit
             # parameter) -- parenthetical notation isn't meaningful, fall back
@@ -255,7 +280,30 @@ def _format_value_with_paren_error(base_format, value, error):
     return format(value, base_format)
 
 
+def _siunitx(text, args):
+    """Wrap a formatted number in siunitx's \\num{} when --siunitx is set, so
+    that e.g. '2.38e+03' prints as 2.38 x 10^3 and '1.35(6)e-08' keeps its
+    parenthetical uncertainty. Placeholders ('---') are left as they are."""
+    if args is None or not getattr(args, "siunitx", False) or text == "---":
+        return text
+    return "\\num{" + text.replace("$\\pm$", "\\pm").replace("±", "\\pm") + "}"
+
+
+def _significant(value, digits):
+    """`value` rounded to `digits` significant figures in plain positional
+    notation, trailing zeros trimmed (2384 -> '2380', 0.016834 -> '0.0168')."""
+    return np.format_float_positional(float(f"{value:.{digits}g}"), trim="-")
+
+
 def format_with_error(
+    row, args=None, threshold=1e-3, significant_figures=1, error_format="±"
+):
+    return _siunitx(
+        _format_with_error(row, args, threshold, significant_figures, error_format), args
+    )
+
+
+def _format_with_error(
     row, args=None, threshold=1e-3, significant_figures=1, error_format="±"
 ):
     mean = row[(args.y, getattr(args, "operation", "mean"))]
@@ -285,6 +333,9 @@ def format_with_error(
             print(f"Unknown format: {error_format}. Defaulting to '±'")
             format_string = f"{{:.{decimals}e}} ± {{:.{decimals}e}}"
         return format_string.format(mean, error)
+
+    if args is not None and getattr(args, "compact_error", False):
+        return _format_value_with_paren_error("f", mean, error)
 
     # Determine significant figures based on error if not provided
     error_magnitude = -int(np.floor(np.log10(abs(error)))) + 1
@@ -325,9 +376,14 @@ def format_value(row, args=None, threshold=1e-3):
         return "---"
 
     if _wants_scientific(mean, args):
-        return f"{mean:.2e}"
+        return _siunitx(f"{mean:.2e}", args)
 
-    return f"{mean:.{getattr(args, 'decimals', None) if getattr(args, 'decimals', None) is not None else 2}f}"
+    sig_figs = getattr(args, "sig_figs", None) if args is not None else None
+    if sig_figs is not None:
+        return _siunitx(_significant(mean, sig_figs), args)
+
+    decimals = getattr(args, "decimals", None)
+    return _siunitx(f"{mean:.{decimals if decimals is not None else 2}f}", args)
 
 
 def make_config_label_from_args(args, config=None, name=None, iterable=None):
@@ -378,13 +434,13 @@ def make_config_label_from_args(args, config=None, name=None, iterable=None):
         geom_label = f"{geom.upper()}"
     elif num_configs >= 2 and num_names == 1:
         # Use "GEOMETRY, CONFIG_LABEL"
-        geom_label = f"{geom.upper()}, {config_label}"
+        geom_label = f"{geom.upper()} {config_label}"
     elif num_configs == 1 and num_names > 1:
         # Use "GEOMETRY, NAME"
         geom_label = f"{geom.upper()}, {name_label}"
     else:
         # Use "GEOMETRY, CONFIG_LABEL, NAME"
-        geom_label = f"{geom.upper()}, {config_label}, {name_label}"
+        geom_label = f"{geom.upper()} {config_label}, {name_label}"
     
     # Append iterable if provided
     if iterable is not None and hasattr(args, "iterable") and args.iterable is not None:

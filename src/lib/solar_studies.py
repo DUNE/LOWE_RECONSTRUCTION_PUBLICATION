@@ -233,11 +233,22 @@ RECONSTRUCTION = FlatFamily(
         ),
         "PDS/adjopflash": tuple(f"Signal_AdjOpFlash{q}_{s}Scan" for q in ("Num", "PE") for s in ("Plane", "Radial")),
         "PDS/opflash": ("Light_Map_Fitting_Data", "Light_Map_Fitting_Parameters"),
+        "PDS/flash": ("OpFlash_Counts_Slim", "MatchedOpFlash_Summary", "Flash_Vertex_Distances"),  # 05/06 flash scripts (2026-09 flash samples)
         "preselection/efficiency": ("Preselection_Efficiency",),
         "preselection/clustering": ("Clustering_Efficiency_Energy", "Clustering_Efficiency_NHit"),
     },
     selections=(
         Selection(CONFIGS, (SIGNAL_NAME,), RECO_REGENERATED, complete=True),  # thesis: every regenerated kind
+        # 2026-09 flash production (marley_flash): vertex and PDS diagnostics of chapter 6
+        Selection(CONFIGS, ("marley_flash",), (
+            "Vertex_Resolution", "Resolution", "Purity_Match_Resolution",
+            "Vertex_Reconstruction_Efficiency", "Vertex_3D_Quantile_Thresholds",
+            "Fiducial_Efficiency", "Fiducial_Purity", "Cumulative_Vertex_Error", "Vertex_Smearing",
+            "OpFlash_Efficiency",
+            *(f"{what}_Efficiency_{scan}_Scan" for what in ("MatchedOpFlash", "Neutrino", "TPC_Cluster") for scan in RECO_SCANS),
+            *(f"Signal_AdjOpFlash{q}_{s}Scan" for q in ("Num", "PE") for s in ("Plane", "Radial")))),
+        Selection(CONFIGS, ("marley_flash",), ("OpFlash_Counts_Slim", "MatchedOpFlash_Summary")),
+        Selection(("hd_1x2x6_centralAPA",), ("marley_flash",), ("Flash_Vertex_Distances",)),
         # lowe paper (marley_official): only the kinds its commands read
         Selection(("hd_1x2x6_centralAPA", "vd_1x8x14_3view_30deg_nominal"), ("marley_official",), (
             "Vertex_Resolution", "Purity_Match_Resolution", "Fiducial_Purity", "Vertex_Smearing", "Adjacent_Cluster_Counts",

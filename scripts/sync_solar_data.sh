@@ -82,6 +82,12 @@
 #                            Regenerate on the SOLAR side (about 10 min):
 #                              python src/physics/signal/truth_position_study.py --stage export
 #
+#   --best-cuts               Fetch the selected-cut files, SOLAR's config/<config>/best-sigma-json/
+#                            (json only, no .lock files), into input/data/best-sigma-json/<config>/.
+#                            They hold the cuts the analyses use (e.g. <ana>/truncated/
+#                            <config>_highest_<Analysis>.json) and feed the --panel_vertical_file
+#                            option of the plotting scripts. Content filters do not apply.
+#
 #   --study-status            Fetch the newest study_status_<timestamp>.md report from SOLAR's
 #                            output/logs/ (the timestamped file, not the named variants like
 #                            study_status_orange.md) into input/status/study_status.md, always
@@ -152,6 +158,7 @@ CHECK_REMOTE_LABELS=false
 TRUTH_POSITION=false
 TRUTH_POSITION_SUBDIR="solar/truth_position/export_repo"   # under output/data/ on the remote
 STUDY_STATUS=false
+BEST_CUTS=false
 REMOTE_LOGS_SUBDIR="output/logs"                            # under REMOTE_ROOT on the remote
 STUDY_STATUS_LOCAL="$SCRIPT_DIR/input/status/study_status.md"
 
@@ -170,6 +177,7 @@ while [[ $# -gt 0 ]]; do
         --prune-legacy)    PRUNE_LEGACY=true;            shift   ;;
         --check-remote-labels) CHECK_REMOTE_LABELS=true; shift   ;;
         --truth-position)  TRUTH_POSITION=true;              shift   ;;
+        --best-cuts)       BEST_CUTS=true;                   shift   ;;
         --study-status)    STUDY_STATUS=true;                shift   ;;
         -y|--yes)          AUTO_YES=true;                shift   ;;
         --ssh-password-file) SSH_PASSWORD_FILE="$2";     shift 2 ;;
@@ -283,6 +291,27 @@ if $TRUTH_POSITION; then
     exit 0
 fi
 
+# --- Selected cuts (--best-cuts): config/<config>/best-sigma-json/**/*.json ---------------------
+if $BEST_CUTS; then
+    BC_LOCAL="$SCRIPT_DIR/input/data/best-sigma-json"
+    echo "==> Syncing the selected-cut files (best-sigma-json)"
+    echo "    Remote : ${REMOTE_HOST}:${REMOTE_ROOT}/config/<config>/best-sigma-json/"
+    echo "    Local  : $BC_LOCAL/<config>/"
+    if ! $DRY_RUN && ! $AUTO_YES; then
+        read -r -p "Proceed with download? [y/N] " _confirm
+        [[ "$_confirm" =~ ^[Yy]$ ]] || { echo "Aborted."; exit 2; }
+    fi
+    BC_CONFIGS="$(_remote_sh "cd '${REMOTE_ROOT}/config' && ls -d */best-sigma-json 2>/dev/null | cut -d/ -f1")"
+    for cfg in $BC_CONFIGS; do
+        mkdir -p "$BC_LOCAL/$cfg"
+        BC_ARGS=(-az "${RSYNC_E[@]}" --prune-empty-dirs --include='*/' --include='*.json' --exclude='*')
+        $DRY_RUN && BC_ARGS+=(--dry-run)
+        _rsync_tolerant "${BC_ARGS[@]}" "${REMOTE_HOST}:${REMOTE_ROOT}/config/${cfg}/best-sigma-json/" "$BC_LOCAL/$cfg/"
+        echo "    $cfg: $(find "$BC_LOCAL/$cfg" -name '*.json' 2>/dev/null | wc -l) file(s)"
+    done
+    exit 0
+fi
+
 # --- Study-status report (--study-status): newest study_status_<timestamp>.md, one local copy ---
 if $STUDY_STATUS; then
     if (( ${#FILTER_ARGS[@]} > 0 )); then
@@ -291,7 +320,7 @@ if $STUDY_STATUS; then
     REMOTE_LOGS="${REMOTE_ROOT}/${REMOTE_LOGS_SUBDIR}"
     echo "==> Syncing the latest study-status report"
     echo "    Remote : ${REMOTE_HOST}:${REMOTE_LOGS}/"
-    LATEST_NAME="$(_remote_sh "ls -1 '${REMOTE_LOGS}' 2>/dev/null | grep -E '^study_status_[0-9]{8}_[0-9]{6}\.md\$' | sort | tail -n1")"
+    LATEST_NAME="$(_remote_sh "ls -1 '${REMOTE_LOGS}' 2>/dev/null | grep -E '^study_status_[0-9]{8}_([0-9]{6}|v[0-9]+)\.md\$' | sort | tail -n1")"
     if [[ -z "$LATEST_NAME" ]]; then
         echo "ERROR: no study_status_<timestamp>.md file found under ${REMOTE_LOGS}" >&2
         exit 1

@@ -26,7 +26,7 @@ Selection behind all numbers: Truncated folder, `SolarEnergy` 10-20 MeV, default
 ## Plots (`output/plots/truth_position/`, PNG; file name = script prefix + config + columns + filters)
 | prefix | content | files |
 |---|---|---|
-| `wallcdf_` | cumulative weighted fraction vs distance to the nearest face, marley/neutron/gamma, truth solid and reco dashed, lines at 20 and 100 cm | 4 (per config) |
+| `wallcdf_` | cumulative weighted fraction vs distance to the nearest face, marley/gamma/neutron/radiological, truth solid and reco dashed, lines at 20 and 100 cm; `Selection` = `window` (flash quality + 10-20 MeV, as every other number) and `all` (no selection; reco of unmatched events piles at the wall) | 8 (per config and selection) |
 | `shellratio_` | (B/S in shell)/(B/S in 100-200 cm), gamma and neutron, error bars, log y | 4 |
 | `residuals_` / `residualswide_` | reco - truth histograms X/Y/Z panels, marley and gamma; HD configs use 5 cm bins (+-150 cm), VD configs the +-700 cm 20 cm bins | 2 + 2 |
 | `survivorevents_` | neutron survivors: 3D-distance histogram (MC events, split by agree at 30 cm) and reco X vs truth X; DayNight and Sensitivity | 16 |

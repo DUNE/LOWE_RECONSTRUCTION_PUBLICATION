@@ -694,7 +694,8 @@ def main():
 
                 label_parts = [str(mapped_geom)]
                 if mapped_config is not None and str(mapped_config) != str(mapped_geom):
-                    label_parts.append(str(mapped_config))
+                    # "HD Central", not "HD, Central": geometry and config form one name
+                    label_parts[0] = f"{mapped_geom} {mapped_config}"
                 if name is not None and str(mapped_name) not in label_parts:
                     label_parts.append(str(mapped_name))
 
@@ -1065,7 +1066,7 @@ def main():
 
         # Set titles and labels for the axes
         if ncols > 1:
-            plot_subtitle = make_subtitle_from_args(args, idx)
+            plot_subtitle = make_subtitle_from_args(args, None, idx=idx)
             ax_current.set_title(plot_subtitle, fontsize=subtitlefontsize)
 
         _explicit_x = args.labelx[idx] if args.labelx and len(args.labelx) == ncols else (args.labelx[0] if args.labelx else None)

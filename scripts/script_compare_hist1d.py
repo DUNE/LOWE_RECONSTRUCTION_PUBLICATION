@@ -127,6 +127,24 @@ parser.add_argument(
     "lines, which apply to every panel unshifted.",
 )
 parser.add_argument(
+    "--panel_vertical_file",
+    type=str,
+    default=None,
+    help="Read the --panel_vertical values from a file (json, yaml, pkl or two-column csv) instead of "
+    "typing them, e.g. a selected cut that changes when the analysis is rerun. Use with "
+    "--panel_vertical_keys. The path may contain {placeholders} filled from the other arguments "
+    "(e.g. {config} = first --configs entry, {name} = first --names entry). See lib/value_files.py.",
+)
+parser.add_argument(
+    "--panel_vertical_keys",
+    nargs="+",
+    type=str,
+    default=None,
+    help="Dot-separated key path into --panel_vertical_file, one per --variables entry ('none' to skip a "
+    "panel; comma-separate several keys for several lines), with the same {placeholders}, "
+    "e.g. '{config}.SolarEnergy.NHits'. Overrides --panel_vertical.",
+)
+parser.add_argument(
     "--panel_vertical_label",
     nargs="+",
     type=str,
@@ -200,6 +218,18 @@ def _parse_panel_line_strings(raw_values):
     return [str(raw).split(",") for raw in raw_values]
 
 
+if args.panel_vertical_file is not None or args.panel_vertical_keys is not None:
+    if args.panel_vertical_file is None or args.panel_vertical_keys is None:
+        parser.error("--panel_vertical_file and --panel_vertical_keys must be given together")
+    from lib.value_files import build_context, read_values_as_strings
+
+    try:
+        args.panel_vertical = read_values_as_strings(
+            args.panel_vertical_file, args.panel_vertical_keys, build_context(args)
+        )
+    except (OSError, KeyError, ValueError) as err:
+        parser.error(f"--panel_vertical_file: {err}")
+    rprint(f"[cyan]Info:[/cyan] --panel_vertical from {args.panel_vertical_file}: {args.panel_vertical}")
 args.panel_vertical = _parse_panel_line_values(args.panel_vertical, "--panel_vertical")
 args.panel_vertical_label = _parse_panel_line_strings(args.panel_vertical_label)
 args.panel_vertical_style = _parse_panel_line_strings(args.panel_vertical_style)
@@ -426,7 +456,7 @@ def main():
                 ax_current = ax[idx]
 
             if ncols > 1:
-                plot_subtitle = args.panel_title[idx] if args.panel_title is not None else make_subtitle_from_args(args, idx)
+                plot_subtitle = args.panel_title[idx] if args.panel_title is not None else make_subtitle_from_args(args, None, idx=idx)
                 ax_current.set_title(
                     plot_subtitle,
                     fontsize=subtitlefontsize,

@@ -423,6 +423,12 @@ def save_figure_to_paths(fig, output_arg, output_file, default_output_dir, rprin
     """
     import os
 
+    # Layout may have moved or narrowed the title since it was set; re-check
+    # that it fits now that the figure is final.
+    from .plot import _shorten_title_to_fit
+    _shorten_title_to_fit(fig, getattr(fig, "_suptitle", None))
+
+
     if rprint_func is None:
         rprint_func = print
 

@@ -1,3 +1,4 @@
+import argparse
 import copy
 import json
 import os
@@ -756,6 +757,26 @@ def add_common_args(parser, arg_names, overrides=None):
             help="Capitalize the first letter of each word in legend entries",
         )
 
+    if "--legend_loc" not in parser._option_string_actions:
+        parser.add_argument(
+            "--legend_loc",
+            action=_LegendLocAction,
+            default=None,
+            help="Legend location for all panels (matplotlib loc, e.g. 'lower left'); default from plot_params",
+        )
+
+
+class _LegendLocAction(argparse.Action):
+    """Override the configured legend location (plot_params legend_style.loc)
+    for every legend drawn by this run."""
+
+    def __call__(self, parser, namespace, values, option_string=None):
+        setattr(namespace, self.dest, values)
+        from lib import plot as _plot
+
+        if isinstance(_plot.legend_style, dict):
+            _plot.legend_style["loc"] = values
+
 
 def load_computation_settings():
     """
@@ -888,6 +909,9 @@ def map_label_key(value, mapping_name, key_type):
     return map_iterable_label(value, key_type, mapping_name)
 
 
+_WARNED_COLOR_MAPPINGS = set()
+
+
 def map_iterable_color(iterable_value, mapping_name, iterable_name=None):
     """Map iterable values to matplotlib colors.
 
@@ -914,6 +938,10 @@ def map_iterable_color(iterable_value, mapping_name, iterable_name=None):
 
     mapping_dict = _get_mapping_dict(mapping_name)
     if mapping_dict is None:
+        if mapping_name not in _WARNED_COLOR_MAPPINGS:
+            _WARNED_COLOR_MAPPINGS.add(mapping_name)
+            print(f"Warning: color mapping '{mapping_name}' not found in plot_params mappings; "
+                  "falling back to the default color cycle.")
         return None
 
     if iterable_value in mapping_dict:

@@ -371,6 +371,64 @@ parser.add_argument(
 )
 
 parser.add_argument(
+    "--compact_error",
+    action="store_true",
+    help="Show 'value ± error' in the compact parenthetical form also for values "
+    "in plain notation (e.g. 62.9(4) instead of 62.9 ± 0.4); --compact_scientific "
+    "does the same for scientific notation.",
+)
+
+parser.add_argument(
+    "--label_mapping",
+    type=str,
+    default=None,
+    help="Mapping dictionary name from plot_params mappings applied to the row "
+    "labels of the first column after they are built (e.g. 'thesis_labels': "
+    "'HD Central' -> '\\cfgHDCentral', 'marley' -> 'CC Neutrino'); labels not "
+    "in the mapping are kept.",
+)
+
+parser.add_argument(
+    "--row_name_title",
+    type=str,
+    default=None,
+    help="Header of the --row_name column in the --block_rows layout (default: the --row_name itself)",
+)
+
+parser.add_argument(
+    "--header_title",
+    type=str,
+    default=None,
+    help="Title row \\multicolumn{n}{c}{...} placed above \\toprule, without a "
+    "caption (the thesis layout; --title puts it below \\toprule and also uses it "
+    "as the caption).",
+)
+
+parser.add_argument(
+    "--first_header",
+    type=str,
+    default=None,
+    help="Replace the header of the first (row-label) column, e.g. 'Row spacing (m)'.",
+)
+
+parser.add_argument(
+    "--siunitx",
+    action="store_true",
+    help="Wrap every table value in siunitx's \\num{} (e.g. \\num{2.38e+03} prints "
+    "as 2.38 x 10^3); '---' placeholders are left unwrapped. Needs siunitx in the "
+    "document that inputs the table.",
+)
+
+parser.add_argument(
+    "--sig_figs",
+    type=int,
+    default=None,
+    help="Show values without an uncertainty in plain notation rounded to this many "
+    "significant figures (e.g. 3: 2384 -> 2380, 0.016834 -> 0.0168). Ignored for "
+    "values shown in scientific notation (--scientific, --scientific_threshold_*).",
+)
+
+parser.add_argument(
     "--compact_scientific",
     action="store_true",
     help="Use compact PDG/CODATA-style parenthetical notation for scientific "
@@ -390,6 +448,16 @@ parser.add_argument(
     default=None,
     help="Multiply every --y value (and its error, if present) by this factor "
     "before aggregating/displaying - e.g. for unit conversion or rescaling",
+)
+
+parser.add_argument(
+    "--multiply_variable",
+    nargs="+",
+    default=None,
+    metavar="VARIABLE=FACTOR",
+    help="Multiply --y (and its error) only for rows whose --variable_name "
+    "column equals VARIABLE, e.g. Minimum=1.079 - for rescaling one quantity "
+    "of a study to a common reference. Applied before --multiply.",
 )
 
 parser.add_argument(
@@ -606,6 +674,15 @@ def main():
             (df_config[args.x] >= args.rangex[0])
             & (df_config[args.x] <= args.rangex[1])
         ]
+
+    if args.multiply_variable:
+        variable_column = args.variable_name if args.variable_name in df_config.columns else "Variable"
+        for item in args.multiply_variable:
+            variable, factor = item.rsplit("=", 1)
+            mask = df_config[variable_column].astype(str) == variable
+            df_config.loc[mask, args.y] = df_config.loc[mask, args.y] * float(factor)
+            if f"{args.y}Error" in df_config.columns:
+                df_config.loc[mask, f"{args.y}Error"] = df_config.loc[mask, f"{args.y}Error"] * float(factor)
 
     if args.multiply is not None:
         df_config[args.y] = df_config[args.y] * args.multiply
@@ -854,6 +931,17 @@ def main():
 
     default_output_dir = os.path.join(os.path.dirname(__file__), "..", "output", "tables")
 
+    # Rename the row labels of the first column (e.g. to thesis macros)
+    label_mapping = get_mapping_dict(args.label_mapping) or {} if args.label_mapping else {}
+    if label_mapping:
+        df_table.iloc[:, 0] = df_table.iloc[:, 0].map(lambda v: label_mapping.get(v, v))
+    if args.first_header is not None:
+        first = df_table.columns[0]
+        new_first = (args.first_header,) + tuple("" for _ in first[1:]) if isinstance(first, tuple) else args.first_header
+        df_table.columns = [new_first] + list(df_table.columns[1:])
+        if isinstance(first, tuple):
+            df_table.columns = pd.MultiIndex.from_tuples(df_table.columns)
+
     # Italicize the specified column
     if args.it is not None and 0 <= args.it < df_table.shape[1]:
         df_table.iloc[:, args.it] = "\\textit{" + df_table.iloc[:, args.it] + "}"
@@ -896,19 +984,20 @@ def main():
             + " \\\\"
         )
         lines.append(
-            " & ".join(["Configuration", str(args.row_name)] + [c[1] for c in value_cols]) + " \\\\"
+            " & ".join(["Configuration", str(args.row_name_title or args.row_name)] + [c[1] for c in value_cols]) + " \\\\"
         )
         lines.append("\\midrule")
         previous = None
         for _, row in df_table.iterrows():
             block = (row.iloc[0], row.iloc[1])
             first = f"{block[0]} {block[1]}"
+            first = label_mapping.get(first, first)
             if block == previous:
                 first = ""
             elif previous is not None:
                 lines.append("\\addlinespace")
             previous = block
-            cells = [first, str(row.iloc[2])] + [str(v) for v in row.iloc[n_lead:]]
+            cells = [first, label_mapping.get(str(row.iloc[2]), str(row.iloc[2]))] + [str(v) for v in row.iloc[n_lead:]]
             lines.append(" & ".join(cells) + " \\\\")
         lines += ["\\bottomrule", "\\end{tabular}"]
         return "\n".join(lines) + "\n"
@@ -923,6 +1012,12 @@ def main():
                 multicolumn_format="c",
                 bold_rows=False,
                 escape=False,
+            )
+        if args.header_title:
+            tabular = tabular.replace(
+                "\\toprule\n",
+                f"\\multicolumn{{{df_table.shape[1]}}}{{c}}{{{args.header_title}}} \\\\\n\\toprule\n",
+                1,
             )
         if args.title:
             # Spanning header row across the full table width, right below \toprule.

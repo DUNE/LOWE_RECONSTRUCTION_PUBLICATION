@@ -1,6 +1,6 @@
 {
-  "generated": "2026-09-21T23:01:01",
-  "git_head": "0eb6b74",
+  "generated": "2026-09-25T23:02:14",
+  "git_head": "f9539fa",
   "script": "src/physics/signal/truth_position_study.py --stage export",
   "folder": "Truncated",
   "energy_variable": "SolarEnergy",
@@ -39,6 +39,7 @@
       "Name",
       "Study",
       "Sample",
+      "Selection",
       "Position",
       "Distance",
       "CDF",
@@ -347,9 +348,9 @@
       "neutron": 0.07644839946508049
     },
     "Significance_HD_lateral_DayNight": {
-      "default": 1.536619335236042,
-      "fiduc_truth": 2.1125211662561627,
-      "fiduc_truth_refvol": 1.517476920737973
+      "default": 1.1696496823698177,
+      "fiduc_truth": 1.4809760392897906,
+      "fiduc_truth_refvol": 1.3139837870270716
     },
     "PassFractions_DayNight_HD_central_neutron_disagree": {
       "PassFraction": [

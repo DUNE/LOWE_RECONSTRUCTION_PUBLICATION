@@ -1,3 +1,4 @@
+import re
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.patches import Rectangle
@@ -164,7 +165,7 @@ def apply_scientific_threshold_formatter(ax, threshold=0.1, axis="both"):
 # correct display form isn't title case (e.g. "hep" is the HEP solar
 # neutrino line, not the word "Hep").
 _CAPITALIZE_LEGEND_EXCEPTIONS = {
-    "hep": "HEP",
+    "hep": "$hep$",
 }
 
 
@@ -221,6 +222,19 @@ def _is_boolean_legend_label(label):
     return False
 
 
+def _humanize_legend_title(title):
+    """Split a bare CamelCase column name used as legend title
+    (e.g. ``SpectrumType`` -> ``Spectrum Type``); anything with spaces,
+    math or punctuation is returned unchanged."""
+    if not isinstance(title, str) or not re.fullmatch(r"[A-Za-z][A-Za-z0-9]*", title):
+        return title
+    words = re.findall(r"[A-Z][a-z0-9]*|[a-z0-9]+", title)
+    # Keep detector jargon such as OpHits or AdjCl glued together.
+    if len(words) < 2 or any(len(word) < 3 for word in words):
+        return title
+    return " ".join(words)
+
+
 def apply_legend_style(
     ax,
     title=None,
@@ -237,7 +251,7 @@ def apply_legend_style(
         style["title_fontsize"] = legendtitlefontsize
 
     if title is not None:
-        style["title"] = title
+        style["title"] = _humanize_legend_title(title)
 
     style.update(overrides)
 
@@ -575,7 +589,44 @@ def add_centered_suptitle(fig, title, fontsize=None, **kwargs):
         x1 = max(ax.get_position().x1 for ax in main_axes)
         kwargs.setdefault("x", (x0 + x1) / 2)
 
-    return fig.suptitle(title, fontsize=fontsize, **kwargs)
+    text = fig.suptitle(title, fontsize=fontsize, **kwargs)
+    _shorten_title_to_fit(fig, text)
+    return text
+
+
+# Long analysis names in titles and their short forms, used only when the
+# full title does not fit the figure width.
+TITLE_SHORT_FORMS = (
+    ("Oscillation Parameter Sensitivity", "Sensitivity"),
+    ("Day-Night Asymmetry", "Day-Night"),
+    ("$hep$ Discovery", "$hep$"),
+)
+
+
+def _text_fits_figure(fig, text, margin=-0.01):
+    try:
+        renderer = fig.canvas.get_renderer()
+        bbox = text.get_window_extent(renderer=renderer)
+    except Exception:
+        return True
+    fig_width = fig.bbox.width
+    return bbox.x0 >= -margin * fig_width and bbox.x1 <= (1 + margin) * fig_width
+
+
+def _shorten_title_to_fit(fig, text):
+    """Swap long analysis names for their short forms, one at a time, until
+    the title fits inside the figure (or no short form is left)."""
+    if text is None or _text_fits_figure(fig, text):
+        return text
+    current = text.get_text()
+    for long_form, short_form in TITLE_SHORT_FORMS:
+        if long_form not in current:
+            continue
+        current = current.replace(long_form, short_form)
+        text.set_text(current)
+        if _text_fits_figure(fig, text):
+            break
+    return text
 
 
 def apply_note_to_figure(fig, note_text, fontsize=None):

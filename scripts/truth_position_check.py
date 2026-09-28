@@ -63,6 +63,9 @@ def check(data_dir):
 
     w = load(CENTRAL, "WallCdf")
     w = w[w.Analysis == "DayNight"]
+    if "Selection" in w:  # exports since 2026-09-25: all / quality / window; the reference numbers are the window ones
+        assert set(w.Selection) == {"all", "quality", "window"}, f"WallCdf selections: {sorted(set(w.Selection))}"
+        w = w[w.Selection == "window"]
     for sample, want in (("gamma", 0.46), ("marley", 0.10), ("neutron", 0.08)):
         row = w[(w.Sample == sample) & (w.Position == "truth")]
         assert len(row) == 1, f"WallCdf: expected one row for {sample}, found {len(row)}"

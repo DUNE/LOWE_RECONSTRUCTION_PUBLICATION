@@ -223,3 +223,35 @@ def test_main_plots_comparable_iterable_scan(monkeypatch, plot_artifact_dir):
     main()
 
     assert captured_linestyles == ["solid", "dashed"]
+
+
+def test_merge_iterable_groups_sums_members(monkeypatch):
+    module, _ = _load_module_and_main(monkeypatch)
+    df = pd.DataFrame(
+        {
+            "Variable": ["X"] * 8,
+            "Coordinate": [0.0, 10.0] * 4,
+            "Plane": [-1.0, -1.0, 0.0, 0.0, 1.0, 1.0, 2.0, 2.0],
+            "Efficiency": [90.0, 80.0, 60.0, 50.0, 20.0, 15.0, 10.0, 15.0],
+            "Error": [0.0, 0.0, 0.0, 0.0, 3.0, 3.0, 4.0, 4.0],
+        }
+    )
+
+    out = module._merge_iterable_groups(df, "Plane", "Efficiency", ["1,2=Membrane"])
+
+    assert list(out["Plane"].unique()) == [-1.0, 0.0, "Membrane"]
+    merged = out[out["Plane"] == "Membrane"].sort_values("Coordinate")
+    np.testing.assert_allclose(merged["Efficiency"], [30.0, 30.0])
+    np.testing.assert_allclose(merged["Error"], [5.0, 5.0])
+    # Non-merged rows are untouched
+    np.testing.assert_allclose(out[out["Plane"] == 0.0]["Efficiency"], [60.0, 50.0])
+
+
+def test_parse_merge_specs_rejects_missing_label(monkeypatch):
+    module, _ = _load_module_and_main(monkeypatch)
+    assert module._parse_merge_specs(["1,2=Membrane", "3,4=Cap"]) == [
+        (["1", "2"], "Membrane"),
+        (["3", "4"], "Cap"),
+    ]
+    with pytest.raises(ValueError):
+        module._parse_merge_specs(["1,2"])

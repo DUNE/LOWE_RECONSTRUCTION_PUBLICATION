@@ -70,11 +70,27 @@
       "vd_1x8x14_3view_30deg_nominal": "VD",
       "vd_1x8x14_3view_30deg_shielded": "VD"
     },
+    "drift_dict": {
+      "True": "True Drift",
+      "Reco": "Reco Drift",
+      "None": "Mean Drift"
+    },
+    "discriminant_label_dict": {
+      "Lower": "Gamow-Teller (4.47 MeV)",
+      "Upper": "Fermi (6.41 MeV)"
+    },
+    "truth_mode_label": {
+      "reco X, reco Y/Z": "Reconstructed $x$, $y$/$z$",
+      "truth X, truth Y/Z": "True $x$, $y$/$z$",
+      "reco X, truth Y/Z": "Reconstructed $x$, True $y$/$z$",
+      "truth X, reco Y/Z": "True $x$, Reconstructed $y$/$z$",
+      "truth X (no containment), reco Y/Z": "True $x$ (No Containment), Reconstructed $y$/$z$"
+    },
     "config": {
-      "hd_1x2x6_lateralAPA": "HD, Lateral",
-      "hd_1x2x6_centralAPA": "HD, Central",
-      "vd_1x8x14_3view_30deg_nominal": "VD, Top",
-      "vd_1x8x14_3view_30deg_shielded": "VD, Bottom Shielded"
+      "hd_1x2x6_lateralAPA": "HD Lateral",
+      "hd_1x2x6_centralAPA": "HD Central",
+      "vd_1x8x14_3view_30deg_nominal": "VD Top",
+      "vd_1x8x14_3view_30deg_shielded": "VD Bottom Shielded"
     },
     "config_dict": {
       "hd_1x2x6": "Signal",
@@ -122,28 +138,28 @@
       "marley_maximum": "Maximum PE ($\\alpha\\to\\infty$)"
     },
     "particle_dict": {
-      "11": "e-",
-      "-11": "e+",
-      "12": "nu(e)",
-      "-12": "nu(e)~",
-      "13": "mu-",
-      "-13": "mu+",
-      "22": "gamma",
-      "2112": "n",
-      "2212": "p",
-      "1000020040": "He4"
+      "11": "Electron",
+      "-11": "Positron",
+      "12": "$\\nu_e$",
+      "-12": "$\\bar{\\nu}_e$",
+      "13": "Muon",
+      "-13": "Antimuon",
+      "22": "Gamma",
+      "2112": "Neutron",
+      "2212": "Proton",
+      "1000020040": "Alpha"
     },
     "particle_color": {
-      "e-": "C3",
-      "e+": "C7",
-      "nu(e)": "C5",
-      "nu(e)~": "red",
-      "mu-": "C8",
-      "mu+": "C9",
-      "gamma": "C2",
-      "n": "C4",
-      "p": "C1",
-      "He4": "C6"
+      "Electron": "C3",
+      "Positron": "C7",
+      "$\\nu_e$": "C5",
+      "$\\bar{\\nu}_e$": "red",
+      "Muon": "C8",
+      "Antimuon": "C9",
+      "Gamma": "C2",
+      "Neutron": "C4",
+      "Proton": "C1",
+      "Alpha": "C6"
     },
     "simple_plane_dict": {
       "-1": "Total",
@@ -176,7 +192,7 @@
       "cavern": "Cavern"
     },
     "component": {
-      "marley": "Neutrino",
+      "marley": "CC Neutrino",
       "gamma": "Gamma",
       "neutron": "Neutron",
       "radiological": "Radiological"
@@ -244,7 +260,8 @@
       "neutron": "C4",
       "Solar": "C0",
       "Solar Day": "C1",
-      "Solar Night": "C0"
+      "Solar Night": "C0",
+      "marley": "C0"
     },
     "hep_component_color": {
       "radiological": "C3",
@@ -252,7 +269,8 @@
       "gamma": "C2",
       "neutron": "C4",
       "8B": "C1",
-      "hep": "C0"
+      "hep": "C0",
+      "marley": "C0"
     },
     "cutflow_stage_dict": {
       "Raw": "Total",
@@ -457,8 +475,30 @@
       "Z": "rgb(0,131,0)"
     },
     "truth_position_source": {
-      "truth": "Truth position",
-      "reco": "Reco position"
+      "truth": "True Position",
+      "reco": "Reconstructed Position"
+    },
+    "thesis_labels": {
+      "HD Central": "\\cfgHDCentral",
+      "HD Lateral": "\\cfgHDLateral",
+      "VD Top": "\\cfgVDTop",
+      "VD Bottom Shielded": "\\cfgVDShielded",
+      "HD Signal": "\\gls{hd} CC Neutrino",
+      "VD Signal": "\\gls{vd} CC Neutrino",
+      "marley": "CC Neutrino",
+      "marley_official": "CC Neutrino",
+      "gamma": "Gamma",
+      "neutron": "Neutron",
+      "radiological": "Radiological",
+      "Lateral": "\\cfgHDLateral",
+      "Central": "\\cfgHDCentral",
+      "Top": "\\cfgVDTop",
+      "Bottom Shielded": "\\cfgVDShielded"
+    },
+    "pds_plane_titles": {
+      "P0 cathode/APA": "Cathode",
+      "P1 membrane": "Membrane 1",
+      "P2 membrane": "Membrane 2"
     }
   }
 }

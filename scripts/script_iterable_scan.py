@@ -14,7 +14,7 @@ from rich import print as rprint
 from lib import *
 from lib.selection import filter_dataframe
 from lib.exports import make_name_from_args, save_figure_to_paths
-from lib.format import make_title_from_args, make_subtitle_from_args
+from lib.format import make_title_from_args, make_subtitle_from_args, _title_case_words
 from lib.imports import import_data, prepare_import
 from lib.functions import resolution
 import matplotlib.lines as mlines
@@ -277,6 +277,20 @@ parser.add_argument(
 )
 
 parser.add_argument(
+    "--merge_iterables",
+    nargs="+",
+    default=None,
+    metavar="VALUES=LABEL",
+    help=(
+        "Merge groups of iterable values into single lines before plotting. "
+        "Each spec is 'v1,v2,...=Label'; the y values of the listed iterables "
+        "are summed point by point (errors added in quadrature) and drawn as "
+        "one line named Label. Several specs can be given, e.g. "
+        "--merge_iterables '1,2=Membrane' '3,4=Cap'."
+    ),
+)
+
+parser.add_argument(
     "--fill",
     action="store_true",
     default=False,
@@ -449,6 +463,93 @@ def _resolve_comparable_color(index, args, n_total=None, reverse=None):
     return f"C{index}"
 
 
+def _parse_merge_specs(specs):
+    """Parse --merge_iterables 'v1,v2=Label' specs into [(members, label)]."""
+    parsed = []
+    for spec in specs or []:
+        if "=" not in spec:
+            raise ValueError(f"Invalid --merge_iterables spec '{spec}' (expected 'v1,v2,...=Label')")
+        values, label = spec.rsplit("=", 1)
+        members = [v.strip() for v in values.split(",") if v.strip()]
+        if not members or not label.strip():
+            raise ValueError(f"Invalid --merge_iterables spec '{spec}' (expected 'v1,v2,...=Label')")
+        parsed.append((members, label.strip()))
+    return parsed
+
+
+def _iterable_matches(value, token):
+    """Match a dataframe iterable value against a CLI token, so '1' matches 1.0."""
+    if str(value) == token:
+        return True
+    try:
+        return float(value) == float(token)
+    except (ValueError, TypeError):
+        return False
+
+
+def _merge_iterable_groups(df, iterable_column, y_column, specs):
+    """Replace the rows of each merged iterable group by one summed row set.
+
+    Rows are aligned across group members on every other hashable column
+    (x, Variable, Config, ...), so each output row is the point-by-point sum
+    of the members' y values. Error columns are combined in quadrature. The
+    merged label takes the draw/legend position of its first member.
+    """
+    merge_groups = _parse_merge_specs(specs)
+    if not merge_groups or df.empty:
+        return df
+
+    error_columns = [c for c in ("Error", f"{y_column}Error") if c in df.columns]
+    value_columns = {iterable_column, y_column, *error_columns}
+
+    def _is_hashable_column(column):
+        try:
+            df[column].map(hash)
+            return True
+        except TypeError:
+            return False
+
+    key_columns = [c for c in df.columns if c not in value_columns and _is_hashable_column(c)]
+
+    # Draw order follows first appearance of each iterable value; a merged
+    # label inherits the rank of its earliest member.
+    order = {}
+    for value in df[iterable_column]:
+        order.setdefault(value, len(order))
+
+    merged_frames = []
+    consumed = pd.Series(False, index=df.index)
+    for members, label in merge_groups:
+        member_mask = df[iterable_column].map(
+            lambda v: any(_iterable_matches(v, m) for m in members)
+        )
+        member_mask &= ~consumed
+        if not member_mask.any():
+            rprint(f"[yellow]Warning:[/yellow] --merge_iterables group '{label}' matched no {iterable_column} values.")
+            continue
+        consumed |= member_mask
+        members_df = df[member_mask]
+        order[label] = min(order[v] for v in members_df[iterable_column].unique())
+
+        grouped = members_df.groupby(key_columns, dropna=False, sort=False) if key_columns else [((), members_df)]
+        rows = []
+        for _, group in grouped:
+            row = group.iloc[0].copy()
+            row[iterable_column] = label
+            row[y_column] = sum(np.asarray(v, dtype=float) for v in group[y_column])
+            for column in error_columns:
+                row[column] = np.sqrt(sum(np.asarray(v, dtype=float) ** 2 for v in group[column]))
+            rows.append(row)
+        merged_frames.append(pd.DataFrame(rows))
+        rprint(
+            f"Merged {iterable_column} values ({', '.join(map(str, members_df[iterable_column].unique()))}) into '{label}' ({len(rows)} rows)"
+        )
+
+    out = pd.concat([df[~consumed].astype({iterable_column: object}), *merged_frames], ignore_index=True)
+    rank = out[iterable_column].map(order)
+    return out.iloc[np.argsort(rank.to_numpy(), kind="stable")].reset_index(drop=True)
+
+
 def _expand_singletons_for_explode(frame, columns):
     """Broadcast one-value plot arrays to match longer x/y arrays."""
     frame = frame.copy()
@@ -492,7 +593,15 @@ def _apply_iterable_legend(
     alive via ax.add_artist, secondary legend drawn separately) instead of
     folding both into one combined legend block.
     """
-    primary_loc_kwargs = dict(loc_kwargs) if loc_kwargs else {"loc": "upper right"}
+    # Without an explicit loc, fall back to the configured legend_style loc
+    # ("best", or --legend_loc) so the legend avoids the data.
+    # A second (comparable) legend is pinned to a lower corner, so the primary
+    # legend then keeps its fixed upper-right spot to avoid colliding with it.
+    has_secondary = bool(comparable_style_map or comparable_alpha_map)
+    if loc_kwargs:
+        primary_loc_kwargs = dict(loc_kwargs)
+    else:
+        primary_loc_kwargs = {"loc": "upper right"} if has_secondary else {}
     leg1 = apply_legend_style(
         ax,
         title=iterable_title,
@@ -572,6 +681,9 @@ def main():
             f"[red]Error:[/red] Iterable column '{args.iterable}' was not found in the imported data. Available columns: {available_columns}"
         )
         return
+
+    if getattr(args, "merge_iterables", None):
+        df = _merge_iterable_groups(df, args.iterable, args.y, args.merge_iterables)
 
     # Real NaN values in the "Variable" column are excluded by default.
     # Explicitly requesting "None" in --variables opts back in, converting
@@ -1492,7 +1604,7 @@ def main():
 
             if n_vars > 1:
                 # Use custom label from variable_label_map if available
-                subtitle = variable if variable is not None else ""
+                subtitle = _title_case_words(variable) if variable is not None else ""
                 if variable_label_map is not None and variable in variable_label_map:
                     subtitle = variable_label_map[variable]
                 ax_current.set_title(

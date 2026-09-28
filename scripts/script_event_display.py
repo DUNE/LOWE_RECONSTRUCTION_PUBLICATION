@@ -451,8 +451,6 @@ def main():
 
             cbar = fig.colorbar(sc_right, ax=[ax_left, ax_right], shrink=0.9, pad=0.02)
             colorbar_label = args.labelz if args.labelz is not None else args.colorby
-            if args.logz:
-                colorbar_label += " (log scale)"
             cbar.set_label(colorbar_label)
 
         else:
