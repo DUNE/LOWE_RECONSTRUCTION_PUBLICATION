@@ -18,7 +18,7 @@ from lib.format import make_title_from_args, make_subtitle_from_args
 from lib.imports import import_data, prepare_import
 from lib.plot import apply_scientific_threshold_formatter, plot_data, create_common_subplots, apply_note_to_figure, add_centered_suptitle, draw_vertical_lines, draw_horizontal_lines, draw_squares, draw_lines, place_point_label
 
-from common_args import add_common_args, resolve_axis_label
+from common_args import add_common_args, resolve_axis_label, parse_plot_label
 
 # Import with args parser
 parser = argparse.ArgumentParser(
@@ -92,6 +92,14 @@ parser.add_argument(
     action="store_true",
     help="Draw diagonal line",
     default=False,
+)
+
+parser.add_argument(
+    "--panel_title",
+    nargs="+",
+    type=parse_plot_label,
+    default=None,
+    help="Per-panel title, one per panel (--iterable value), shown above each subplot instead of the default subtitle.",
 )
 
 
@@ -361,8 +369,10 @@ def main():
                 ax_current = ax[idx if args.variables is not None else jdx]
 
             if ncols > 1:
-                plot_subtitle = make_subtitle_from_args(
-                    args, iterables, plot_type="hist2d", idx=jdx
+                plot_subtitle = (
+                    args.panel_title[jdx]
+                    if args.panel_title is not None and jdx < len(args.panel_title)
+                    else make_subtitle_from_args(args, iterables, plot_type="hist2d", idx=jdx)
                 )
                 ax_current.set_title(
                     plot_subtitle,
