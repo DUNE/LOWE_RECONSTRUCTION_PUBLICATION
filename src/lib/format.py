@@ -362,6 +362,67 @@ def _format_with_error(
     return format_string.format(mean, error)
 
 
+def _band_number(value, decimals):
+    """A percentile bound: integers (e.g. counts) as integers, otherwise at the
+    value's precision."""
+    if float(value).is_integer():
+        return f"{value:.0f}"
+    return f"{value:.{decimals}f}"
+
+
+def format_with_band(row, args=None, threshold=1e-3):
+    """
+    Format an aggregated value followed by the band given by --error_band,
+    e.g. '0.5 (0--1)' for a mean with the 16th/84th percentiles of its
+    distribution. Unlike a symmetric std, the band never leaves the physical
+    range of the quantity (a count distribution piled up at 0 would otherwise
+    print as 0.2(30), i.e. a band reaching -2.8). The bounds are printed as
+    given, so for strongly skewed distributions the mean may lie outside them.
+    """
+    operation = getattr(args, "operation", "mean")
+    low_col, high_col = args.error_band
+    mean = row[(args.y, operation)]
+    low = row[(low_col, operation)]
+    high = row[(high_col, operation)]
+
+    threshold = getattr(args, "threshold", threshold) if args is not None else threshold
+    if abs(mean) < threshold and abs(high) < threshold:
+        return "---"
+
+    # Precision from the band half-width (PDG rule), never coarser than units;
+    # a zero-width band falls back to two significant figures of the value.
+    decimals = _resolve_decimal_places((high - low) / 2)
+    if decimals is None:
+        decimals = 1 - int(np.floor(np.log10(abs(mean)))) if mean != 0 else 0
+    decimals = max(decimals, 0)
+
+    value = f"{mean:.{decimals}f}"
+    siunitx = args is not None and getattr(args, "siunitx", False)
+
+    # A collapsed band (e.g. 0--0 when most events are 0) says nothing about
+    # the tail that drives the mean; show the --band_fallback column instead,
+    # marked so the caption can explain it.
+    fallback = getattr(args, "band_fallback", None) if args is not None else None
+    if fallback is not None and low == high:
+        other = row[(fallback, operation)]
+        other_text = _significant(other, 2)
+        unit = getattr(args, "band_fallback_unit", None)
+        if siunitx:
+            other_text = (
+                f"\\qty{{{other_text}}}{{{unit}}}" if unit else f"\\num{{{other_text}}}"
+            )
+            value = f"\\num{{{value}}}"
+        elif unit:
+            other_text = f"{other_text} {unit}"
+        mark = getattr(args, "band_fallback_mark", None)
+        return f"{value} ({other_text})" + (f"${mark}$" if mark else "")
+
+    lo, hi = _band_number(low, decimals), _band_number(high, decimals)
+    if siunitx:
+        return f"\\num{{{value}}} (\\numrange{{{lo}}}{{{hi}}})"
+    return f"{value} ({lo}--{hi})"
+
+
 def format_value(row, args=None, threshold=1e-3):
     """
     Format an aggregated value with no uncertainty, for use when the source

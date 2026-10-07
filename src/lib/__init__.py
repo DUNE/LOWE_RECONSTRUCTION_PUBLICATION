@@ -49,7 +49,7 @@ def _load_plot_params_config():
                     "wspace": 0.25,
                     "hspace": 0.15,
                 },
-                "two_panel_hspace": 0,
+                "two_panel_hspace": 0.15,
             },
         },
         # Mappings (particle/config/component labels & colors) live solely in

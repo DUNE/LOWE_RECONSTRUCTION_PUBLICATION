@@ -17,12 +17,17 @@ from lib.exports import make_name_from_args, save_figure_to_paths
 from lib.format import make_title_from_args, make_subtitle_from_args, _title_case_words
 from lib.imports import import_data, prepare_import
 from lib.functions import resolution
+import matplotlib
+import matplotlib.ticker
 import matplotlib.lines as mlines
 import matplotlib.patches as mpatches
 import math
 
 from lib.plot import (
     apply_legend_style,
+    apply_legend_style_clear_of_data,
+    apply_legend_style_free,
+    apply_legend_pair_clear_of_data,
     plot_data,
     create_common_subplots,
     apply_note_to_figure,
@@ -51,6 +56,7 @@ add_common_args(
         "save_values",
         "remove_value",
         "filename_select",
+        "filename_suffix",
         "x",
         "y",
         "reduce",
@@ -188,6 +194,81 @@ parser.add_argument(
     ),
 )
 
+parser.add_argument(
+    "--iterable_order_reverse",
+    action="store_true",
+    default=False,
+    help="Reverse the draw and legend order of the --iterable values (after any mapping order).",
+)
+
+parser.add_argument(
+    "--comparable_order_reverse",
+    action="store_true",
+    default=False,
+    help="Reverse the draw and legend order of the --comparable values; per-stage alphas and "
+    "linewidths follow the new order.",
+)
+
+parser.add_argument(
+    "--dodge",
+    type=float,
+    default=0.0,
+    help="With --plot_type errorbar, shift each iterable sideways by this amount (category units "
+    "for a categorical x axis, data units otherwise) so overlapping markers stay readable.",
+)
+
+parser.add_argument(
+    "--step_open",
+    action="store_true",
+    help="Draw --plot_type step outlines without the baseline edges at the first and last bin "
+    "(for binned ratios such as efficiencies, where a drop to zero would read as data).",
+)
+
+parser.add_argument(
+    "--legend_free",
+    action="store_true",
+    help="Place the (single) legend at the free position inside the axes that covers the least "
+    "drawn data, instead of the best of the fixed corner/side candidates (default placement).",
+)
+
+parser.add_argument(
+    "--legend_panel",
+    type=int,
+    default=-1,
+    help="Index of the --variable_column panel that carries the legend (default: -1, the last panel).",
+)
+
+parser.add_argument(
+    "--comparable_legend_loc",
+    type=str,
+    default=None,
+    help="Location of the second (--comparable) legend, e.g. 'upper left' "
+    "(default: pinned to the lower corner below the primary legend).",
+)
+
+parser.add_argument(
+    "--draw_legend",
+    type=str,
+    default="both",
+    choices=["both", "iterable", "comparable", "none"],
+    help=(
+        "Which of the two legends to draw: 'both' (default), 'iterable' "
+        "(colours only), 'comparable' (line styles only) or 'none'. Used to "
+        "split the two legends across side-by-side panels that share the "
+        "same colour and line-style encodings."
+    ),
+)
+
+parser.add_argument(
+    "--comparable_legend_panel",
+    type=int,
+    default=None,
+    help=(
+        "Index of the --variable_column panel that carries the comparable "
+        "legend (default: same panel as the primary legend, --legend_panel). "
+        "Use to place the two legends on different panels of one figure."
+    ),
+)
 parser.add_argument(
     "--comparable_title",
     type=str,
@@ -359,6 +440,59 @@ parser.add_argument(
     help=(
         "JSON string mapping variable names to their vertical line positions. "
         "Example: --vertical_per_variable '{\"MainOpFlashErrorY\":[100],\"MainOpFlashErrorZ\":[100],\"MainOpFlashR\":[141]}'"
+    ),
+)
+
+parser.add_argument(
+    "--variable_column",
+    type=str,
+    default=None,
+    help=(
+        "Column whose values define the panels instead of 'Variable' (copied into 'Variable' as "
+        "strings after loading); pick the panels with --variables, e.g. "
+        "--variable_column PEBin --variables 5-20 20-100 100-1000"
+    ),
+)
+
+parser.add_argument(
+    "--y_row",
+    type=int,
+    default=None,
+    help=(
+        "For --y cells holding a 2D array (several traces per row, e.g. example waveforms), plot only "
+        "this row of it (0-based), e.g. -y Waveforms --y_row 1"
+    ),
+)
+
+parser.add_argument(
+    "--errory_column",
+    type=str,
+    default=None,
+    help=(
+        "Column holding the symmetric y error (scalar or array per row), used as 'Error' with "
+        "--errory, e.g. --errory_column SEM"
+    ),
+)
+
+parser.add_argument(
+    "--errory_bounds",
+    type=str,
+    nargs=2,
+    default=None,
+    metavar=("LOW", "HIGH"),
+    help=(
+        "Columns holding the absolute lower and upper edges of an asymmetric y interval, drawn "
+        "with --errory (not the error sizes), e.g. --errory_bounds PeakTimeP16 PeakTimeP84"
+    ),
+)
+
+parser.add_argument(
+    "--mean_band",
+    action="store_true",
+    default=False,
+    help=(
+        "Draw a horizontal line at the mean of all plotted -y values (after --select/--remove_value) "
+        "and a shaded band of +-1 standard deviation around it"
     ),
 )
 
@@ -550,6 +684,29 @@ def _merge_iterable_groups(df, iterable_column, y_column, specs):
     return out.iloc[np.argsort(rank.to_numpy(), kind="stable")].reset_index(drop=True)
 
 
+def _subset_y_error(subset):
+    """y errors of an exploded subset: 'Error' (symmetric, shape N) or, from --errory_bounds,
+    'ErrorLow'/'ErrorHigh' stacked as (2, N) for asymmetric bars/bands; None without either.
+    Error columns are only exploded under --errory/--errory_bounds, so a column still holding
+    per-row arrays (or anything else not castable to scalars) has no per-point values to
+    return: give None instead of raising, which would otherwise push the caller's numeric
+    x axis into the categorical fallback."""
+    if "ErrorLow" in subset.columns and "ErrorHigh" in subset.columns:
+        try:
+            return np.vstack([
+                subset["ErrorLow"].astype(float).to_numpy(),
+                subset["ErrorHigh"].astype(float).to_numpy(),
+            ])
+        except (ValueError, TypeError):
+            return None
+    if "Error" in subset.columns:
+        try:
+            return subset["Error"].astype(float).to_numpy()
+        except (ValueError, TypeError):
+            return None
+    return None
+
+
 def _expand_singletons_for_explode(frame, columns):
     """Broadcast one-value plot arrays to match longer x/y arrays."""
     frame = frame.copy()
@@ -585,6 +742,7 @@ def _apply_iterable_legend(
     comparable_style_map,
     capitalize_labels,
     comparable_alpha_map=None,
+    selection=None,
     **loc_kwargs,
 ):
     """Draw the iterable legend as its own artist, and -- when a comparable
@@ -593,51 +751,125 @@ def _apply_iterable_legend(
     alive via ax.add_artist, secondary legend drawn separately) instead of
     folding both into one combined legend block.
     """
-    # Without an explicit loc, fall back to the configured legend_style loc
-    # ("best", or --legend_loc) so the legend avoids the data.
-    # A second (comparable) legend is pinned to a lower corner, so the primary
-    # legend then keeps its fixed upper-right spot to avoid colliding with it.
-    has_secondary = bool(comparable_style_map or comparable_alpha_map)
+    # Without an explicit loc, place the legend where it obstructs the data
+    # least (the configured legend_style loc "best" or --legend_loc pins it
+    # exactly). A second (comparable) legend is placed jointly with the
+    # primary so the pair covers the least data and the two never overlap;
+    # --comparable_legend_loc pins it instead. --draw_legend selects which of
+    # the two legends is drawn at all (iterable colours / comparable styles).
+    explicit_loc = getattr(args, "legend_loc", None)
+    comparable_loc = getattr(args, "comparable_legend_loc", None)
     if loc_kwargs:
         primary_loc_kwargs = dict(loc_kwargs)
+    elif explicit_loc:
+        primary_loc_kwargs = {"loc": explicit_loc}
     else:
-        primary_loc_kwargs = {"loc": "upper right"} if has_secondary else {}
-    leg1 = apply_legend_style(
-        ax,
+        primary_loc_kwargs = {}
+    if comparable_alpha_map and handles:
+        # Fill-strength mode: the stages share one colour per iterable, so show
+        # that colour as a filled swatch instead of a thin step outline.
+        def _swatch(handle):
+            getter = getattr(handle, "get_edgecolor", None) or getattr(handle, "get_color", None)
+            color = getter() if getter else "black"
+            if isinstance(color, (list, tuple)) and len(color) and isinstance(color[0], (list, tuple)):
+                color = color[0]
+            rgb = matplotlib.colors.to_rgb(color)
+            return mpatches.Patch(facecolor=(*rgb, 0.45), edgecolor=rgb, linewidth=2)
+
+        handles = [_swatch(h) for h in handles]
+    primary_legend_kwargs = dict(
         title=iterable_title,
         handles=handles,
         labels=labels,
         capitalize_labels=capitalize_labels,
-        **primary_loc_kwargs,
     )
+    has_secondary_legend = bool(comparable_style_map or comparable_alpha_map)
 
-    if not comparable_style_map and not comparable_alpha_map:
-        return leg1
+    if has_secondary_legend:
+        if comparable_alpha_map:
+            # Match the per-stage line width (--comparable_linewidths) so the legend
+            # tells the stages apart even when their fill is nearly transparent.
+            widths = list(getattr(args, "comparable_linewidths", None) or [])
+            secondary_proxies = [
+                mpatches.Patch(
+                    facecolor=(0.5, 0.5, 0.5, alpha),
+                    edgecolor="black",
+                    linewidth=widths[i] if len(widths) == len(comparable_alpha_map) else 1.0,
+                )
+                for i, alpha in enumerate(comparable_alpha_map.values())
+            ]
+            secondary_labels = list(comparable_alpha_map.keys())
+        else:
+            secondary_proxies = [
+                mlines.Line2D([], [], color="black", linestyle=style, linewidth=1.5)
+                for style in comparable_style_map.values()
+            ]
+            secondary_labels = list(comparable_style_map.keys())
 
-    ax.add_artist(leg1)
+        secondary_title = None if comparable_col is None else str(comparable_col)
+        secondary_legend_kwargs = dict(
+            title=secondary_title,
+            handles=secondary_proxies,
+            labels=secondary_labels,
+            capitalize_labels=False,
+        )
 
-    if comparable_alpha_map:
-        secondary_proxies = [
-            mpatches.Patch(facecolor="gray", alpha=alpha, edgecolor="black", linewidth=1.0)
-            for alpha in comparable_alpha_map.values()
-        ]
-        secondary_labels = list(comparable_alpha_map.keys())
-    else:
-        secondary_proxies = [
-            mlines.Line2D([], [], color="black", linestyle=style, linewidth=1.5)
-            for style in comparable_style_map.values()
-        ]
-        secondary_labels = list(comparable_style_map.keys())
+    def _place_secondary_around(primary_legend):
+        ax.add_artist(primary_legend)
+        if comparable_loc:
+            return apply_legend_style(ax, loc=comparable_loc, **secondary_legend_kwargs)
+        fig = ax.figure
+        fig.canvas.draw()
+        return apply_legend_style_clear_of_data(
+            ax,
+            avoid_boxes=[primary_legend.get_window_extent(fig.canvas.get_renderer())],
+            **secondary_legend_kwargs,
+        )
 
-    secondary_title = None if comparable_col is None else str(comparable_col)
-    secondary_loc = "lower left" if primary_loc_kwargs.get("loc") == "upper left" else "lower right"
-    return apply_legend_style(
+    selection = selection or (getattr(args, "draw_legend", "both") or "both")
+    draw_primary = selection in ("both", "iterable")
+    draw_secondary = selection in ("both", "comparable") and has_secondary_legend
+    if not draw_primary and not draw_secondary:
+        return None
+
+    if not draw_primary:
+        # Comparable legend only (split-legend side-by-side panels).
+        if comparable_loc:
+            return apply_legend_style(ax, loc=comparable_loc, **secondary_legend_kwargs)
+        return apply_legend_style_clear_of_data(ax, **secondary_legend_kwargs)
+
+    if primary_loc_kwargs:
+        # Explicit caller placement (e.g. --stacked): honour it exactly.
+        leg1 = apply_legend_style(ax, **primary_loc_kwargs, **primary_legend_kwargs)
+        if not draw_secondary:
+            return leg1
+        return _place_secondary_around(leg1)
+    if not draw_secondary:
+        if getattr(args, "legend_free", False):
+            # The legend is placed before the axes are finalised: apply the
+            # requested scales and ranges first so the placement sees the final view.
+            if getattr(args, "logy", False):
+                ax.set_yscale("log")
+            if getattr(args, "logx", False):
+                ax.set_xscale("log")
+            if getattr(args, "rangey", None):
+                ax.set_ylim(*args.rangey)
+            if getattr(args, "rangex", None):
+                ax.set_xlim(*args.rangex)
+            return apply_legend_style_free(ax, **primary_legend_kwargs)
+        return apply_legend_style_clear_of_data(ax, **primary_legend_kwargs)
+
+    primary_pin = primary_loc_kwargs.get("loc")
+    if primary_pin and comparable_loc:
+        leg1 = apply_legend_style(ax, loc=primary_pin, **primary_legend_kwargs)
+        ax.add_artist(leg1)
+        return apply_legend_style(ax, loc=comparable_loc, **secondary_legend_kwargs)
+    return apply_legend_pair_clear_of_data(
         ax,
-        title=secondary_title,
-        handles=secondary_proxies,
-        labels=secondary_labels,
-        capitalize_labels=False,
-        loc=secondary_loc,
+        primary_legend_kwargs,
+        secondary_legend_kwargs,
+        primary_loc=primary_pin,
+        secondary_loc=comparable_loc,
     )
 
 def main():
@@ -666,14 +898,37 @@ def main():
         rprint("[yellow]Warning:[/yellow] No datafiles found. Exiting...")
         return
 
+    if getattr(args, "y_row", None) is not None:
+        def _pick_row(v):
+            v = np.asarray(v)
+            if v.ndim != 2:
+                return v
+            # rows holding fewer traces get NaN (they are usually dropped by --select anyway)
+            return v[args.y_row] if args.y_row < len(v) else np.full(v.shape[1], np.nan)
+
+        df[args.y] = df[args.y].apply(_pick_row)
+    errory_column = getattr(args, "errory_column", None)
+    errory_bounds = getattr(args, "errory_bounds", None)
+    if getattr(args, "variable_column", None) is not None:
+        df["Variable"] = df[args.variable_column].astype(str)
+    if errory_column is not None:
+        df["Error"] = df[errory_column]
+    if errory_bounds is not None:
+        low, high = errory_bounds
+        df["ErrorLow"] = [np.asarray(v, dtype=float) - np.asarray(lo, dtype=float) for v, lo in zip(df[args.y], df[low])]
+        df["ErrorHigh"] = [np.asarray(hi, dtype=float) - np.asarray(v, dtype=float) for v, hi in zip(df[args.y], df[high])]
+
     if args.multiply is not None:
         df[args.y] = df[args.y].apply(
             lambda v: np.asarray(v) * args.multiply if v is not None else v
         )
-        if f"{args.y}Error" in df.columns:
-            df[f"{args.y}Error"] = df[f"{args.y}Error"].apply(
-                lambda v: np.asarray(v) * args.multiply if v is not None else v
-            )
+        # 'Error' is scaled only when it comes from --errory_column (unchanged behaviour otherwise)
+        scaled_errors = [f"{args.y}Error", "ErrorLow", "ErrorHigh"] + (["Error"] if errory_column else [])
+        for error_column in scaled_errors:
+            if error_column in df.columns:
+                df[error_column] = df[error_column].apply(
+                    lambda v: np.asarray(v) * args.multiply if v is not None else v
+                )
 
     if args.iterable not in df.columns:
         available_columns = ", ".join(map(str, df.columns.tolist()))
@@ -782,6 +1037,8 @@ def main():
                 _in_map = [v for v in _mapping_dict if v in set(iterable_values)]
                 _not_in_map = [v for v in iterable_values if v not in set(_mapping_dict)]
                 iterable_values = np.array(_in_map + _not_in_map)
+        if getattr(args, "iterable_order_reverse", False):
+            iterable_values = np.array(list(iterable_values)[::-1])
 
         sum_set = {str(s) for s in (getattr(args, "sum_iterables", None) or [])}
         sum_label_base = getattr(args, "sum_label", "Combined")
@@ -861,6 +1118,8 @@ def main():
                 if comparable_col in _filtered_for_legend.columns
                 else np.array([])
             )
+            if getattr(args, "comparable_order_reverse", False):
+                global_comparable_values = global_comparable_values[::-1]
 
             if len(global_comparable_values) > 1 and not invert_style:
                 _cfs_active = getattr(args, "comparable_fill_strength", False)
@@ -1030,15 +1289,11 @@ def main():
                         x = subset[args.x].astype(float).to_numpy()
                         x_bin = x[1] - x[0] if len(x) > 1 else 1
                         x_edges = np.linspace(x[0] - x_bin / 2, x[-1] + x_bin / 2, len(x) + 1)
-                        y_error = (
-                            subset[f"Error"].astype(float).to_numpy()
-                            if f"Error" in subset.columns
-                            else None
-                        )
+                        y_error = _subset_y_error(subset)
                         mask = ~np.isnan(x) & ~np.isnan(y)
                         x = x[mask]
                         y = y[mask]
-                        x_edges = x_edges[np.append(mask, True) | np.append(True, mask)]
+                        x_edges = x_edges[np.append(mask, False) | np.append(False, mask)]
                         if y_error is not None:
                             y_error = y_error[mask]
                         extrapolated_mask = pd.array(extrap_raw_c[mask], dtype="boolean").fillna(False).astype(bool).__array__() if extrap_raw_c is not None else np.zeros(len(x), dtype=bool)
@@ -1083,7 +1338,7 @@ def main():
                         )
                         primary_value_label = comparable_label
                         plot_label = None
-                        if idx == n_vars - 1 and comparable_value not in _labeled_comparables:
+                        if idx == args.legend_panel % n_vars and comparable_value not in _labeled_comparables:
                             plot_label = comparable_label
                             _labeled_comparables.add(comparable_value)
                     else:
@@ -1097,7 +1352,7 @@ def main():
                         line_linestyle = _resolve_comparable_linestyle(sdx, args, n_total=len(global_comparable_values))
                         primary_value_label = iterable_label
                         plot_label = None
-                        if idx == n_vars - 1 and iterable not in _labeled_iterables:
+                        if idx == args.legend_panel % n_vars and iterable not in _labeled_iterables:
                             plot_label = iterable_label
                             _labeled_iterables.add(iterable)
 
@@ -1223,6 +1478,8 @@ def main():
             explode_columns = [args.x, args.y]
             if args.errory and "Error" in subset.columns:
                 explode_columns.append("Error")
+            if "ErrorLow" in subset.columns:
+                explode_columns += ["ErrorLow", "ErrorHigh"]
             subset = _expand_singletons_for_explode(subset, explode_columns)
             subset = subset.explode(column=explode_columns)
             if subset.empty:
@@ -1241,25 +1498,22 @@ def main():
                 x = subset[args.x].astype(float).to_numpy()
                 x_bin = x[1] - x[0] if len(x) > 1 else 1
                 x_edges = np.linspace(x[0] - x_bin / 2, x[-1] + x_bin / 2, len(x) + 1)
-                y_error = (
-                    subset[f"Error"].astype(float).to_numpy()
-                    if f"Error" in subset.columns
-                    else None
-                )
+                y_error = _subset_y_error(subset)
                 mask = ~np.isnan(x) & ~np.isnan(y)
                 # Remove indices in x, y_error and y where any of them is NaN
                 x = x[mask]
                 y = y[mask]
                 x_edges = x_edges[
-                    np.append(mask, True) | np.append(True, mask)
+                    np.append(mask, False) | np.append(False, mask)
                 ]  # Keep edges corresponding to valid x values
                 if y_error is not None:
-                    y_error = y_error[mask]
+                    y_error = y_error[..., mask]
                 extrapolated_mask = pd.array(extrap_raw[mask], dtype="boolean").fillna(False).astype(bool).__array__() if extrap_raw is not None else np.zeros(len(x), dtype=bool)
 
             except ValueError:
                 x = subset[args.x].astype(str)
-                y_error = None
+                # categorical x keeps its errors only for the explicit error-column options
+                y_error = _subset_y_error(subset) if (getattr(args, "errory_column", None) or getattr(args, "errory_bounds", None)) else None
                 extrapolated_mask = np.zeros(len(x), dtype=bool)
 
             if extrapolated_mask.any() and not args.extrapolate:
@@ -1267,7 +1521,7 @@ def main():
                 x = x[keep]
                 y = y[keep]
                 if isinstance(y_error, np.ndarray):
-                    y_error = y_error[keep]
+                    y_error = y_error[..., keep]
                 extrapolated_mask = np.zeros(len(x), dtype=bool)
 
             last_x = x
@@ -1294,7 +1548,7 @@ def main():
                     f"\tPlotting {len(x)} points with explicit plot_type={args.plot_type} for {args.iterable}={iterable} (legend={iterable_label}), Variable={variable}"
                 )
 
-                plot_label = iterable_label if idx == n_vars - 1 else None
+                plot_label = iterable_label if idx == args.legend_panel % n_vars else None
 
                 if args.plot_type == "bar":
                     plot_data(
@@ -1335,10 +1589,26 @@ def main():
                     )
 
                 elif args.plot_type == "errorbar":
+                    x_plot = x
+                    if getattr(args, "dodge", 0) and len(iterable_values) > 1:
+                        # Shift each iterable sideways so that markers sharing an
+                        # x value do not hide each other's error bars.
+                        shift = (jdx - (len(iterable_values) - 1) / 2) * args.dodge
+                        x_values = list(np.asarray(x))
+                        if all(isinstance(v, str) for v in x_values):
+                            categories = getattr(ax_current, "_dodge_categories", [])
+                            categories += [v for v in x_values if v not in categories]
+                            ax_current._dodge_categories = categories
+                            x_plot = np.array([categories.index(v) for v in x_values], dtype=float) + shift
+                            ax_current.set_xticks(range(len(categories)), categories)
+                            ax_current.xaxis.set_minor_locator(matplotlib.ticker.NullLocator())
+                            ax_current.set_xlim(-0.5, len(categories) - 0.5)
+                        else:
+                            x_plot = np.asarray(x, dtype=float) + shift
                     plot_data(
                         args,
                         ax_current,
-                        x,
+                        x_plot,
                         y=y,
                         errory=y_error,
                         label=plot_label,
@@ -1355,11 +1625,15 @@ def main():
                         plot_data(args, ax_current, x_ext, y=y_ext, label=None, color=iterable_color, plot_type="line", linestyle=_EXTRAPOLATED_LINESTYLE)
                         axes_with_extrapolated.setdefault(ax_current, []).append((iterable_label, iterable_color))
                     else:
+                        # bands/bars on lines only for the explicit error-column options
+                        line_error = y_error if args.errory and (getattr(args, "errory_column", None) or getattr(args, "errory_bounds", None)) else None
                         plot_data(
                             args,
                             ax_current,
                             x,
                             y=y,
+                            errory=line_error,
+                            errory_sym="symmetric" if line_error is not None and np.ndim(line_error) == 1 else "asymmetric",
                             label=plot_label,
                             color=iterable_color,
                             plot_type="line",
@@ -1404,7 +1678,7 @@ def main():
                         x,
                         y=y,
                         errory=y_error,
-                        label=iterable_label if idx == n_vars - 1 else None,
+                        label=iterable_label if idx == args.legend_panel % n_vars else None,
                         color=iterable_color,
                         plot_type="bar",
                         bottom=bottom,
@@ -1430,7 +1704,7 @@ def main():
                             x,
                             y=y,
                             errory=y_error,
-                            label=iterable_label if idx == n_vars - 1 else None,
+                            label=iterable_label if idx == args.legend_panel % n_vars else None,
                             color=iterable_color,
                             plot_type="errorbar",
                             fmt="o",
@@ -1446,7 +1720,7 @@ def main():
                         ax_current,
                         x,
                         y=y,
-                        label=iterable_label if idx == n_vars - 1 else None,
+                        label=iterable_label if idx == args.legend_panel % n_vars else None,
                         color=iterable_color,
                         plot_type="bar",
                         bottom=bottom,
@@ -1460,7 +1734,7 @@ def main():
                             x,
                             x_edges=x_edges,
                             y=y,
-                            label=iterable_label if idx == n_vars - 1 else None,
+                            label=iterable_label if idx == args.legend_panel % n_vars else None,
                             color=iterable_color,
                             plot_type="step",
                             linestyle=args.plot_style,
@@ -1471,7 +1745,7 @@ def main():
                             ax_current,
                             x,
                             y=y,
-                            label=iterable_label if idx == n_vars - 1 else None,
+                            label=iterable_label if idx == args.legend_panel % n_vars else None,
                             color=iterable_color,
                             plot_type="plot",
                             marker="o",
@@ -1663,8 +1937,34 @@ def main():
                 ax_current.semilogx()
 
             if iterable_values.size > 1:
-                if args.stacked:
-                    if idx == n_vars - 1:
+                # Panels that carry a legend: the primary legend on
+                # --legend_panel, and (when split) the comparable legend on
+                # --comparable_legend_panel. Each panel draws only its own
+                # legend, honouring --draw_legend.
+                _legend_panel_idx = args.legend_panel % n_vars
+                _comparable_panel_idx = (
+                    args.comparable_legend_panel % n_vars
+                    if getattr(args, "comparable_legend_panel", None) is not None
+                    else _legend_panel_idx
+                )
+                _base_selection = getattr(args, "draw_legend", "both") or "both"
+
+                def _legend_selection_for(panel_idx):
+                    if _base_selection == "none":
+                        return "none"
+                    on_primary = panel_idx == _legend_panel_idx
+                    on_comparable = panel_idx == _comparable_panel_idx
+                    if on_primary and on_comparable:
+                        return _base_selection
+                    if on_primary:
+                        return "iterable" if _base_selection in ("both", "iterable") else "none"
+                    if on_comparable:
+                        return "comparable" if _base_selection in ("both", "comparable") else "none"
+                    return "none"
+
+                if idx in (_legend_panel_idx, _comparable_panel_idx):
+                    _panel_selection = _legend_selection_for(idx)
+                    if args.stacked:
                         main_handles, main_labels = ax_current.get_legend_handles_labels()
                         _apply_iterable_legend(
                             ax_current,
@@ -1675,11 +1975,11 @@ def main():
                             secondary_style_map,
                             getattr(args, "capitalize_legend", False),
                             comparable_alpha_map=secondary_alpha_map,
+                            selection=_panel_selection,
                             loc="upper left",
                             bbox_to_anchor=(0, 1),
                         )
-                else:
-                    if idx == n_vars - 1:
+                    else:
                         main_handles, main_labels = ax_current.get_legend_handles_labels()
                         if ax_current in axes_with_extrapolated:
                             for lbl, color in axes_with_extrapolated[ax_current]:
@@ -1695,8 +1995,19 @@ def main():
                             secondary_style_map,
                             getattr(args, "capitalize_legend", False),
                             comparable_alpha_map=secondary_alpha_map,
+                            selection=_panel_selection,
                         )
 
+            if getattr(args, "mean_band", False):
+                _band_y = pd.to_numeric(filter_dataframe(df_config, args)[args.y], errors="coerce").dropna().to_numpy()
+                if len(_band_y) > 0:
+                    _band_mean, _band_std = float(np.mean(_band_y)), float(np.std(_band_y))
+                    _band_dec = max(0, 1 - int(np.floor(np.log10(_band_std)))) if _band_std > 0 else 2
+                    ax_current.axhspan(_band_mean - _band_std, _band_mean + _band_std, color="gray", alpha=0.2, linewidth=0, zorder=0)
+                    draw_horizontal_lines(
+                        ax_current, [_band_mean], labels=[f"Average {_band_mean:.{_band_dec}f} $\\pm$ {_band_std:.{_band_dec}f}"],
+                        styles=["--"], colors=["gray"], fontsize=linelabelfontsize,
+                    )
             draw_horizontal_lines(
                 ax_current,
                 getattr(args, "horizontal", None),

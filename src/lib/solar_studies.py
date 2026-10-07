@@ -126,6 +126,7 @@ DEFAULT_LAYOUT = "{config}/{name}/{config}_{name}_{kind}.pkl"
 LEGACY_CONFIGS = ("hd_1x2x6", "vd_1x8x14_3view_30deg")  # signal-only productions (marley_official only)
 ALL_CONFIGS = CONFIGS + LEGACY_CONFIGS
 BACKGROUND_NAMES = ("gamma", "neutron", "radiological")
+FINAL_BACKGROUND_NAMES = ("gamma_final", "neutron_final", "radiological_final")  # 2026-10-03 final-defaults productions
 
 
 @dataclass(frozen=True)
@@ -224,7 +225,10 @@ RECONSTRUCTION = FlatFamily(
         "vertex/reconstruction": ("Vertex_Reconstruction_Efficiency", "Vertex_3D_Quantile_Thresholds"),
         "vertex/fiducial": ("Fiducial_Efficiency", "Fiducial_Purity"),
         "vertex/smearing": ("Cumulative_Vertex_Error", "Vertex_Smearing"),  # Vertex_Smearing ~8 MB
-        "TPC/resolution/neutrino": ("Neutrino_Energy_Resolution", "MainK_Resolution_GaussianFit"),
+        "TPC/resolution/neutrino": (
+            "Neutrino_Energy_Resolution", "MainK_Resolution_GaussianFit",
+            "Neutrino_Energy_Resolution_NoSBClassifier",
+        ),
         "TPC/resolution/electron": ("Electron_Energy_Resolution",),
         "TPC/adjcluster": ("Adjacent_Cluster_Counts", "Adjacent_Cluster_Counts_Slim", "Adjacent_Cluster_Distributions"),  # Counts up to ~11 MB
         "PDS/matchedopflash": (
@@ -234,6 +238,7 @@ RECONSTRUCTION = FlatFamily(
         "PDS/adjopflash": tuple(f"Signal_AdjOpFlash{q}_{s}Scan" for q in ("Num", "PE") for s in ("Plane", "Radial")),
         "PDS/opflash": ("Light_Map_Fitting_Data", "Light_Map_Fitting_Parameters"),
         "PDS/flash": ("OpFlash_Counts_Slim", "MatchedOpFlash_Summary", "Flash_Vertex_Distances"),  # 05/06 flash scripts (2026-09 flash samples)
+        "PDS/ophit": ("OpHit_LightYield_Drift_Scan", "OpHit_LightYield_Region_Scan"),  # 08_ophit_light_yield.py (ophit productions, OpHits saved)
         "preselection/efficiency": ("Preselection_Efficiency",),
         "preselection/clustering": ("Clustering_Efficiency_Energy", "Clustering_Efficiency_NHit"),
     },
@@ -249,6 +254,12 @@ RECONSTRUCTION = FlatFamily(
             *(f"Signal_AdjOpFlash{q}_{s}Scan" for q in ("Num", "PE") for s in ("Plane", "Radial")))),
         Selection(CONFIGS, ("marley_flash",), ("OpFlash_Counts_Slim", "MatchedOpFlash_Summary")),
         Selection(("hd_1x2x6_centralAPA",), ("marley_flash",), ("Flash_Vertex_Distances",)),
+        # 2026-09-29 final-defaults production (marley_final): chapter 6 / appendix F and lowe paper section 4.
+        # No OpFlash info in these ntuples, so no OpFlash_Counts_Slim / MatchedOpFlash_Summary / Flash_Vertex_Distances;
+        # no preselection stage was run on it. Energy stages use per-config marley_final calibrations
+        # (refit 2026-10-03 on SOLAR after the SelectedEnergy mask fix in lib/cluster.py).
+        Selection(CONFIGS, ("marley_final",), tuple(k for k in RECO_REGENERATED if k != "Preselection_Efficiency")),
+        Selection(CONFIGS, ("marley_final",), ("Neutrino_Energy_Resolution_NoSBClassifier",)),
         # lowe paper (marley_official): only the kinds its commands read
         Selection(("hd_1x2x6_centralAPA", "vd_1x8x14_3view_30deg_nominal"), ("marley_official",), (
             "Vertex_Resolution", "Purity_Match_Resolution", "Fiducial_Purity", "Vertex_Smearing", "Adjacent_Cluster_Counts",
@@ -263,6 +274,12 @@ RECONSTRUCTION = FlatFamily(
         Selection(("hd_1x2x6_centralAPA", "vd_1x8x14_3view_30deg_nominal"), BACKGROUND_NAMES, ("Purity_Match_Resolution",)),
         Selection(("hd_1x2x6_centralAPA",), BACKGROUND_NAMES, ("Adjacent_Cluster_Counts_Slim",)),
         Selection(CONFIGS, BACKGROUND_NAMES, ("Signal_AdjOpFlashNum_RadialScan",)),
+        # 2026-10-03 final-defaults background productions (gamma_final/neutron_final from PIC,
+        # radiological_final from FNAL/PIC): same kinds as the legacy background selections,
+        # all four configs (VD Top gamma/neutron are byte-copies of VD Shielded by design).
+        # Only vertex/resolution + TPC/adjcluster + PDS/adjopflash stages were run on them
+        # (no preselection/clustering stage; no OpFlash info in the final ntuples).
+        Selection(CONFIGS, FINAL_BACKGROUND_NAMES, ("Purity_Match_Resolution", "Adjacent_Cluster_Counts_Slim", "Signal_AdjOpFlashNum_RadialScan")),
         # clustering-window and flash-matching criterion scans
         Selection(("hd_1x2x6_centralAPA",),
                   tuple(f"marley_adjchannel{n}" for n in (1, 5, 7, 9)) + tuple(f"marley_adjtime{n}" for n in (5, 10, 15, 20, 30)),
@@ -271,6 +288,9 @@ RECONSTRUCTION = FlatFamily(
                   ("marley_exponent0", "marley_exponent1", "marley_exponent2", "marley_maximum"),
                   ("TPC_Cluster_Efficiency_Plane_Scan",)),
         # signal-only legacy productions
+        # chapter 4 light yield vs drift: legacy HD ophit sample and the 2026-10-04 final-defaults ophit productions
+        Selection(("hd_1x2x6",), ("marley_ophit",), ("OpHit_LightYield_Drift_Scan", "OpHit_LightYield_Region_Scan")),
+        Selection(LEGACY_CONFIGS, ("marley_ophit_final",), ("OpHit_LightYield_Drift_Scan", "OpHit_LightYield_Region_Scan")),
         Selection(LEGACY_CONFIGS, ("marley_official",), (
             *(f"TPC_Cluster_Efficiency_{scan}_Scan" for scan in RECO_SCANS), "Electron_Energy_Resolution", "Neutrino_Energy_Resolution",
             "Fiducial_Efficiency", "Vertex_Reconstruction_Efficiency", "Preselection_Efficiency",
@@ -297,12 +317,12 @@ CALIBRATION = FlatFamily(
     files={
         "workflow/calibration": ("CheatedEnergy_Electron_Calibration", "PrimaryEnergy_Electron_Calibration",
                                  "Cheated_Resolution_GaussianFit", "Primary_Resolution_GaussianFit"),
-        "workflow/correction": ("Charge_Correction_Factor", "ElectronCharge_Correction_Factor", "Charge_Lifetime_Correction",
+        "workflow/correction": ("Charge_Correction_Factor", "ElectronCharge_Correction_Factor", "Charge_Lifetime_Correction", "Charge_Lifetime_Correction_Reco",
                                 "Cluster_Distributions", "NHit_Distributions"),
     },
     selections=(
         Selection(LEGACY_CONFIGS, ("marley_official",), (
-            "Charge_Correction_Factor", "ElectronCharge_Correction_Factor", "Charge_Lifetime_Correction", "Cluster_Distributions", "NHit_Distributions")),
+            "Charge_Correction_Factor", "ElectronCharge_Correction_Factor", "Charge_Lifetime_Correction", "Charge_Lifetime_Correction_Reco", "Cluster_Distributions", "NHit_Distributions")),
         Selection(("hd_1x2x6_centralAPA",), ("marley_official",), (
             "CheatedEnergy_Electron_Calibration", "Cheated_Resolution_GaussianFit", "Primary_Resolution_GaussianFit", "Charge_Lifetime_Correction")),
         Selection(("hd_1x2x6_centralAPA", "vd_1x8x14_3view_30deg_nominal"), ("marley_official",), ("PrimaryEnergy_Electron_Calibration",)),
@@ -315,13 +335,20 @@ WORKFLOW = FlatFamily(
     "workflow",
     files={
         "workflow/reconstruction": ("Neutrino_Energy", "Gamma_Energy"),
-        "workflow/discrimination": ("AdjCl_Selection", "Cluster_Discriminant", "Random_Forest_Importance", "Neutrino_CC_Production"),
+        "workflow/discrimination": ("AdjCl_Selection", "Cluster_Discriminant", "Random_Forest_Importance", "Neutrino_CC_Production",
+                                    "Signal_Background_Discriminant", "Signal_Background_Efficiency", "Signal_Background_Features",
+                                    "Signal_Background_Importance", "Signal_Background_Selection", "Signal_Background_Threshold"),
         "workflow/wire_comparison": ("Wire_Plane_Comparison",),
     },
     selections=(
+        Selection(CONFIGS, ("marley_final",), ("Neutrino_Energy",)),  # 2026-09-29 final-defaults production, per-config marley_final calibration
+        Selection(CONFIGS, ("marley_final",), ("Signal_Background_Discriminant", "Signal_Background_Efficiency",
+                                               "Signal_Background_Features", "Signal_Background_Importance",
+                                               "Signal_Background_Selection", "Signal_Background_Threshold")),
         Selection(("hd_1x2x6_centralAPA", "hd_1x2x6_lateralAPA", "vd_1x8x14_3view_30deg_nominal"), (SIGNAL_NAME, "marley_official"), ("Neutrino_Energy",)),
         Selection(("hd_1x2x6_centralAPA", "hd_1x2x6"), ("marley_official",), ("Gamma_Energy",)),
-        Selection(("hd_1x2x6_centralAPA",), ("marley_official",), ("AdjCl_Selection", "Cluster_Discriminant", "Random_Forest_Importance")),
+        Selection(("hd_1x2x6_centralAPA",), ("marley_official",), ("Cluster_Discriminant", "Random_Forest_Importance")),
+        Selection(("hd_1x2x6_centralAPA", "hd_1x2x6_lateralAPA", "vd_1x8x14_3view_30deg_nominal", "vd_1x8x14_3view_30deg_shielded"), ("marley_official",), ("AdjCl_Selection",)),
         Selection(("hd_1x2x6",), ("marley_official",), ("Neutrino_CC_Production", "Wire_Plane_Comparison")),
     ),
 )

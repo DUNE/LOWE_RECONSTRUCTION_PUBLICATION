@@ -177,6 +177,13 @@ parser.add_argument(
 )
 
 parser.add_argument(
+    "--no_legend",
+    action="store_true",
+    default=False,
+    help="Suppress the line legend (entries such as data/Fit). The fit parameter text is still drawn.",
+)
+
+parser.add_argument(
     "--bottom_labely",
     type=str,
     default="(Data - Fit)/Fit",
@@ -596,15 +603,17 @@ def main():
             legend_handles.append(fit_handle)
             legend_labels.append(fit_label)
 
-        legend = apply_legend_style(
-            ax_top,
-            title=args.labelz if args.labelz is not None else None,
-            handles=legend_handles,
-            labels=legend_labels,
-            capitalize_labels=getattr(args, "capitalize_legend", False),
-        )
+        legend = None
+        if not getattr(args, "no_legend", False):
+            legend = apply_legend_style(
+                ax_top,
+                title=args.labelz if args.labelz is not None else None,
+                handles=legend_handles,
+                labels=legend_labels,
+                capitalize_labels=getattr(args, "capitalize_legend", False),
+            )
 
-        if args.show_formula:
+        if args.show_formula and legend is not None:
             if fit_function_formula:
                 formula_text = str(fit_function_formula)
                 fit_text_artist = next(

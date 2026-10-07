@@ -244,6 +244,11 @@ def make_name_from_args(
         elif option_value:
             add(option_name, protected=True)
 
+    # --filename_suffix tags runs that differ only in a non-filename option (e.g. --path)
+    filename_suffix = getattr(args, "filename_suffix", None)
+    if filename_suffix:
+        add(str(filename_suffix), essential=True, protected=True)
+
     MAX_LEN = 150
     suffix_part = ("_" + suffix) if suffix is not None else ""
 

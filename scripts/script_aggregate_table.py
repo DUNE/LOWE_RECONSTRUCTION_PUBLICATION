@@ -16,7 +16,7 @@ from lib import *
 from lib.functions import resolution, gaussian, double_gaussian, exponential_decay
 from lib.selection import prepare_selection, filter_dataframe
 from lib.imports import import_data
-from lib.format import format_with_error, format_value
+from lib.format import format_with_band, format_with_error, format_value
 from lib.exports import make_name_from_args, save_table_to_paths
 from lib.plot import apply_note_to_figure
 from common_args import add_common_args
@@ -436,6 +436,51 @@ parser.add_argument(
 )
 
 parser.add_argument(
+    "--error_band",
+    nargs=2,
+    default=None,
+    metavar=("LOW", "HIGH"),
+    help="Columns holding the lower and upper bound of a band around --y (e.g. "
+    "Q16 Q84, the 16th/84th percentiles of a per-event distribution), shown as "
+    "'value (LOW--HIGH)' in place of the symmetric *Error column. Use it for "
+    "the spread of skewed distributions near a physical bound, where "
+    "'mean +/- std' reaches unphysical values (e.g. a count of 0(3)).",
+)
+
+parser.add_argument(
+    "--band_fallback",
+    default=None,
+    metavar="COLUMN",
+    help="With --error_band: column shown in parentheses instead of the band "
+    "when the band collapses to a single value (LOW == HIGH), e.g. "
+    "NonZeroPercent for count distributions where most events are 0.",
+)
+
+parser.add_argument(
+    "--band_fallback_unit",
+    default=None,
+    help="siunitx unit of --band_fallback (e.g. '\\percent'), printed with \\qty.",
+)
+
+parser.add_argument(
+    "--band_fallback_mark",
+    default=None,
+    help="Math-mode mark appended to entries that use --band_fallback (e.g. "
+    "'\\dagger'), so the caption can explain them.",
+)
+
+parser.add_argument(
+    "--melt",
+    nargs="+",
+    default=None,
+    metavar="COLUMN",
+    help="Wide-format input: turn these scalar columns into rows, with the column "
+    "name in --variable_name and the value in --y (e.g. --melt LimitCharge LimitR "
+    "-y Value). Array-valued columns are dropped first; rows that become identical "
+    "are merged.",
+)
+
+parser.add_argument(
     "--no_error",
     action="store_true",
     help="Show only the aggregated value, without a propagated error/uncertainty, "
@@ -552,6 +597,16 @@ def main():
         print("No data to plot. Exiting.")
         return
 
+    if args.melt:
+        # Keep only scalar identifier columns, then one row per melted column.
+        scalar_cols = [
+            c for c in df.columns
+            if c not in args.melt
+            and not df[c].map(lambda v: isinstance(v, (list, tuple, np.ndarray))).any()
+        ]
+        df = df.melt(id_vars=scalar_cols, value_vars=args.melt, var_name=args.variable_name, value_name=args.y)
+        df = df.drop_duplicates(subset=[c for c in df.columns if c != "Signal"] if "Signal" in df.columns else None)
+
     # Per-config rescaling, matched positionally against the raw --configs
     # values (before any renaming below). --y may still be array-valued here
     # (explode() hasn't run yet), so scale element-wise via apply rather than
@@ -563,11 +618,12 @@ def main():
             np.asarray(v) * f if v is not None else v
             for v, f in zip(df[args.y], factors)
         ]
-        if f"{args.y}Error" in df.columns:
-            df[f"{args.y}Error"] = [
-                np.asarray(v) * f if v is not None else v
-                for v, f in zip(df[f"{args.y}Error"], factors)
-            ]
+        for scaled in [f"{args.y}Error", *(args.error_band or [])]:
+            if scaled in df.columns:
+                df[scaled] = [
+                    np.asarray(v) * f if v is not None else v
+                    for v, f in zip(df[scaled], factors)
+                ]
 
     # Derive the "Geometry" column from the config name if it isn't already present
     if "Geometry" not in df.columns:
@@ -640,6 +696,8 @@ def main():
         cols.append(f"{args.y}Error")
     if f"{args.x}Error" in subset.columns:
         cols.append(f"{args.x}Error")
+    band_columns = [*(args.error_band or []), *([args.band_fallback] if args.band_fallback else [])]
+    cols.extend(band_columns)
 
     if args.drop_config:
         row_index = [args.row_name] if args.row_name else []
@@ -683,9 +741,13 @@ def main():
             df_config.loc[mask, args.y] = df_config.loc[mask, args.y] * float(factor)
             if f"{args.y}Error" in df_config.columns:
                 df_config.loc[mask, f"{args.y}Error"] = df_config.loc[mask, f"{args.y}Error"] * float(factor)
+            for band_column in args.error_band or []:
+                df_config.loc[mask, band_column] = df_config.loc[mask, band_column] * float(factor)
 
     if args.multiply is not None:
         df_config[args.y] = df_config[args.y] * args.multiply
+        for band_column in args.error_band or []:
+            df_config[band_column] = df_config[band_column] * args.multiply
         if f"{args.y}Error" in df_config.columns:
             df_config[f"{args.y}Error"] = df_config[f"{args.y}Error"] * args.multiply
 
@@ -701,7 +763,18 @@ def main():
         f"{args.y}Error" in df_config.columns or derives_error_from_spread
     ) and not args.no_error
 
-    if has_error_column:
+    if args.error_band and not args.no_error:
+        df_table = df_config.groupby(row_index + group_by_extra + [args.variable_name]).agg(
+            {column: [args.operation] for column in [args.y, *band_columns]}
+        )
+        df_table[args.y] = df_table.apply(
+            lambda row: format_with_band(row, args=args), axis=1
+        )
+        df_table = df_table.drop(
+            columns=[(column, args.operation) for column in band_columns]
+        )
+        df_table.columns = df_table.columns.droplevel(1)
+    elif has_error_column:
         if derives_error_from_spread:
             # No real per-row error to propagate - overwrite (or create) the
             # *Error column with a copy of --y itself, so the same groupby.agg
@@ -907,6 +980,18 @@ def main():
             (config_rank.get(idx[-2], len(config_rank)), row_rank.get(idx[-1], len(row_rank)), idx[-1])
             for idx in df_table.index
         ]
+        df_table = df_table.iloc[sorted(range(len(keys)), key=keys.__getitem__)]
+
+    elif args.melt:
+        # Melted tables: rows follow the order of --configs (the row label may carry
+        # the geometry in front of the configuration name, e.g. "HD Central")
+        names = [str(config_dict.get(c, c)) for c in args.configs]
+
+        def _rank(idx):
+            label = str(idx[-1] if isinstance(idx, tuple) else idx)
+            return next((i for i, n in enumerate(names) if label == n or label.endswith(" " + n)), len(names))
+
+        keys = [_rank(idx) for idx in df_table.index]
         df_table = df_table.iloc[sorted(range(len(keys)), key=keys.__getitem__)]
 
     # Make the "Configuration" index a column and drop the index

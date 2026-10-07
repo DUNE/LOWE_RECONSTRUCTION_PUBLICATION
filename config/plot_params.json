@@ -28,7 +28,7 @@
         "wspace": 0.25,
         "hspace": 0.15
       },
-      "two_panel_hspace": 0
+      "two_panel_hspace": 0.15
     },
     "legend_style": {
       "fontsize": "x-large",
@@ -182,7 +182,7 @@
       "APA": "APA",
       "Gamma": "Ext. Gamma",
       "Neutron": "Ext. Neutron",
-      "8B": "$⁸B$",
+      "8B": "$\u2078B$",
       "HEP": "$hep$"
     },
     "background_source": {
@@ -202,7 +202,7 @@
       "neutron": "Neutron",
       "radiological": "Radiological",
       "hep": "$hep$",
-      "8B": "$⁸B$"
+      "8B": "$\u2078B$"
     },
     "appearance_terms": {
       "P(nu_mu->nu_e)": "$P(\\nu_\\mu\\to\\nu_e)$",
@@ -272,6 +272,68 @@
       "hep": "C0",
       "marley": "C0"
     },
+    "smearing_step_labels": {
+      "TrueEnergy": "True energy",
+      "Charge": "True Charge",
+      "PileUp": "Pile-up",
+      "Lifetime": "Lifetime",
+      "Gain": "$F_0(n_\\text{hit})$ Conversion",
+      "Calibration": "Electron",
+      "Offset": "Discriminant offset",
+      "Map": "SolarEnergy"
+    },
+    "smearing_step_color": {
+      "TrueEnergy": "C0",
+      "Charge": "C1",
+      "PileUp": "C2",
+      "Lifetime": "C3",
+      "Gain": "C4",
+      "Calibration": "C5",
+      "Offset": "C6",
+      "Map": "C7"
+    },
+    "smearing_stage_dict": {
+      "True energy": "True energy",
+      "Pile-up": "Charge + pile-up",
+      "Lifetime correction": "Lifetime correction",
+      "NHits gain": "Hit-dependent conversion",
+      "Hit-dependent conversion": "Hit-dependent conversion",
+      "Electron calibration": "Electron calibration",
+      "SolarEnergy": "SolarEnergy"
+    },
+    "smearing_step_groups": {
+      "PileUp": "Charge + pile-up",
+      "Calibration": "Electron energy",
+      "Map": "Neutrino energy"
+    },
+    "smearing_sample_labels": {
+      "Solar": "CC Neutrino",
+      "marley": "CC Neutrino",
+      "marley_final": "CC Neutrino",
+      "gamma": "Gamma",
+      "gamma_final": "Gamma",
+      "neutron": "Neutron",
+      "neutron_final": "Neutron",
+      "radiological": "Radiological",
+      "radiological_final": "Radiological"
+    },
+    "smearing_sample_color": {
+      "Solar": "C0",
+      "marley": "C0",
+      "marley_final": "C0",
+      "gamma": "C2",
+      "gamma_final": "C2",
+      "neutron": "C4",
+      "neutron_final": "C4",
+      "radiological": "C3",
+      "radiological_final": "C3"
+    },
+    "sb_sample_color": {
+      "CC Neutrino": "C0",
+      "Gamma": "C1",
+      "Neutron": "C2",
+      "Radiological": "C3"
+    },
     "cutflow_stage_dict": {
       "Raw": "Total",
       "Fiducial": "Fiducial",
@@ -283,13 +345,13 @@
     "solar_dict": {
       "pp": "pp",
       "pep": "pep",
-      "be7": "⁷Be",
-      "b7": "⁷Be",
-      "b8": "$⁸B$",
+      "be7": "\u2077Be",
+      "b7": "\u2077Be",
+      "b8": "$\u2078B$",
       "hep": "$hep$",
-      "n13": "¹³N",
-      "o15": "¹⁵O",
-      "f17": "¹⁷F"
+      "n13": "\u00b9\u00b3N",
+      "o15": "\u00b9\u2075O",
+      "f17": "\u00b9\u2077F"
     },
     "solar_color": {
       "pp": "C0",
@@ -332,14 +394,18 @@
       "alpha",
       "gamma",
       "neutron",
-      "radiological"
+      "radiological",
+      "marley_final",
+      "gamma_final",
+      "neutron_final",
+      "radiological_final"
     ],
     "study_dict": {
       "default": "Reference",
       "oscpoint_solar": "Solar Best-Fit $\\Delta m^2_{21}$",
       "oscpoint_reactor": "Reactor $\\Delta m^2_{21}$",
-      "energy_maink": "Primary Cluster Energy",
-      "energy_spk": "Incoming Energy",
+      "energy_maink": "Main Particle Energy",
+      "energy_spk": "Parent Particle Energy",
       "charge_Q0": "$Q > Q_{0}$",
       "charge_Q50": "$Q > Q_{min}$",
       "charge_Q100": "$Q > 2Q_{min}$",
@@ -381,8 +447,8 @@
       "HEP_AdaptiveRebin_Comparison_metric_smoothed": "Smoothed Histogram",
       "bkgmodel_reduced": "Shielded",
       "bkgmodel_nominal": "Extrapolated",
-      "bkg_gamma_cluster": "$\\gamma$ Bkg: Cluster Energy",
-      "bkg_gamma_total": "$\\gamma$ Bkg: Total Energy",
+      "bkg_gamma_cluster": "Electron Only",
+      "bkg_gamma_total": "All Nearby Activity",
       "legacy_fit": "Legacy Fit",
       "Asimov": "Asimov",
       "Gaussian": "Gaussian",
@@ -412,7 +478,7 @@
       "Sensitivity_Contours_bkgmodel_reduced": "Shielded",
       "Sensitivity_Contours_membrane_veto_off": "No Membrane Veto",
       "Sensitivity_Contours_legacy_fit": "Legacy Fit",
-      "Sensitivity_Contours_energy_spk": "Incoming Energy",
+      "Sensitivity_Contours_energy_spk": "Parent Particle Energy",
       "Sensitivity_10Y_Contours_nuisance_nominal": "No Nuisances",
       "Sensitivity_10Y_Contours_nuisance_sin13": "$\\sin^{2}\\theta_{13}$ Pull Only",
       "Sensitivity_10Y_Contours_nuisance_escale": "Energy Scale Only",
@@ -478,13 +544,17 @@
       "truth": "True Position",
       "reco": "Reconstructed Position"
     },
+    "adjcl_selection_limits": {
+      "LimitCharge": "Charge",
+      "LimitR": "Distance"
+    },
     "thesis_labels": {
       "HD Central": "\\cfgHDCentral",
       "HD Lateral": "\\cfgHDLateral",
       "VD Top": "\\cfgVDTop",
       "VD Bottom Shielded": "\\cfgVDShielded",
-      "HD Signal": "\\gls{hd} CC Neutrino",
-      "VD Signal": "\\gls{vd} CC Neutrino",
+      "HD Signal": "\\HD CC Neutrino",
+      "VD Signal": "\\VD CC Neutrino",
       "marley": "CC Neutrino",
       "marley_official": "CC Neutrino",
       "gamma": "Gamma",
@@ -499,6 +569,14 @@
       "P0 cathode/APA": "Cathode",
       "P1 membrane": "Membrane 1",
       "P2 membrane": "Membrane 2"
+    },
+    "pds_waveform_label": {
+      "hd": "HD",
+      "vd": "VD"
+    },
+    "pds_waveform_color": {
+      "hd": "C1",
+      "vd": "C2"
     }
   }
 }

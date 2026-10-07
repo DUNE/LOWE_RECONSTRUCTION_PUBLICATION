@@ -17,7 +17,7 @@ from lib.selection import filter_dataframe
 from lib.exports import make_name_from_args, save_figure_to_paths
 from lib.format import make_title_from_args, make_config_label_from_args, make_config_color_and_style_from_args
 from lib.imports import import_data, prepare_import
-from lib.plot import apply_legend_style, plot_data, create_common_subplots, create_common_two_panel_figure, apply_note_to_figure, add_centered_suptitle, draw_vertical_lines, draw_horizontal_lines, place_point_label
+from lib.plot import apply_legend_style, apply_legend_style_clear_of_data, apply_legend_pair_clear_of_data, plot_data, create_common_subplots, create_common_two_panel_figure, apply_note_to_figure, add_centered_suptitle, draw_vertical_lines, draw_horizontal_lines, place_point_label
 from common_args import add_common_args, load_computation_settings, map_iterable_label, map_iterable_color, resolve_plot_kwargs, resolve_axis_label
 
 import matplotlib.lines as mlines
@@ -423,6 +423,41 @@ parser.add_argument(
     "--no_bottom_legend",
     action="store_true",
     help="Suppress the legend drawn on the bottom (lower-series) panel.",
+)
+
+parser.add_argument(
+    "--comparable_legend_loc",
+    type=str,
+    default=None,
+    help=(
+        "Pin the comparable (linestyle) legend to a fixed matplotlib loc "
+        "(e.g. 'lower right'). By default it is placed at the corner least "
+        "obstructed by the data and the primary legend."
+    ),
+)
+
+parser.add_argument(
+    "--bottom_legend_loc",
+    type=str,
+    default=None,
+    help=(
+        "Pin the bottom-panel legend to a fixed matplotlib loc "
+        "(e.g. 'lower left'). By default it is placed at the corner least "
+        "obstructed by the data."
+    ),
+)
+
+parser.add_argument(
+    "--draw_legend",
+    type=str,
+    default="both",
+    choices=["both", "iterable", "comparable", "none"],
+    help=(
+        "Which of the two top-panel legends to draw: 'both' (default), "
+        "'iterable' (colours only), 'comparable' (line styles only) or "
+        "'none'. Used to split the two legends across side-by-side panels "
+        "that share the same colour and line-style encodings."
+    ),
 )
 
 parser.add_argument(
@@ -1808,53 +1843,6 @@ def main():
             ax_bottom.yaxis.set_major_formatter(ScalarFormatter(useMathText=True))
             ax_bottom.ticklabel_format(axis='y', style='sci', scilimits=(0,0))
 
-        legend_title = args.labelz if args.labelz is not None else args.iterable
-        leg1 = apply_legend_style(
-            ax_top,
-            title=legend_title,
-            capitalize_labels=getattr(args, "capitalize_legend", False),
-            loc="upper right",
-        )
-        if comparable_col is not None and comparable_values_arr.size > 0:
-            ax_top.add_artist(leg1)
-            _cfs_legend = getattr(args, "comparable_fill_strength", False)
-            if _cfs_legend:
-                comparable_handles = [
-                    mpatches.Patch(
-                        facecolor="gray",
-                        alpha=_resolve_comparable_fill_alpha(sdx, args, n_total=comparable_values_arr.size),
-                        edgecolor="black",
-                        linewidth=1.0,
-                    )
-                    for sdx, val in enumerate(comparable_values_arr)
-                ]
-            else:
-                comparable_handles = [
-                    mlines.Line2D(
-                        [],
-                        [],
-                        color="black",
-                        linestyle=_resolve_comparable_style(sdx, args, n_total=comparable_values_arr.size)[0],
-                        linewidth=_resolve_comparable_style(sdx, args, n_total=comparable_values_arr.size)[1] or 1.5,
-                        label=map_iterable_label(val, comparable_col, getattr(args, "comparable_mapping", None)),
-                    )
-                    for sdx, val in enumerate(comparable_values_arr)
-                ]
-            apply_legend_style(
-                ax_top,
-                handles=comparable_handles,
-                labels=[map_iterable_label(v, comparable_col, getattr(args, "comparable_mapping", None)) for v in comparable_values_arr],
-                title=None if getattr(args, "comparable_title", None) == "None" else (getattr(args, "comparable_title", None) or comparable_col),
-                capitalize_labels=False,
-                loc="lower right",
-            )
-        if ax_bottom is not None and bottom_has_content and not getattr(args, "no_bottom_legend", False):
-            apply_legend_style(
-                ax_bottom,
-                capitalize_labels=getattr(args, "capitalize_legend", False),
-                loc="upper left",
-            )
-        
         # Plot collected residuals for comparable_operation with overlay_names
         if all_comparable_op_residuals is not None and len(all_comparable_op_residuals) > 0:
             for i, residual in enumerate(all_comparable_op_residuals):
@@ -1907,6 +1895,90 @@ def main():
                 ax_top.scatter(point_x, point_y, color="gray", s=40, zorder=6)
                 if point_labels is not None:
                     place_point_label(ax_top, point_x, point_y, point_labels[point_idx], fontsize=linelabelfontsize)
+
+        # Legends go last so the placement probe sees every drawn artist.
+        # Unless pinned by --legend_loc / --comparable_legend_loc /
+        # --bottom_legend_loc, each legend is drawn where it obstructs the
+        # data least; the primary and comparable legends are placed jointly so
+        # they never sit on top of each other. --draw_legend selects which of
+        # the two top-panel legends is drawn at all (iterable colours /
+        # comparable styles), for side-by-side panels that share encodings.
+        legend_title = args.labelz if args.labelz is not None else args.iterable
+        primary_loc_override = getattr(args, "legend_loc", None)
+        comparable_loc_override = getattr(args, "comparable_legend_loc", None)
+        draw_selection = getattr(args, "draw_legend", "both") or "both"
+        primary_legend_kwargs = dict(
+            title=legend_title,
+            capitalize_labels=getattr(args, "capitalize_legend", False),
+        )
+        has_comparable_legend = comparable_col is not None and comparable_values_arr.size > 0
+        draw_primary = draw_selection in ("both", "iterable")
+        draw_comparable = draw_selection in ("both", "comparable") and has_comparable_legend
+        comparable_legend_kwargs = None
+        if draw_comparable:
+            _cfs_legend = getattr(args, "comparable_fill_strength", False)
+            if _cfs_legend:
+                comparable_handles = [
+                    mpatches.Patch(
+                        facecolor="gray",
+                        alpha=_resolve_comparable_fill_alpha(sdx, args, n_total=comparable_values_arr.size),
+                        edgecolor="black",
+                        linewidth=1.0,
+                    )
+                    for sdx, val in enumerate(comparable_values_arr)
+                ]
+            else:
+                comparable_handles = [
+                    mlines.Line2D(
+                        [],
+                        [],
+                        color="black",
+                        linestyle=_resolve_comparable_style(sdx, args, n_total=comparable_values_arr.size)[0],
+                        linewidth=_resolve_comparable_style(sdx, args, n_total=comparable_values_arr.size)[1] or 1.5,
+                        label=map_iterable_label(val, comparable_col, getattr(args, "comparable_mapping", None)),
+                    )
+                    for sdx, val in enumerate(comparable_values_arr)
+                ]
+            comparable_legend_kwargs = dict(
+                handles=comparable_handles,
+                labels=[map_iterable_label(v, comparable_col, getattr(args, "comparable_mapping", None)) for v in comparable_values_arr],
+                title=None if getattr(args, "comparable_title", None) == "None" else (getattr(args, "comparable_title", None) or comparable_col),
+                capitalize_labels=False,
+            )
+        if not draw_primary and not draw_comparable:
+            pass  # --draw_legend none: no top-panel legends
+        elif draw_primary and draw_comparable and not (primary_loc_override and comparable_loc_override):
+            leg1, _ = apply_legend_pair_clear_of_data(
+                ax_top,
+                primary_legend_kwargs,
+                comparable_legend_kwargs,
+                primary_loc=primary_loc_override,
+                secondary_loc=comparable_loc_override,
+            )
+        elif draw_primary and draw_comparable:
+            leg1 = apply_legend_style(ax_top, loc=primary_loc_override, **primary_legend_kwargs)
+            ax_top.add_artist(leg1)
+            apply_legend_style(ax_top, loc=comparable_loc_override, **comparable_legend_kwargs)
+        elif draw_comparable:
+            # Comparable legend only (split-legend side-by-side panels).
+            if comparable_loc_override:
+                apply_legend_style(ax_top, loc=comparable_loc_override, **comparable_legend_kwargs)
+            else:
+                apply_legend_style_clear_of_data(ax_top, **comparable_legend_kwargs)
+        else:
+            if primary_loc_override:
+                leg1 = apply_legend_style(ax_top, loc=primary_loc_override, **primary_legend_kwargs)
+            else:
+                leg1 = apply_legend_style_clear_of_data(ax_top, **primary_legend_kwargs)
+        if ax_bottom is not None and bottom_has_content and not getattr(args, "no_bottom_legend", False):
+            bottom_loc_override = getattr(args, "bottom_legend_loc", None)
+            bottom_legend_kwargs = dict(
+                capitalize_labels=getattr(args, "capitalize_legend", False),
+            )
+            if bottom_loc_override:
+                apply_legend_style(ax_bottom, loc=bottom_loc_override, **bottom_legend_kwargs)
+            else:
+                apply_legend_style_clear_of_data(ax_bottom, **bottom_legend_kwargs)
 
         figure_title = make_title_from_args(args)
         add_centered_suptitle(fig, figure_title, fontsize=titlefontsize)

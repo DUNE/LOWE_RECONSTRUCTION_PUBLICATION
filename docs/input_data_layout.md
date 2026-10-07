@@ -30,12 +30,39 @@ works inside each folder.
 | `event/` | `event/` | `--study event` | event displays, energy-deposition studies |
 | `solar/weighted/` | same | `--study analysisdata` | per-component `SolarEnergy_Sensitivity_AnalysisData` |
 | `truth_position/` | `solar/truth_position/export_repo/` | `--truth-position` | truth-position export (synced as a unit) |
+| `PDS/waveform/` | `PDS/waveform/export/` | `--waveform` | PDS waveform characterisation, HD vs VD (synced as a unit; plots: `waveform_scripts.txt`) |
+| `TPC/smearing/{config}/{name}/{sample}/` | `TPC/smearing/` (`TPC_SMEARING_CHAIN`) | `--smearing` | primary-cluster energy smearing chain, TrueEnergy to SolarEnergy (synced as a unit, SOLAR layout kept; see below) |
 
 Which sample names and configs a flat family syncs is set by its selections,
 for example `marley` × the four configs for the thesis and `marley_official`
 for the lowe paper. `--name` replaces them.
 `--check-remote-labels` lists folders and kinds on the remote that the registry
 does not know.
+
+### Energy smearing chain (`TPC/smearing/`)
+
+SOLAR decomposes the primary-cluster SolarEnergy into steps that each swap one truth
+ingredient for its reco counterpart: `TrueEnergy`, `Charge` (own charge, true drift,
+flat gain), `PileUp`, `Lifetime` (drift from the matched flash), `Gain` (NHits
+charge-per-MeV), `Calibration` (the `Energy` branch), `Offset` (random-forest
+Q-value offset), `Map` (final SolarEnergy, equal to the analysis cutflow "Raw"
+stage). Every primary cluster enters: no cuts, no fiducial volume, no smoothing.
+`{sample}` is `full` (analysis weights; marley oscillated day+night mean) or, for
+gamma only, `true9.5-10.5_unweighted` (MC counts, 0.25 MeV bins).
+`samples/full/{config}_SolarEnergy_Chain_Cutflow.pkl` combines the four samples.
+
+| File | Contents |
+|---|---|
+| `*_SolarEnergy_Chain_Cutflow.pkl` | cutflow_plot.py schema, one row per `Stage`/`Step`: `Counts` in events/MeV/20 yr (1 MeV bins) |
+| `*_Chain_Spectra.pkl` | per step: `Bins` (centres), `Counts`, unit-area `Density` |
+| `*_Chain_Endpoint.pkl` | share above the true endpoint per step, split by flash category and discriminant branch |
+| `*_Chain_Counterfactuals.pkl` | share above the endpoint with `NoPileUp` / `TrueLifetime` / `FlatGain` restored |
+| `*_Chain_Response.pkl` | E_step/E_true on the electron scale: `Median`, `P84`, `P99`, `PeakMean`, `PeakSigma` |
+| `*_Chain_Summary.json` | flash categories, lifetime-ratio percentiles, response, cutflow closure |
+
+Plots and tables: `scripts/smearing_chain.py` (`run_plot_scripts.py -s smearing`,
+`run_table_scripts.py -s smearing`), routed to `THESIS/figures/reco/smearing/` and
+`THESIS/tables/smearing/`.
 
 ## Local-only inputs (not on SOLAR)
 

@@ -206,6 +206,15 @@ COMMON_ARG_SPECS = {
             "pair. Without this flag, filename generation is unchanged.",
         },
     },
+    "filename_suffix": {
+        "flags": ["--filename_suffix"],
+        "kwargs": {
+            "type": str,
+            "default": None,
+            "help": "Text appended to the output filename, for runs that differ only in an option "
+            "the filename does not encode (e.g. --path to another sample folder).",
+        },
+    },
     "x": {
         "flags": ["-x"],
         "kwargs": {
@@ -765,6 +774,15 @@ def add_common_args(parser, arg_names, overrides=None):
             help="Legend location for all panels (matplotlib loc, e.g. 'lower left'); default from plot_params",
         )
 
+    if "--legend_ncol" not in parser._option_string_actions:
+        parser.add_argument(
+            "--legend_ncol",
+            type=int,
+            action=_LegendNcolAction,
+            default=None,
+            help="Number of legend columns for all legends (e.g. 2 to halve the height of a long legend)",
+        )
+
 
 class _LegendLocAction(argparse.Action):
     """Override the configured legend location (plot_params legend_style.loc)
@@ -776,6 +794,18 @@ class _LegendLocAction(argparse.Action):
 
         if isinstance(_plot.legend_style, dict):
             _plot.legend_style["loc"] = values
+
+
+class _LegendNcolAction(argparse.Action):
+    """Override the number of legend columns (plot_params legend_style.ncol)
+    for every legend drawn by this run."""
+
+    def __call__(self, parser, namespace, values, option_string=None):
+        setattr(namespace, self.dest, values)
+        from lib import plot as _plot
+
+        if isinstance(_plot.legend_style, dict):
+            _plot.legend_style["ncol"] = values
 
 
 def load_computation_settings():
@@ -1007,7 +1037,9 @@ def resolve_axis_label(explicit_label, col_name, df=None):
                     already_present = (
                         f"({formatted})" in base
                         or f"({unit})" in base
-                        or bool(re.search(r'\([^)]+\)\s*$', base))
+                        # a trailing "(...)" group, optionally raised to a power
+                        # such as "(kT · year)$^{-1}$", already carries the unit
+                        or bool(re.search(r'\([^)]+\)(\$\^\{[^}]*\}\$)?\s*$', base))
                     )
                     if not already_present:
                         return f"{base} ({formatted})"

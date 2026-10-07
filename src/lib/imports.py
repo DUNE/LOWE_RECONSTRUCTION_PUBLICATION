@@ -439,6 +439,10 @@ def import_data(args):
         # collapsing into a single, ambiguous merged block of rows.
         for occurrence, (config, name) in enumerate(zip(configs, names)):
             for datafile_entry, path_entry in zip(datafile_entries, path_entries):
+                # --path may carry {config}/{name} placeholders for exports that keep
+                # SOLAR's nested layout (e.g. TPC/smearing/{config}/{name}/full).
+                if isinstance(path_entry, str) and ("{config}" in path_entry or "{name}" in path_entry):
+                    path_entry = path_entry.format(config=config, name=name)
                 input_dir, include_studies_fallback = resolve_input_data_dir(path_entry)
                 # SOLAR's save_df() encodes config/name into every filename:
                 # {config}_{name}_{datafile}.pkl. Each prefix is resolved flat,

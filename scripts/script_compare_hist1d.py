@@ -176,6 +176,13 @@ parser.add_argument(
     default=None,
     help="Optional mapping dictionary name from plot_params mappings used to rename --iterable values in the legend",
 )
+
+parser.add_argument(
+    "--no_legend",
+    action="store_true",
+    default=False,
+    help="Suppress the legend on the plot entirely",
+)
 parser.add_argument(
     "--iterable_color_mapping",
     type=str,
@@ -489,7 +496,7 @@ def main():
             if args.logx:
                 ax_current.semilogx()
 
-            if idx == ncols - 1:
+            if idx == ncols - 1 and not getattr(args, "no_legend", False):
                 apply_legend_style(
                     ax_current,
                     title=args.iterable,

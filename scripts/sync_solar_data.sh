@@ -82,6 +82,23 @@
 #                            Regenerate on the SOLAR side (about 10 min):
 #                              python src/physics/signal/truth_position_study.py --stage export
 #
+#   --waveform               Fetch only the PDS waveform-characterisation export (8 pandas pickles,
+#                            README.md, meta.json) from SOLAR's output/data/PDS/waveform/export/ into
+#                            input/data/PDS/waveform/ (HD vs VD average waveforms, pulse-shape features,
+#                            SPE responses; columns defined in the bundle's README.md). The per-sample
+#                            source pickles (PDS/waveform/<config>/<name>/) are not fetched.
+#                            Content filters do not apply; --dry-run and --yes are honoured.
+#                            Plots: python run_plot_scripts.py -s waveform
+#                            Regenerate on the SOLAR side: python src/tools/export_waveform_repo.py
+#
+#   --smearing               Fetch only the primary-cluster energy smearing chain (SOLAR's
+#                            output/data/TPC/smearing/, registered there as TPC_SMEARING_CHAIN) into
+#                            input/data/TPC/smearing/, keeping the <config>/<name>/<sample>/ layout
+#                            (pandas pickles and the per-sample *_Chain_Summary.json). Small (~1 MB).
+#                            Content filters do not apply; --dry-run and --yes are honoured.
+#                            Plots/tables: python run_plot_scripts.py -s smearing
+#                                          python scripts/smearing_chain.py --tables
+#
 #   --best-cuts               Fetch the selected-cut files, SOLAR's config/<config>/best-sigma-json/
 #                            (json only, no .lock files), into input/data/best-sigma-json/<config>/.
 #                            They hold the cuts the analyses use (e.g. <ana>/truncated/
@@ -138,6 +155,8 @@
 #   ./sync_solar_data.sh --show-sources
 #   ./sync_solar_data.sh --truth-position           # only the truth-position export
 #   ./sync_solar_data.sh --study-status              # only the latest study-status report
+#   ./sync_solar_data.sh --waveform                  # only the PDS waveform export
+#   ./sync_solar_data.sh --smearing                  # only the TPC energy smearing chain
 
 set -euo pipefail
 
@@ -157,6 +176,10 @@ PRUNE_LEGACY=false
 CHECK_REMOTE_LABELS=false
 TRUTH_POSITION=false
 TRUTH_POSITION_SUBDIR="solar/truth_position/export_repo"   # under output/data/ on the remote
+WAVEFORM=false
+WAVEFORM_SUBDIR="PDS/waveform/export"                       # under output/data/ on the remote
+SMEARING=false
+SMEARING_SUBDIR="TPC/smearing"                              # under output/data/ on the remote
 STUDY_STATUS=false
 BEST_CUTS=false
 REMOTE_LOGS_SUBDIR="output/logs"                            # under REMOTE_ROOT on the remote
@@ -178,6 +201,8 @@ while [[ $# -gt 0 ]]; do
         --check-remote-labels) CHECK_REMOTE_LABELS=true; shift   ;;
         --truth-position)  TRUTH_POSITION=true;              shift   ;;
         --best-cuts)       BEST_CUTS=true;                   shift   ;;
+        --waveform)        WAVEFORM=true;                    shift   ;;
+        --smearing)        SMEARING=true;                    shift   ;;
         --study-status)    STUDY_STATUS=true;                shift   ;;
         -y|--yes)          AUTO_YES=true;                shift   ;;
         --ssh-password-file) SSH_PASSWORD_FILE="$2";     shift 2 ;;
@@ -287,6 +312,60 @@ if $TRUTH_POSITION; then
         echo "    (dry-run — nothing written)"
     else
         echo "==> $(find "$TP_DIR" -maxdepth 1 -name '*.pkl' | wc -l) pickle(s) in $TP_DIR (meta.json: $(sed -n 's/.*"generated": "\(.*\)",/\1/p' "$TP_DIR/meta.json" 2>/dev/null))"
+    fi
+    exit 0
+fi
+
+# --- PDS waveform export (--waveform): a flat folder of pickles, no registry ---
+if $WAVEFORM; then
+    WF_DIR="$DATA_DIR/PDS/waveform"
+    if (( ${#FILTER_ARGS[@]} > 0 )); then
+        echo "WARNING: content filters (${FILTER_ARGS[*]}) do not apply to --waveform; ignored." >&2
+    fi
+    echo "==> Syncing the PDS waveform export"
+    echo "    Remote : ${REMOTE_HOST}:${REMOTE_DATA}/${WAVEFORM_SUBDIR}/"
+    echo "    Local  : $WF_DIR"
+    WF_ARGS=(-az --itemize-changes --out-format='%n' "${RSYNC_E[@]}"
+             --include='*.pkl' --include='README.md' --include='meta.json' --exclude='*'
+             "${REMOTE_HOST}:${REMOTE_DATA}/${WAVEFORM_SUBDIR}/" "$WF_DIR/")
+    $DRY_RUN && WF_ARGS=(-n "${WF_ARGS[@]}")
+    mkdir -p "$WF_DIR"
+    if ! $DRY_RUN && ! $AUTO_YES; then
+        read -r -p "Proceed with download? [y/N] " _confirm
+        [[ "$_confirm" =~ ^[Yy]$ ]] || { echo "Aborted."; exit 2; }
+    fi
+    _rsync_tolerant "${WF_ARGS[@]}" | sed 's/^/    /'
+    if $DRY_RUN; then
+        echo "    (dry-run — nothing written)"
+    else
+        echo "==> $(find "$WF_DIR" -maxdepth 1 -name '*.pkl' | wc -l) pickle(s) in $WF_DIR (meta.json: $(sed -n 's/.*"generated": "\(.*\)",/\1/p' "$WF_DIR/meta.json" 2>/dev/null))"
+    fi
+    exit 0
+fi
+
+# --- TPC energy smearing chain (--smearing): nested pickles + json, no registry ---
+if $SMEARING; then
+    SM_DIR="$DATA_DIR/$SMEARING_SUBDIR"
+    if (( ${#FILTER_ARGS[@]} > 0 )); then
+        echo "WARNING: content filters (${FILTER_ARGS[*]}) do not apply to --smearing; ignored." >&2
+    fi
+    echo "==> Syncing the TPC energy smearing chain"
+    echo "    Remote : ${REMOTE_HOST}:${REMOTE_DATA}/${SMEARING_SUBDIR}/"
+    echo "    Local  : $SM_DIR"
+    SM_ARGS=(-az --prune-empty-dirs --itemize-changes --out-format='%n' "${RSYNC_E[@]}"
+             --include='*/' --include='*.pkl' --include='*.json' --exclude='*'
+             "${REMOTE_HOST}:${REMOTE_DATA}/${SMEARING_SUBDIR}/" "$SM_DIR/")
+    $DRY_RUN && SM_ARGS=(-n "${SM_ARGS[@]}")
+    mkdir -p "$SM_DIR"
+    if ! $DRY_RUN && ! $AUTO_YES; then
+        read -r -p "Proceed with download? [y/N] " _confirm
+        [[ "$_confirm" =~ ^[Yy]$ ]] || { echo "Aborted."; exit 2; }
+    fi
+    _rsync_tolerant "${SM_ARGS[@]}" | grep -v '/$' | sed 's/^/    /' || true
+    if $DRY_RUN; then
+        echo "    (dry-run — nothing written)"
+    else
+        echo "==> $(find "$SM_DIR" -name '*.pkl' | wc -l) pickle(s), $(find "$SM_DIR" -name '*_Summary.json' | wc -l) summary file(s) in $SM_DIR"
     fi
     exit 0
 fi

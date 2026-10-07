@@ -76,6 +76,7 @@ add_common_args(
         "point",
         "point_label",
         "note",
+        "multiply",
         "debug",
     ],
     overrides={
@@ -84,6 +85,7 @@ add_common_args(
         "percentile": {"default": [0, 100]},
         "density": {"help": "Normalize histogram to density"},
         "zoom": {"help": "Zoom into overlapping percentile ranges"},
+        "multiply": {"help": "Multiply every --z value by this factor before plotting (e.g. per-year templates to a given exposure)"},
     },
 )
 
@@ -92,6 +94,13 @@ parser.add_argument(
     action="store_true",
     help="Draw diagonal line",
     default=False,
+)
+
+parser.add_argument(
+    "--cmap",
+    type=str,
+    default=None,
+    help="Matplotlib colormap for --z image plots (e.g. RdBu_r for signed residuals). Default: style colormap.",
 )
 
 parser.add_argument(
@@ -165,6 +174,11 @@ def main():
         rprint("[yellow]Warning:[/yellow] No datafiles found. Exiting...")
         return
 
+    if args.multiply is not None and args.z is not None:
+        df[args.z] = df[args.z].apply(
+            lambda v: np.asarray(v) * args.multiply if v is not None else v
+        )
+
     if args.variables is not None and args.iterable is not None:
         rprint(
             "Both variables and iterable arguments provided. Please provide only one of them."
@@ -180,7 +194,7 @@ def main():
     ncols = (
         len(args.variables)
         if args.variables is not None
-        else len(df[args.iterable].unique()) if args.iterable is not None else 1
+        else len(filter_dataframe(df, args)[args.iterable].unique()) if args.iterable is not None else 1
     )
 
     print(f"Number of unique variables for plotting: {ncols}")
@@ -205,7 +219,8 @@ def main():
 
         variables = args.variables if args.variables is not None else [None]
         iterables = (
-            df_config[args.iterable].unique() if args.iterable is not None else [None]
+            # Panels follow the --select/-s selection, so selected-out iterable values get no empty panel
+            filter_dataframe(df_config, args)[args.iterable].unique() if args.iterable is not None else [None]
         )
         subset_by_idx = {}
         for (idx, variable), (jdx, iterable) in product(
@@ -295,9 +310,13 @@ def main():
                     y=y,
                     plot_type="image",
                     z=z,
+                    **({"cmap": args.cmap} if args.cmap is not None else {}),
                 )
                 if args.rangez is not None:
                     mappable.set_clim(*args.rangez)
+                    if args.logz:
+                        # Leave bins below the log-scale floor blank instead of painting them with the lowest colour
+                        mappable.set_cmap(mappable.get_cmap().with_extremes(under="none"))
                 cbar = fig.colorbar(mappable, ax=ax_current)
                 z_label = resolve_axis_label(args.labelz, args.z, subset)
                 cbar.set_label(z_label)

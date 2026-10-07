@@ -2,6 +2,8 @@ import re
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.patches import Rectangle
+from matplotlib.transforms import Bbox
+from matplotlib import cbook
 from typing import Any
 
 from . import (
@@ -273,6 +275,369 @@ def apply_legend_style(
     return ax.legend(**style)
 
 
+LEGEND_PLACEMENT_CANDIDATES = (
+    "upper left",
+    "upper right",
+    "center left",
+    "center right",
+    "lower left",
+    "lower right",
+)
+
+
+def sample_axes_data_points(ax):
+    """Sample the data drawn on *ax* as display-coordinate points.
+
+    Line vertices and collection offsets are transformed to display
+    coordinates; points outside the axes (NaN gaps, clipped tails) are
+    dropped. Used only to measure where a legend would cover data.
+    """
+    points = []
+    for line in ax.lines:
+        try:
+            x_data = np.asarray(line.get_xdata(), dtype=float)
+            y_data = np.asarray(line.get_ydata(), dtype=float)
+        except (TypeError, ValueError):
+            continue  # categorical axis; nothing numeric to sample
+        if x_data.size == 0 or x_data.shape != y_data.shape:
+            continue
+        points.append(ax.transData.transform(np.column_stack((x_data, y_data))))
+    for collection in ax.collections:
+        try:
+            offsets = np.asarray(collection.get_offsets(), dtype=float)
+        except (AttributeError, TypeError, ValueError):
+            offsets = np.empty((0, 2))
+        if offsets.size:
+            points.append(ax.transData.transform(offsets))
+
+    if not points:
+        return np.zeros((0, 2))
+
+    all_points = np.vstack(points)
+    return all_points[np.isfinite(all_points).all(axis=1)]
+
+
+def sample_axes_drawn_points(ax, spacing_px=3.0):
+    """Sample everything drawn on *ax* densely along its drawn path.
+
+    Unlike sample_axes_data_points, this follows each segment of lines
+    (including their step drawstyle) and of patches (e.g. step histograms
+    from ax.hist), with one point every *spacing_px* display pixels, so a
+    legend box placed between two vertices still registers the data it
+    covers. Used by the free legend placement.
+    """
+    paths = []
+    for line in ax.lines:
+        try:
+            xy = np.asarray(line.get_xydata(), dtype=float)
+        except (TypeError, ValueError):
+            continue
+        if xy.ndim != 2 or len(xy) == 0:
+            continue
+        drawstyle = line.get_drawstyle()
+        if drawstyle in cbook.STEP_LOOKUP_MAP and drawstyle != "default" and len(xy) > 1:
+            xs, ys = cbook.STEP_LOOKUP_MAP[drawstyle](xy[:, 0], xy[:, 1])
+            xy = np.column_stack((xs, ys))
+        if ax.get_yscale() == "log":
+            # Steps that drop to y = 0 cannot be placed on a log axis: pin them
+            # below the axes so their vertical edges are still sampled.
+            xy = xy.copy()
+            xy[:, 1] = np.where(xy[:, 1] > 0, xy[:, 1], ax.get_ylim()[0] * 1e-3)
+        paths.append(ax.transData.transform(xy))
+    for patch in ax.patches:
+        path = patch.get_path()
+        if path is None or len(path.vertices) == 0:
+            continue
+        vertices = np.asarray(patch.get_patch_transform().transform(path.vertices), dtype=float)
+        if ax.get_yscale() == "log" and patch.get_transform().contains_branch(ax.transData):
+            # Step outlines drop to y = 0, which a log axis cannot place: pin those
+            # vertices below the axes so the vertical edges are still sampled.
+            vertices[:, 1] = np.where(vertices[:, 1] > 0, vertices[:, 1], ax.get_ylim()[0] * 1e-3)
+            paths.append(ax.transData.transform(vertices))
+        else:
+            paths.append(patch.get_transform().transform(path.vertices))
+    for collection in ax.collections:
+        # Line collections (e.g. error bars) are sampled along their segments.
+        for segment in getattr(collection, "get_segments", lambda: [])():
+            segment = np.asarray(segment, dtype=float)
+            if segment.ndim == 2 and len(segment):
+                paths.append(collection.get_transform().transform(segment))
+        try:
+            offsets = np.asarray(collection.get_offsets(), dtype=float)
+        except (AttributeError, TypeError, ValueError):
+            offsets = np.empty((0, 2))
+        if offsets.size:
+            paths.append(ax.transData.transform(offsets))
+
+    points = []
+    for display in paths:
+        display = display[np.isfinite(display).all(axis=1)]
+        if len(display) == 0:
+            continue
+        points.append(display)
+        if len(display) < 2:
+            continue
+        starts, ends = display[:-1], display[1:]
+        lengths = np.hypot(*(ends - starts).T)
+        for start, end, length in zip(starts, ends, lengths):
+            n_steps = int(length // spacing_px)
+            if n_steps > 1:
+                frac = np.linspace(0, 1, n_steps + 1)[1:-1, None]
+                points.append(start + frac * (end - start))
+    if not points:
+        return np.zeros((0, 2))
+    all_points = np.vstack(points)
+    axes_box = ax.get_window_extent()
+    inside = (
+        (all_points[:, 0] >= axes_box.x0) & (all_points[:, 0] <= axes_box.x1)
+        & (all_points[:, 1] >= axes_box.y0) & (all_points[:, 1] <= axes_box.y1)
+    )
+    return all_points[inside]
+
+
+def apply_legend_style_free(ax, grid=13, pad_px=6.0, inset_px=10.0, **legend_kwargs):
+    """Draw a legend at the free position (not only a corner) clearest of data.
+
+    Probes the legend on a grid of anchor positions spanning the axes and
+    keeps the one covering the fewest densely sampled drawn points; ties go
+    to the position farthest from the nearest drawn point. Opt-in per plot
+    (--legend_free): the default placement stays apply_legend_style_clear_of_data.
+    """
+    fig = ax.figure
+    fig.canvas.draw()
+    renderer = fig.canvas.get_renderer()
+    data_points = sample_axes_drawn_points(ax)
+    axes_box = ax.get_window_extent(renderer)
+    probe_box = probe_legend_box(ax, renderer, "upper left", **legend_kwargs)
+    width = probe_box.width / axes_box.width
+    height = probe_box.height / axes_box.height
+    # Keep the legend off the axes frame, like the default corner padding.
+    inset_x = inset_px / axes_box.width
+    inset_y = inset_px / axes_box.height
+    if width + 2 * inset_x >= 1 or height + 2 * inset_y >= 1:
+        return apply_legend_style_clear_of_data(ax, **legend_kwargs)
+
+    best = None
+    for fx in np.linspace(inset_x, 1 - width - inset_x, grid):
+        for fy in np.linspace(height + inset_y, 1 - inset_y, grid):
+            x0 = axes_box.x0 + fx * axes_box.width
+            y1 = axes_box.y0 + fy * axes_box.height
+            box = Bbox.from_extents(x0, y1 - probe_box.height, x0 + probe_box.width, y1)
+            score = _legend_obstruction_score(box, data_points, pad_px=pad_px)
+            if len(data_points):
+                cx = np.clip(data_points[:, 0], box.x0, box.x1)
+                cy = np.clip(data_points[:, 1], box.y0, box.y1)
+                clearance = float(np.min(np.hypot(data_points[:, 0] - cx, data_points[:, 1] - cy)))
+            else:
+                clearance = 0.0
+            key = (score, -clearance)
+            if best is None or key < best[0]:
+                best = (key, (fx, fy))
+
+    # Legend frame padding (borderaxespad) is not applied with an explicit
+    # anchor in axes fraction, so the probed and drawn boxes coincide.
+    return apply_legend_style(
+        ax, loc="upper left", bbox_to_anchor=best[1], borderaxespad=0.0, **legend_kwargs
+    )
+
+
+def _legend_obstruction_score(legend_box, data_points, avoid_boxes=(), pad_px=10.0, avoid_pad_px=2.0):
+    """Count how much a candidate legend box obstructs the plot.
+
+    One point per data sample inside the padded box, plus a dominant penalty
+    for any overlap with the given avoid boxes (e.g. legends already placed).
+    """
+    padded = Bbox.from_extents(
+        legend_box.x0 - pad_px,
+        legend_box.y0 - pad_px,
+        legend_box.x1 + pad_px,
+        legend_box.y1 + pad_px,
+    )
+    score = 0.0
+    if len(data_points):
+        inside = (
+            (data_points[:, 0] >= padded.x0)
+            & (data_points[:, 0] <= padded.x1)
+            & (data_points[:, 1] >= padded.y0)
+            & (data_points[:, 1] <= padded.y1)
+        )
+        score += float(inside.sum())
+    for avoid in avoid_boxes:
+        if avoid is None:
+            continue
+        padded_avoid = Bbox.from_extents(
+            avoid.x0 - avoid_pad_px,
+            avoid.y0 - avoid_pad_px,
+            avoid.x1 + avoid_pad_px,
+            avoid.y1 + avoid_pad_px,
+        )
+        overlap = Bbox.intersection(padded, padded_avoid)
+        if overlap is not None and overlap.width > 0 and overlap.height > 0:
+            score += 1e6 + overlap.width * overlap.height
+    return score
+
+
+def _legend_variants(ax, renderer, legend_kwargs, max_height_fraction):
+    """Return the legend kwargs variants to try: as given, plus column-folded.
+
+    The folded variant is appended only when folding actually changes the
+    column count, so a pinned style is never overridden.
+    """
+    variants = [dict(legend_kwargs)]
+    folded = dict(legend_kwargs)
+    fold_legend_columns(ax, renderer, folded, max_height_fraction)
+    if folded.get("ncol") != variants[0].get("ncol"):
+        variants.append(folded)
+    return variants
+
+
+def apply_legend_style_clear_of_data(
+    ax,
+    avoid_boxes=(),
+    candidate_locs=LEGEND_PLACEMENT_CANDIDATES,
+    pad_px=10.0,
+    max_height_fraction=0.2,
+    **legend_kwargs,
+):
+    """Draw a legend at the location least obstructed by data.
+
+    Probes each candidate corner with the final legend content, scores how
+    many sampled data points the legend box would cover (plus penalties for
+    overlapping any *avoid_boxes*, such as legends already on the axes), and
+    keeps the winner. Falls back to the first candidate on an empty axes.
+
+    A legend taller than *max_height_fraction* of the axes is additionally
+    tried with more columns (while it still fits the axes width), since an
+    oversized legend cannot avoid the data anywhere; the variant/corner
+    combination with the least obstruction wins.
+    """
+    fig = ax.figure
+    fig.canvas.draw()
+    renderer = fig.canvas.get_renderer()
+    variants = _legend_variants(ax, renderer, legend_kwargs, max_height_fraction)
+    data_points = sample_axes_data_points(ax)
+    avoid = [b for b in avoid_boxes if b is not None]
+
+    best = None
+    for variant in variants:
+        for loc in candidate_locs:
+            probe_box = probe_legend_box(ax, renderer, loc, **variant)
+            score = _legend_obstruction_score(probe_box, data_points, avoid, pad_px=pad_px)
+            if best is None or score < best[0]:
+                best = (score, loc, variant)
+
+    return apply_legend_style(ax, loc=best[1], **best[2])
+
+
+def apply_legend_pair_clear_of_data(
+    ax,
+    primary_kwargs,
+    secondary_kwargs,
+    candidate_locs=LEGEND_PLACEMENT_CANDIDATES,
+    pad_px=10.0,
+    max_height_fraction=0.2,
+    primary_loc=None,
+    secondary_loc=None,
+):
+    """Draw two legends on the same axes with a joint obstruction score.
+
+    Tries every pair of candidate corners (and, for oversized legends, the
+    column-folded variants) and keeps the combination that covers the least
+    data overall, with a dominant penalty whenever the two boxes would
+    overlap. *primary_loc* / *secondary_loc* pin one of the two legends to a
+    fixed location; the other is then placed around it.
+
+    The caller must keep the primary legend alive (``ax.add_artist``) when it
+    is superseded by the secondary axes legend; both are returned.
+    """
+    fig = ax.figure
+    fig.canvas.draw()
+    renderer = fig.canvas.get_renderer()
+    primary_variants = _legend_variants(ax, renderer, primary_kwargs, max_height_fraction)
+    secondary_variants = _legend_variants(ax, renderer, secondary_kwargs, max_height_fraction)
+    data_points = sample_axes_data_points(ax)
+
+    primary_locs = (primary_loc,) if primary_loc else candidate_locs
+    secondary_locs = (secondary_loc,) if secondary_loc else candidate_locs
+
+    def cached_box(which, loc, variant):
+        return probe_legend_box(ax, renderer, loc, **variant)
+
+    best = None
+    for variant_primary in primary_variants:
+        for loc_primary in primary_locs:
+            box_primary = cached_box("primary", loc_primary, variant_primary)
+            score_primary = _legend_obstruction_score(box_primary, data_points, (), pad_px)
+            for variant_secondary in secondary_variants:
+                for loc_secondary in secondary_locs:
+                    if loc_secondary == loc_primary:
+                        continue
+                    box_secondary = cached_box("secondary", loc_secondary, variant_secondary)
+                    score_secondary = _legend_obstruction_score(
+                        box_secondary, data_points, (box_primary,), pad_px
+                    )
+                    total = score_primary + score_secondary
+                    if best is None or total < best[0]:
+                        best = (
+                            total,
+                            loc_primary,
+                            variant_primary,
+                            loc_secondary,
+                            variant_secondary,
+                        )
+
+    if best is None:
+        # Only reachable when both legends are pinned to the same location.
+        best = (
+            0.0,
+            primary_locs[0],
+            primary_variants[0],
+            secondary_locs[-1] if len(secondary_locs) > 1 else "lower right",
+            secondary_variants[0],
+        )
+
+    leg_primary = apply_legend_style(ax, loc=best[1], **best[2])
+    ax.add_artist(leg_primary)
+    leg_secondary = apply_legend_style(ax, loc=best[3], **best[4])
+    return leg_primary, leg_secondary
+
+
+def fold_legend_columns(ax, renderer, legend_kwargs, max_height_fraction=0.2):
+    """Fold a legend into more columns while it is taller than the fraction.
+
+    No-op when a column count is already pinned through the style or explicit
+    kwargs, or when the legend already fits. Mutates *legend_kwargs* in place.
+    """
+    style_ncol = legend_style.get("ncol") if isinstance(legend_style, dict) else None
+    if "ncol" in legend_kwargs or style_ncol is not None:
+        return
+
+    axes_box = ax.get_window_extent(renderer)
+    box, n_entries = probe_legend_box(ax, renderer, LEGEND_PLACEMENT_CANDIDATES[0], with_entries=True, **legend_kwargs)
+    ncol = 1
+    while box.height > max_height_fraction * axes_box.height and ncol < n_entries:
+        trial_box, _ = probe_legend_box(
+            ax, renderer, LEGEND_PLACEMENT_CANDIDATES[0], with_entries=True, ncol=ncol + 1, **legend_kwargs
+        )
+        if trial_box.width > 0.95 * axes_box.width:
+            break
+        ncol += 1
+        box = trial_box
+    if ncol > 1:
+        legend_kwargs["ncol"] = ncol
+
+
+def probe_legend_box(ax, renderer, loc, with_entries=False, **legend_kwargs):
+    """Create a throwaway legend at *loc* and return its window extent."""
+    probe = apply_legend_style(ax, loc=loc, **legend_kwargs)
+    box = probe.get_window_extent(renderer)
+    n_entries = max(1, len(probe.get_texts()))
+    probe.remove()
+    if with_entries:
+        return box, n_entries
+    return box
+
+
 def plot_data(
     args,
     ax,
@@ -359,11 +724,32 @@ def plot_data(
         fill_hatch = hist_kwargs.pop("fill_hatch", None)
         fill_hatch_color = hist_kwargs.pop("fill_hatch_color", False)
         hist_align = hist_kwargs.pop("align", getattr(args, "align", "mid"))
+        histtype = hist_kwargs.pop("histtype", "step")
+        if (
+            getattr(args, "step_open", False)
+            and histtype == "step"
+            and fill_alpha is None
+            and x_edges is not None
+            and y is not None
+            and len(x_edges) == len(np.asarray(y)) + 1
+        ):
+            # Open outline (no baseline edges): for binned ratios such as
+            # efficiencies, where a drop to zero at the first/last bin edge
+            # would read as a zero fraction rather than the end of the data.
+            ax.stairs(
+                np.asarray(y, dtype=float),
+                np.asarray(x_edges, dtype=float),
+                baseline=None,
+                label=label,
+                color=color,
+                **hist_kwargs,
+            )
+            return None
         ax.hist(
             x,
             bins=x_edges,
             weights=y,
-            histtype=hist_kwargs.pop("histtype", "step"),
+            histtype=histtype,
             align=hist_align,
             label=label,
             color=color,
@@ -1331,13 +1717,27 @@ def place_vertical_label(ax, x_value, label_text, fontsize=None, pad_fraction=0.
 
     # Horizontal offset: place label on side with more space (left/right)
     x_mid = (xlim[0] + xlim[1]) / 2.0
-    pad = pad_fraction * x_range
     if x0 > x_mid:
         ha = "right"
-        x_text = x0 - pad
     else:
         ha = "left"
-        x_text = x0 + pad
+
+    # Offset the label in display space rather than data space: a fraction of
+    # the x-range in data coordinates lands far from the line on log-scaled
+    # axes, where the visual distance of a fixed data offset varies by decade.
+    try:
+        px_line = ax.transData.transform((x0, y_text))[0]
+        px_xlim0 = ax.transData.transform((xlim[0], y_text))[0]
+        px_xlim1 = ax.transData.transform((xlim[1], y_text))[0]
+        width_px = abs(px_xlim1 - px_xlim0)
+        if width_px <= 0:
+            raise ValueError("zero axes width")
+        pad_px = pad_fraction * width_px
+        px_text = px_line + pad_px if ha == "left" else px_line - pad_px
+        x_text = float(ax.transData.inverted().transform((px_text, px_line))[0])
+    except Exception:
+        pad = pad_fraction * x_range
+        x_text = x0 + pad if ha == "left" else x0 - pad
 
     if avoid:
         size = _measure_text_extent_data(ax, text_str, fontsize)

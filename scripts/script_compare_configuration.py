@@ -47,6 +47,7 @@ add_common_args(
         "logy",
         "labelx",
         "labely",
+        "labelz",
         "horizontal",
         "horizontal_label",
         "horizontal_style",
@@ -187,6 +188,24 @@ parser.add_argument(
         "Optional mapping dictionary name from plot_params mappings used to "
         "rename iterable values in legend labels"
     ),
+)
+
+parser.add_argument(
+    "--exclude_iterable",
+    nargs="+",
+    action="extend",
+    default=None,
+    help=(
+        "Iterable values to leave out of the plot and legend (e.g. "
+        "--exclude_iterable MainK). Does not affect the output filename."
+    ),
+)
+
+parser.add_argument(
+    "--no_legend",
+    action="store_true",
+    default=False,
+    help="Suppress the legend on the plot entirely",
 )
 
 parser.add_argument(
@@ -505,7 +524,12 @@ def main():
     used_colors = []
     this_df = filter_dataframe(df, args)
     variables = args.variables if args.variables is not None else [None]
-    iterables = this_df[args.iterable].unique() if args.iterable is not None else [None]
+    exclude_iterable = {str(v) for v in (getattr(args, "exclude_iterable", None) or [])}
+    iterables = (
+        [v for v in this_df[args.iterable].unique() if str(v) not in exclude_iterable]
+        if args.iterable is not None
+        else [None]
+    )
 
     for kdx, ((idx, variable), (jdx, iterable)) in enumerate(
         product(
@@ -1163,9 +1187,10 @@ def main():
             ax_current.set_xscale("log")
 
         # Add legend for the last variable
-        if idx == ncols - 1:
+        if idx == ncols - 1 and not getattr(args, "no_legend", False):
             apply_legend_style(
                 ax_current,
+                title=getattr(args, "labelz", None),
                 capitalize_labels=getattr(args, "capitalize_legend", False),
             )
 
