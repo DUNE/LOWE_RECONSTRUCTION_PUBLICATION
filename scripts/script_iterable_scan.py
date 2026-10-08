@@ -800,9 +800,12 @@ def _apply_iterable_legend(
             ]
             secondary_labels = list(comparable_alpha_map.keys())
         else:
+            # Per-stage widths (--comparable_linewidths, one per comparable) are shown too.
+            widths = list(getattr(args, "comparable_linewidths", None) or [])
             secondary_proxies = [
-                mlines.Line2D([], [], color="black", linestyle=style, linewidth=1.5)
-                for style in comparable_style_map.values()
+                mlines.Line2D([], [], color="black", linestyle=style,
+                              linewidth=widths[i] if len(widths) == len(comparable_style_map) else 1.5)
+                for i, style in enumerate(comparable_style_map.values())
             ]
             secondary_labels = list(comparable_style_map.keys())
 
@@ -1936,7 +1939,11 @@ def main():
             if args.logx:
                 ax_current.semilogx()
 
-            if iterable_values.size > 1:
+            # A single iterable draws no legend, unless --draw_legend comparable asks
+            # for the comparable (line-style) legend alone.
+            if iterable_values.size > 1 or (
+                getattr(args, "draw_legend", "both") == "comparable" and secondary_style_map
+            ):
                 # Panels that carry a legend: the primary legend on
                 # --legend_panel, and (when split) the comparable legend on
                 # --comparable_legend_panel. Each panel draws only its own
