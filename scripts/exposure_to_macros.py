@@ -1,0 +1,152 @@
+#!/usr/bin/env python3
+"""Derive exposure-curve quantities (significance at fixed exposure, 3 and 5 sigma crossings,
+Phase II projections) from the SOLAR exposure curves and write them as LaTeX macros.
+
+Usage:  <python with numpy>=2 and pandas> LOWE_RECONSTRUCTION_PUBLICATION/scripts/exposure_to_macros.py [DATA_DIR] [-o results/exposure_macros.tex]
+
+DATA_DIR holds {config}_marley_{DayNight,HEP}_Exposure.pkl (default: the synced plot repository).
+The Day-Night curve is the smoothed Asimov significance and the HEP curve the smoothed profile
+likelihood, as in the status report and the thesis figures. Before writing, the curves are checked
+against the status-report macros of results/macros.tex (significance at 20 and 30 years); the script
+aborts on any mismatch.
+
+Exposure is in calendar years. Each configuration (HD Central, HD Lateral, VD Top, VD Shielded) is a
+set of TPC volumes of a Phase I module analysed on its own, so a single-configuration value is quoted in
+detector-years and a combination of configurations, which run simultaneously, in DUNE-years; both are
+calendar years. The Phase I combination is the quadrature sum of the four configurations at equal exposure.
+
+Phase II projection (same as the figures, --project_offset 5 --project_scale 0.5): two further modules
+of the projected configuration start after PHASE_II_START years, so its significance becomes
+sqrt(Z(t)^2 + Z(2 (t - PHASE_II_START))^2).
+
+Macro names: \\expo<Cfg><Ana><Qty>, letters only.
+  Cfg  HDc HDl VDn VDs, HDModule (HD Central + HD Lateral), Comb (all four, in DUNE-years)
+  Ana  DN HEP
+  Qty  AtTen AtTwenty AtThirty ThreeSigmaYr FiveSigmaYr
+  Phase II: \\expo<Cfg><Ana>PhaseTwo<Qty>, and \\expoComb<HD|VD>PhaseTwo<Ana><Qty> for the Phase I
+  combination with HD-like or VD-like Phase II modules.
+"""
+import argparse
+import os
+import re
+import sys
+from pathlib import Path
+
+import numpy as np
+import pandas as pd
+
+# Thesis repository (outputs go to its results/ and tables/); override with THESIS_DIR.
+ROOT = Path(os.environ.get("THESIS_DIR", Path.home() / "Code" / "THESIS"))
+DEFAULT_DATA = Path("/home/smanthey/Code/LOWE_RECONSTRUCTION_PUBLICATION/input/data")
+CFG = {"HDc": "hd_1x2x6_centralAPA", "HDl": "hd_1x2x6_lateralAPA",
+       "VDn": "vd_1x8x14_3view_30deg_nominal", "VDs": "vd_1x8x14_3view_30deg_shielded"}
+ANA = {"DN": ("DayNight", "Asimov"), "HEP": ("HEP", "ProfileLikelihood")}
+PHASE_II = {"HD": ("HDc", "HDl"), "VD": ("VDn", "VDs")}
+PHASE_II_START = 5.0
+PHASE_II_MODULES = 2
+# the doubled Phase II exposure 2 (t - start) stays inside the 30-year curves up to this exposure
+PHASE_II_VALID = PHASE_II_START + 30.0 / PHASE_II_MODULES
+GRID = np.linspace(0.1, 30.0, 29901)
+
+
+def curve(data, cfg, ana):
+    name, var = ANA[ana]
+    df = pd.read_pickle(data / f"{CFG[cfg]}_marley_{name}_Exposure.pkl")
+    row = df[(df.Variable == var) & (df.SpectrumType == "Smoothed")]
+    if len(row) != 1:
+        sys.exit(f"expected one {var}/Smoothed curve in {CFG[cfg]} {name}, found {len(row)}")
+    row = row.iloc[0]
+    return np.interp(GRID, np.asarray(row.Exposure, float), np.asarray(row.Significance, float), left=0.0)
+
+
+def at(z, t):
+    return float(np.interp(t, GRID, z))
+
+
+def crossing(z, level):
+    idx = np.nonzero(z >= level)[0]
+    return float(GRID[idx[0]]) if idx.size else None
+
+
+def phase_two(z):
+    shifted = np.interp(PHASE_II_MODULES * (GRID - PHASE_II_START), GRID, z, left=0.0)
+    return np.sqrt(z ** 2 + np.where(GRID > PHASE_II_START, shifted, 0.0) ** 2)
+
+
+def status_value(macros, name):
+    m = re.search(rf"\\newcommand{{\\{name}}}{{\\ensuremath{{\\num{{([\d.]+)}}", macros)
+    return float(m.group(1)) if m else None
+
+
+def fmt_sigma(x):
+    return rf"\ensuremath{{\num{{{x:.2f}}}\,\sigma}}"
+
+
+def fmt_years(x, unit, approx=False):
+    if x is None:
+        return None
+    sim = "\\sim " if approx else ""
+    value = f"{x:.1f}" if approx or x >= 10 else f"{x:.2f}"
+    return rf"\qty{{{sim}{value}}}{{\{unit}}}"
+
+
+def main():
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("data", nargs="?", type=Path, default=DEFAULT_DATA)
+    ap.add_argument("-o", "--output", type=Path, default=ROOT / "results" / "exposure_macros.tex")
+    args = ap.parse_args()
+
+    macros = (ROOT / "results" / "macros.tex").read_text(encoding="utf-8")
+    Z = {(c, a): curve(args.data, c, a) for c in CFG for a in ANA}
+
+    bad = []
+    for (c, a), z in Z.items():
+        for t, word in ((20, "Twenty"), (30, "Thirty")):
+            ref = status_value(macros, f"res{c}Trunc{a}default{word}")
+            if ref is None or abs(at(z, t) - ref) > 0.0051:
+                bad.append(f"{c} {a} at {t} yr: curve {at(z, t):.3f}, status {ref}")
+    if bad:
+        sys.exit("exposure curves disagree with results/macros.tex:\n  " + "\n  ".join(bad))
+
+    out = ["% " + "-" * 75,
+           "% AUTO-GENERATED by LOWE_RECONSTRUCTION_PUBLICATION/scripts/exposure_to_macros.py -- do not edit by hand.",
+           f"% Source : {args.data}",
+           "% Checked against results/macros.tex (status report) at 20 and 30 years.",
+           f"% Exposure in calendar years; Phase II: {PHASE_II_MODULES} modules from year {PHASE_II_START:g}.",
+           "% " + "-" * 75]
+
+    def d(name, body):
+        if body is not None:
+            out.append(rf"\newcommand{{\{name}}}{{{body}\xspace}}")
+
+    def block(prefix, z, tmax=30.0):
+        unit = "duneyear" if prefix.startswith("expoComb") else "detyear"
+        for t, word in ((10, "Ten"), (20, "Twenty"), (30, "Thirty")):
+            if t <= tmax:
+                d(f"{prefix}At{word}", fmt_sigma(at(z, t)))
+        for level, word in ((3, "Three"), (5, "Five")):
+            x = crossing(z, level)
+            x = x if x is not None and x <= tmax else None
+            d(f"{prefix}{word}SigmaYr", fmt_years(x, unit))
+
+    for a in ANA:
+        out.append(f"\n% === {a} ===")
+        for c in CFG:
+            block(f"expo{c}{a}", Z[(c, a)])
+        comb_hd = np.sqrt(Z[("HDc", a)] ** 2 + Z[("HDl", a)] ** 2)
+        block(f"expoHDModule{a}", comb_hd)
+        comb = np.sqrt(sum(Z[(c, a)] ** 2 for c in CFG))
+        block(f"expoComb{a}", comb)
+        d(f"expoHDl{a}AtHDcFiveSigma", fmt_sigma(at(Z[("HDl", a)], crossing(Z[("HDc", a)], 5) or 30)))
+        for tech, cfgs in PHASE_II.items():
+            for c in cfgs:
+                block(f"expo{c}{a}PhaseTwo", phase_two(Z[(c, a)]), tmax=PHASE_II_VALID)
+            combo = np.sqrt(sum((phase_two(Z[(c, a)]) if c in cfgs else Z[(c, a)]) ** 2 for c in CFG))
+            block(f"expoComb{tech}PhaseTwo{a}", combo, tmax=PHASE_II_VALID)
+
+    args.output.write_text("\n".join(out) + "\n", encoding="utf-8")
+    print(f"{sum(l.startswith(chr(92)) for l in out)} macros -> {args.output}")
+
+
+if __name__ == "__main__":
+    main()
