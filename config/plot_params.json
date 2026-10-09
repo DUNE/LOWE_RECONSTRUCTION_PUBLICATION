@@ -53,8 +53,8 @@
       "vd": "VD",
       "marley_official": "Near-Threshold",
       "hd_1x2x6": "HD",
-      "hd_1x2x6_lateralAPA": "HD",
       "hd_1x2x6_centralAPA": "HD",
+      "hd_1x2x6_lateralAPA": "HD",
       "vd_1x8x14_3view_30deg": "VD",
       "vd_1x8x14_3view_30deg_nominal": "VD",
       "vd_1x8x14_3view_30deg_shielded": "VD"
@@ -64,8 +64,8 @@
       "vd": "VD",
       "marley_pandora": "Pandora",
       "hd_1x2x6": "HD",
-      "hd_1x2x6_lateralAPA": "HD",
       "hd_1x2x6_centralAPA": "HD",
+      "hd_1x2x6_lateralAPA": "HD",
       "vd_1x8x14_3view_30deg": "VD",
       "vd_1x8x14_3view_30deg_nominal": "VD",
       "vd_1x8x14_3view_30deg_shielded": "VD"
@@ -87,31 +87,31 @@
       "truth X (no containment), reco Y/Z": "True $x$ (No Containment), Reconstructed $y$/$z$"
     },
     "config": {
-      "hd_1x2x6_lateralAPA": "HD Lateral",
       "hd_1x2x6_centralAPA": "HD Central",
+      "hd_1x2x6_lateralAPA": "HD Lateral",
       "vd_1x8x14_3view_30deg_nominal": "VD Top",
       "vd_1x8x14_3view_30deg_shielded": "VD Bottom Shielded"
     },
     "config_dict": {
       "hd_1x2x6": "Signal",
-      "hd_1x2x6_lateralAPA": "Lateral",
       "hd_1x2x6_centralAPA": "Central",
+      "hd_1x2x6_lateralAPA": "Lateral",
       "vd_1x8x14_3view_30deg": "Signal",
       "vd_1x8x14_3view_30deg_nominal": "Top",
       "vd_1x8x14_3view_30deg_shielded": "Bottom Shielded"
     },
     "config_color": {
       "hd_1x2x6": "C1",
-      "hd_1x2x6_lateralAPA": "C3",
       "hd_1x2x6_centralAPA": "C1",
+      "hd_1x2x6_lateralAPA": "C3",
       "vd_1x8x14_3view_30deg": "C2",
       "vd_1x8x14_3view_30deg_nominal": "C2",
       "vd_1x8x14_3view_30deg_shielded": "C4"
     },
     "config_line": {
       "hd_1x2x6": "-",
-      "hd_1x2x6_lateralAPA": "-",
       "hd_1x2x6_centralAPA": "-",
+      "hd_1x2x6_lateralAPA": "-",
       "vd_1x8x14_3view_30deg": "-",
       "vd_1x8x14_3view_30deg_nominal": "-",
       "vd_1x8x14_3view_30deg_shielded": "-"
@@ -381,8 +381,8 @@
     },
     "config_order": [
       "HD Signal",
-      "HD Lateral",
       "HD Central",
+      "HD Lateral",
       "VD Signal",
       "VD Top",
       "VD Bottom",
@@ -560,8 +560,8 @@
       "gamma": "Gamma",
       "neutron": "Neutron",
       "radiological": "Radiological",
-      "Lateral": "\\cfgHDLateral",
       "Central": "\\cfgHDCentral",
+      "Lateral": "\\cfgHDLateral",
       "Top": "\\cfgVDTop",
       "Bottom Shielded": "\\cfgVDShielded"
     },
