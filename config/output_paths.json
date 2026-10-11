@@ -9,7 +9,8 @@
     "truth_position": ["/home/smanthey/Code/LOWE_RECONSTRUCTION_PUBLICATION/output/plots/truth_position/", "/home/smanthey/Code/THESIS/figures/study/fiducial/"],
     "pde": ["/home/smanthey/Documents/pde_xa_vd_paper/images/"],
     "waveform": ["/home/smanthey/Code/LOWE_RECONSTRUCTION_PUBLICATION/output/plots/waveform/", "/home/smanthey/Code/THESIS/figures/reco/waveform/"],
-    "smearing": ["/home/smanthey/Code/LOWE_RECONSTRUCTION_PUBLICATION/output/plots/smearing/", "/home/smanthey/Code/THESIS/figures/reco/smearing/"]
+    "smearing": ["/home/smanthey/Code/LOWE_RECONSTRUCTION_PUBLICATION/output/plots/smearing/", "/home/smanthey/Code/THESIS/figures/reco/smearing/"],
+    "smearing_response": ["/home/smanthey/Code/LOWE_RECONSTRUCTION_PUBLICATION/output/plots/smearing/", "/home/smanthey/Code/THESIS/figures/reco/smearing/"]
   },
   "tables": {
     "reco": ["/home/smanthey/Code/LOWE_RECONSTRUCTION_TECHNOTE/Tables/", "/home/smanthey/Code/THESIS/tables/"],

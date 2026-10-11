@@ -114,6 +114,24 @@ add_common_args(
 )
 
 parser.add_argument(
+    "--rebin",
+    type=int,
+    default=None,
+    help=(
+        "Merge every N consecutive bins of array-valued --x/--y rows before plotting (pre-binned "
+        "exports with equal bin widths). x becomes the mean of the merged centres; y the mean of the "
+        "merged values (densities, fractions), or their sum with --rebin_sum (counts). Trailing bins "
+        "that do not fill a group are dropped. Error arrays are combined in quadrature. Default: off."
+    ),
+)
+parser.add_argument(
+    "--rebin_sum",
+    action="store_true",
+    default=False,
+    help="With --rebin: sum the merged y values (counts) instead of averaging them (densities).",
+)
+
+parser.add_argument(
     "--stacked",
     action="store_true",
     help="Create stacked histograms",
@@ -910,6 +928,31 @@ def main():
             return v[args.y_row] if args.y_row < len(v) else np.full(v.shape[1], np.nan)
 
         df[args.y] = df[args.y].apply(_pick_row)
+    if getattr(args, "rebin", None) and args.rebin > 1:
+        n = args.rebin
+        error_columns = [c for c in [f"{args.y}Error", "Error", "ErrorLow", "ErrorHigh"] if c in df.columns]
+
+        def _group(v, how):
+            v = np.asarray(v, dtype=float)
+            if v.ndim != 1 or len(v) < n:
+                return v
+            g = v[: len(v) // n * n].reshape(-1, n)
+            if how == "sum":
+                return g.sum(axis=1)
+            if how == "quad":
+                return np.sqrt((g ** 2).sum(axis=1)) / (1 if args.rebin_sum else n)
+            return g.mean(axis=1)
+
+        for i in df.index:
+            xv, yv = df.at[i, args.x], df.at[i, args.y]
+            if np.ndim(xv) != 1 or np.ndim(yv) != 1 or len(xv) != len(yv):
+                continue
+            df.at[i, args.x] = _group(xv, "mean")
+            df.at[i, args.y] = _group(yv, "sum" if args.rebin_sum else "mean")
+            for c in error_columns:
+                if np.ndim(df.at[i, c]) == 1 and len(df.at[i, c]) == len(yv):
+                    df.at[i, c] = _group(df.at[i, c], "quad")
+
     errory_column = getattr(args, "errory_column", None)
     errory_bounds = getattr(args, "errory_bounds", None)
     if getattr(args, "variable_column", None) is not None:

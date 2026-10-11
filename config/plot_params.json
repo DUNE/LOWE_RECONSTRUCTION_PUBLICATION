@@ -306,6 +306,51 @@
       "Calibration": "Electron energy",
       "Map": "Neutrino energy"
     },
+    "smearing_gun_labels": {
+      "electrongun_10MeV": "Electron",
+      "gammagun_10MeV": "Gamma",
+      "neutrongun_thermal": "Neutron Capture",
+      "neutrongun_thermal_photonevap": "Neutron Capture (Photon Evaporation)",
+      "electrongun_flat": "Electron"
+    },
+    "smearing_gun_color": {
+      "electrongun_10MeV": "C0",
+      "gammagun_10MeV": "C2",
+      "neutrongun_thermal": "C4",
+      "neutrongun_thermal_photonevap": "C5",
+      "electrongun_flat": "C1"
+    },
+    "smearing_slice_sample_labels": {
+      "marley_final": "CC Electron",
+      "gamma_final": "External Gamma",
+      "neutron_final": "Neutron Capture"
+    },
+    "smearing_reference_labels": {
+      "Leading": "Highest-Charge Cluster",
+      "EventSum": "All Primary Clusters",
+      "Matched": "Single-Particle Cluster",
+      "Cluster": "Every Primary Cluster"
+    },
+    "smearing_class_labels": {
+      "All": "All clusters",
+      "ElectronOnly": "Electron only",
+      "ElectronGamma": "Electron + de-excitation $\\gamma$",
+      "GammaOnly": "De-excitation $\\gamma$ only",
+      "Other": "Other",
+      "Leading": "Leading cluster",
+      "LeadingAll": "Leading cluster",
+      "Secondary": "Secondary clusters"
+    },
+    "smearing_class_color": {
+      "All": "C0",
+      "ElectronOnly": "C1",
+      "ElectronGamma": "C2",
+      "GammaOnly": "C3",
+      "Other": "C4",
+      "Leading": "C1",
+      "LeadingAll": "C1",
+      "Secondary": "C3"
+    },
     "smearing_sample_labels": {
       "Solar": "CC Neutrino",
       "marley": "CC Neutrino",

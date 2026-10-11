@@ -1,0 +1,53 @@
+#!/bin/bash
+:<<'EOF'
+Multi-file SolarNuAna jobscript (2026-10-11). Same environment and lar command as
+solar_ana_marley_flash_radiological_decay0_dunevd10kt_1x8x14_3view_30deg.jobscript, but each job takes up to
+MAX_FILES input files from the stage (the VD Top radiological MARLEY reco2 files hold a single event each, so one
+file per job spends most of the job in setup) and runs one lar process over all of them.
+
+Env: FCL_FILE (required), MAX_FILES (default 10), INPUT_TAR_DIR_LOCAL, DUNE_VERSION, DUNE_QUALIFIER
+EOF
+
+FCL_FILE=${FCL_FILE:-solar_ana_marley_adjflash_radiological_decay0_dunevd10kt_1x8x14_3view_30deg.fcl}
+DUNE_VERSION=${DUNE_VERSION:-v10_08_01d00}
+DUNE_QUALIFIER=${DUNE_QUALIFIER:-e26:prof}
+MAX_FILES=${MAX_FILES:-10}
+
+pfns=()
+for i in $(seq 1 $MAX_FILES); do
+  did_pfn_rse=`$JUSTIN_PATH/justin-get-file`
+  [ "$did_pfn_rse" = "" ] && break
+  echo "$did_pfn_rse" | cut -f1 -d' ' >> all-input-dids.txt
+  pfns+=("`echo $did_pfn_rse | cut -f2 -d' '`")
+done
+if [ ${#pfns[@]} -eq 0 ] ; then
+  echo "Nothing to process - exit jobscript"
+  exit 0
+fi
+echo "Input PFNs (${#pfns[@]}):"; printf '  %s\n' "${pfns[@]}"
+
+source /cvmfs/dune.opensciencegrid.org/products/dune/setup_dune.sh
+source ${INPUT_TAR_DIR_LOCAL}/larsoft_v10_08_01/localProducts_larsoft_v10_08_01_e26_prof/setup_grid
+setup dunesw "$DUNE_VERSION" -q "$DUNE_QUALIFIER"
+mrb uc
+mrbsetenv
+mrbslp
+
+now=$(date -u +"%Y-%m-%dT_%H%M%SZ")
+outHistFile=fdvd_ana_${now}_${RANDOM}_hist.root
+inputs=()
+for p in "${pfns[@]}"; do inputs+=(-s "$p"); done
+(
+export LD_PRELOAD=${XROOTD_LIB}/libXrdPosixPreload.so
+lar -c $FCL_FILE -n -1 -T $outHistFile "${inputs[@]}" > fdvd_ana_${now}.log 2>&1
+)
+larExit=$?
+echo "lar exit code $larExit"
+echo '=== Start last 200 lines of lar log file ==='
+tail -200 fdvd_ana_${now}.log
+echo '=== End of lar log file ==='
+
+if [ $larExit -eq 0 ] ; then
+  printf '%s\n' "${pfns[@]}" > justin-processed-pfns.txt
+fi
+exit $larExit
