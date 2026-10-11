@@ -544,6 +544,11 @@
       "truth": "True Position",
       "reco": "Reconstructed Position"
     },
+    "hep_energy_limit_columns": {
+      "Significance": "As quoted ($\\sigma$)",
+      "SignificanceTail": "Tails extrapolated ($\\sigma$)",
+      "HepEffectiveMCLastBin": "Effective $hep$ MC events (last bin)"
+    },
     "adjcl_selection_limits": {
       "LimitCharge": "Charge",
       "LimitR": "Distance"

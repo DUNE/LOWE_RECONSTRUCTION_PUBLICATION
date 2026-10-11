@@ -131,6 +131,15 @@ parser.add_argument(
 )
 
 parser.add_argument(
+    "--x_threshold_mode",
+    choices=["lower", "exact"],
+    default="lower",
+    help="How --x_thresholds select x: 'lower' keeps x >= each value (default), "
+    "'exact' keeps only x == each value, for curves already cumulative in x "
+    "(e.g. a significance versus the upper edge of the window).",
+)
+
+parser.add_argument(
     "--x_threshold_label",
     type=str,
     default="{:g}",
@@ -448,6 +457,15 @@ parser.add_argument(
 )
 
 parser.add_argument(
+    "--error_band_variables",
+    nargs="+",
+    default=None,
+    metavar="VARIABLE",
+    help="With --error_band: show the band only for these --variable_name values; "
+    "the others are printed as plain values (--sig_figs / --decimals). Default: all.",
+)
+
+parser.add_argument(
     "--band_fallback",
     default=None,
     metavar="COLUMN",
@@ -476,8 +494,9 @@ parser.add_argument(
     metavar="COLUMN",
     help="Wide-format input: turn these scalar columns into rows, with the column "
     "name in --variable_name and the value in --y (e.g. --melt LimitCharge LimitR "
-    "-y Value). Array-valued columns are dropped first; rows that become identical "
-    "are merged.",
+    "-y Value). Array-valued columns are dropped first, except --x and the "
+    "--error_band columns, which are carried along so array-valued scans can be "
+    "melted too; rows that become identical are merged.",
 )
 
 parser.add_argument(
@@ -599,13 +618,17 @@ def main():
 
     if args.melt:
         # Keep only scalar identifier columns, then one row per melted column.
-        scalar_cols = [
-            c for c in df.columns
-            if c not in args.melt
-            and not df[c].map(lambda v: isinstance(v, (list, tuple, np.ndarray))).any()
-        ]
-        df = df.melt(id_vars=scalar_cols, value_vars=args.melt, var_name=args.variable_name, value_name=args.y)
-        df = df.drop_duplicates(subset=[c for c in df.columns if c != "Signal"] if "Signal" in df.columns else None)
+        is_array = {
+            c: df[c].map(lambda v: isinstance(v, (list, tuple, np.ndarray))).any() for c in df.columns
+        }
+        carried = [c for c in [args.x, *(args.error_band or [])] if c in df.columns and c not in args.melt]
+        scalar_cols = [c for c in df.columns if c not in args.melt and not is_array[c]]
+        df = df.melt(id_vars=scalar_cols + carried, value_vars=args.melt, var_name=args.variable_name, value_name=args.y)
+        hashable = [c for c in df.columns if c != "Signal" and c != args.y and not is_array.get(c, False)]
+        if any(is_array.values()):
+            df = df.drop_duplicates(subset=hashable + [args.variable_name])
+        else:
+            df = df.drop_duplicates(subset=[c for c in df.columns if c != "Signal"] if "Signal" in df.columns else None)
 
     # Per-config rescaling, matched positionally against the raw --configs
     # values (before any renaming below). --y may still be array-valued here
@@ -721,7 +744,11 @@ def main():
         print(f"Applying x-axis thresholds {args.x_thresholds} (upper edge {upper})")
         parts = []
         for threshold in args.x_thresholds:
-            part = df_config[(df_config[args.x] >= threshold) & (df_config[args.x] <= upper)].copy()
+            if args.x_threshold_mode == "exact":
+                keep = np.isclose(df_config[args.x], threshold)
+            else:
+                keep = (df_config[args.x] >= threshold) & (df_config[args.x] <= upper)
+            part = df_config[keep].copy()
             part[X_THRESHOLD_COLUMN] = threshold
             parts.append(part)
         df_config = pd.concat(parts, ignore_index=True)
@@ -767,8 +794,12 @@ def main():
         df_table = df_config.groupby(row_index + group_by_extra + [args.variable_name]).agg(
             {column: [args.operation] for column in [args.y, *band_columns]}
         )
+        band_variables = args.error_band_variables
         df_table[args.y] = df_table.apply(
-            lambda row: format_with_band(row, args=args), axis=1
+            lambda row: format_with_band(row, args=args)
+            if band_variables is None or row.name[-1] in band_variables
+            else format_value(row, args=args),
+            axis=1,
         )
         df_table = df_table.drop(
             columns=[(column, args.operation) for column in band_columns]
@@ -973,12 +1004,13 @@ def main():
     df_table = df_table.dropna(how="all")
 
     # Blocks follow --configs; rows inside a block follow --row_order
-    if args.block_rows and args.row_name:
+    # (--x_thresholds rows keep their numeric order inside each block)
+    if args.block_rows and (args.row_name or args.x_thresholds is not None):
         config_rank = {config_dict.get(c, c): i for i, c in enumerate(args.configs)}
         row_rank = {v: i for i, v in enumerate(args.row_order or [])}
         keys = [
-            (config_rank.get(idx[-2], len(config_rank)), row_rank.get(idx[-1], len(row_rank)), idx[-1])
-            for idx in df_table.index
+            (config_rank.get(idx[-2], len(config_rank)), row_rank.get(idx[-1], len(row_rank)), idx[-1] if args.row_name else i)
+            for i, idx in enumerate(df_table.index)
         ]
         df_table = df_table.iloc[sorted(range(len(keys)), key=keys.__getitem__)]
 
@@ -1063,11 +1095,13 @@ def main():
             else:
                 groups.append([c[0], 1])
         lines = [f"\\begin{{tabular}}{{ll{'c' * len(value_cols)}}}", "\\toprule"]
-        lines.append(
-            " & "
-            + "".join(f" & \\multicolumn{{{n}}}{{c}}{{{t}}}" for t, n in groups)
-            + " \\\\"
-        )
+        # No group row when every value column sits under one empty title (--variable_title '')
+        if not (len(groups) == 1 and not str(groups[0][0]).strip()):
+            lines.append(
+                " & "
+                + "".join(f" & \\multicolumn{{{n}}}{{c}}{{{t}}}" for t, n in groups)
+                + " \\\\"
+            )
         lines.append(
             " & ".join(["Configuration", str(args.row_name_title or args.row_name)] + [c[1] for c in value_cols]) + " \\\\"
         )
