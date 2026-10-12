@@ -137,6 +137,14 @@ parser.add_argument(
 )
 
 parser.add_argument(
+    "--rebin",
+    type=int,
+    default=None,
+    help="Merge every N adjacent x bins: y values are summed (counts per bin) and symmetric/asymmetric "
+    "errors added in quadrature; a trailing incomplete group is dropped.",
+)
+
+parser.add_argument(
     "--mirror",
     type=str,
     default=None,
@@ -892,6 +900,19 @@ def main():
                     f"[red]Error:[/red] Length of x and y do not match for Config: {config}, Name: {name}. Skipping..."
                 )
                 continue
+
+            if args.rebin is not None and args.rebin > 1:
+                k = int(args.rebin)
+                n = (len(x) // k) * k
+                x = np.asarray(x, dtype=float)[:n].reshape(-1, k).mean(axis=1)
+                y = np.asarray(y, dtype=float)[:n].reshape(-1, k).sum(axis=1)
+                def _rebin_err(e):
+                    e = np.asarray(e, dtype=float)
+                    return np.sqrt(np.sum(e[:n].reshape(-1, k) ** 2, axis=1)) if e.shape[0] >= n else None
+                if isinstance(errory, list):
+                    errory = [_rebin_err(e) for e in errory] if all(e is not None for e in errory) else None
+                elif errory is not None:
+                    errory = _rebin_err(errory)
 
             x_bin = x[1] - x[0] if len(x) > 1 else 1
             # Check that all bins have the same width
