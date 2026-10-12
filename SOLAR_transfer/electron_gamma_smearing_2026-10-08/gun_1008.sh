@@ -19,7 +19,11 @@ sub() { # geom pdg njobs nevents rss outdir [ke_mev] [photon_evaporation] [ke_ma
     --rss-mb $5 --wall-seconds 43200 --scope usertests --lifetime-days 5 \
     --output-pattern "gun_*_hist.root:$FNALURL/$USER/$6" 2>&1 | tail -3
 }
-if [ "$MODE" = flat ]; then
+if [ "$MODE" = slice ]; then
+  # Free electrons flat in 9.5-10.5 MeV (2026-10-11): same true-energy slice as the CC/gamma rows of fig:SMEARING_CHAIN_SLICE
+  sub hd 11 200 50 4000 ana/gun_1011_hd_electron_9.5-10.5MeV 9.5 0 10.5
+  sub vd 11 400 25 4000 ana/gun_1011_vd_electron_9.5-10.5MeV 9.5 0 10.5
+elif [ "$MODE" = flat ]; then
   # Pure electrons, flat 2-30 MeV: smearing chain without MARLEY de-excitation products
   sub hd 11 400 50 4000 ana/gun_1008b_hd_electron_flat2-30MeV 2 0 30
   sub vd 11 480 25 4000 ana/gun_1008b_vd_electron_flat2-30MeV 2 0 30

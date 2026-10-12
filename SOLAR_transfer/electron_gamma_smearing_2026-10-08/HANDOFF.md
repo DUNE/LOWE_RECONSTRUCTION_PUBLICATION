@@ -184,3 +184,21 @@ dropped.
 - After it: rerun the VD neutron/radiological full chains and the marley/gamma 10 MeV slices (04), sync --smearing,
   regenerate the figures, tables and macros, and refresh the ch.8/9 VD numbers. VD Top must be rerun again after the
   60k extension.
+
+## Free electrons flat in 9.5-10.5 MeV (2026-10-12)
+- Why: the free-electron row of fig:SMEARING_CHAIN_SLICE used the mono-energetic 10 MeV gun, while the CC and gamma rows
+  are flat in true 9.5-10.5 MeV. The 2-30 MeV flat sample holds only ~700 (HD) / ~430 (VD) events in that slice.
+- `gun_1008.sh slice`: justIN 21836 (HD, 200 x 50, ana/gun_1011_hd_electron_9.5-10.5MeV) and 21837 (VD, 400 x 25,
+  ana/gun_1011_vd_electron_9.5-10.5MeV). Same jobscript as v2 (gun_chain.jobscript, KE_MEV=9.5 KE_MAX_MEV=10.5).
+- If the justIN upload fails within 1 s, the bearer token has expired: `htgettoken -a htvaultprod.fnal.gov -i dune --nooidc`
+  on dunegpvm03 (Kerberos from kinit_fnal.py). If `justin time` asks for authorisation, the user must open the link
+  (each call makes a new link, so do not poll).
+- Next: validate (unique vertices, K in 9.5-10.5), merge as SolarNuAna_electrongun_slice10MeV.root (HD + VD), process to npy,
+  run 04_smearing_chain.py --name electrongun_slice10MeV --true_range 9.5 10.5 --unweighted --bin_width 0.5, add the name
+  to SAMPLE_TRUTH / gun handling (pattern *gun*), sync --smearing, change command 1b in smearing_scripts.txt to the new name,
+  regenerate, refresh the fomSmearPureElectron* macros, remove the % TODO under fig:SMEARING_CHAIN_SLICE.
+- Thesis layout (same day): fig:SMEARING_CHAIN_SLICE is now CC + free electron (2 rows); gamma row is fig:SMEARING_CHAIN_SLICE_GAMMA.
+- 2026-10-12: VD Top smearing outputs refreshed with the mid-drift no-flash default (SOLAR-sb _runs/smearing_refresh_vdtop_20261012:
+  marley/gamma slices, neutron/radiological full, 06 at 10 and 6 MeV), synced, figures/tables regenerated, macros updated
+  (gamma slice VD Top: 14 % above 10.5 MeV, overshoot 71 % wrong flash / 29 % no flash). VD Bottom Shielded slices and
+  neutron/radiological chains still old default (wait for thesis-2c's VD Shielded studies).
