@@ -389,11 +389,11 @@ EVENT = FlatFamily(
 ANALYSIS_DATA = FlatFamily(
     "AnalysisData",
     "analysisdata",
-    # SolarEnergyNoOffset: SolarEnergy without the de-excitation offset of the classifiers (reconstructed panels of fig:reweighting_truth)
-    files={"solar/weighted": ("SolarEnergy_Sensitivity_AnalysisData", "SolarEnergyNoOffset_Sensitivity_AnalysisData")},
+    # ElectronEnergy: calibrated electron energy of every cluster, no classifier (reconstructed panels of fig:reweighting_truth) (reconstructed panels of fig:reweighting_truth)
+    files={"solar/weighted": ("SolarEnergy_Sensitivity_AnalysisData", "ElectronEnergy_Sensitivity_AnalysisData")},
     selections=(Selection(CONFIGS, ("gamma", "neutron")),),
     layouts={"SolarEnergy_Sensitivity_AnalysisData": ("{config}/{name}/truncated/{config}_{name}_{kind}.pkl",),
-             "SolarEnergyNoOffset_Sensitivity_AnalysisData": ("{config}/{name}/truncated/{config}_{name}_{kind}.pkl",)},
+             "ElectronEnergy_Sensitivity_AnalysisData": ("{config}/{name}/truncated/{config}_{name}_{kind}.pkl",)},
 )
 
 FLAT_FAMILIES = (RECONSTRUCTION, CALIBRATION, WORKFLOW, MARLEY, BACKGROUND, EVENT, ANALYSIS_DATA)
