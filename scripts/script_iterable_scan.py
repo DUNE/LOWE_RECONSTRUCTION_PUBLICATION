@@ -1177,6 +1177,8 @@ def main():
                         comparable_style_map[_gval_label] = _resolve_comparable_linestyle(_gidx, args, n_total=len(global_comparable_values))
 
         iterable_legend_title = args.labelz if args.labelz is not None else args.iterable
+        if iterable_legend_title == "None":
+            iterable_legend_title = None  # --labelz None: no heading on the iterable legend
         primary_legend_title = comparable_legend_title if invert_style else iterable_legend_title
         secondary_legend_title = iterable_legend_title if invert_style else comparable_legend_title
         secondary_style_map = iterable_style_map if invert_style else comparable_style_map

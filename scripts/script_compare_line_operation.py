@@ -1904,6 +1904,8 @@ def main():
         # the two top-panel legends is drawn at all (iterable colours /
         # comparable styles), for side-by-side panels that share encodings.
         legend_title = args.labelz if args.labelz is not None else args.iterable
+        if legend_title == "None":
+            legend_title = None  # --labelz None: no heading on the iterable legend
         primary_loc_override = getattr(args, "legend_loc", None)
         comparable_loc_override = getattr(args, "comparable_legend_loc", None)
         draw_selection = getattr(args, "draw_legend", "both") or "both"

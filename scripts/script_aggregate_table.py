@@ -84,6 +84,14 @@ parser.add_argument(
 )
 
 parser.add_argument(
+    "--rename_names",
+    nargs="+",
+    default=None,
+    help="OLD=NEW pairs: after loading, rename sample names (Name column and --names) so that per-config samples "
+    "(e.g. an interim sample for one configuration) are tabulated as one sample (default: no renaming)",
+)
+
+parser.add_argument(
     "--name_columns",
     action="store_true",
     help="Layout the table as rows=configs x columns=names (derived from "
@@ -610,6 +618,11 @@ def main():
         args.variable_name = "Particle" if args.name_columns else "Variable"
 
     df = import_data(args)
+    if args.rename_names:
+        rename = dict(pair.split("=", 1) for pair in args.rename_names)
+        if "Name" in df.columns:
+            df["Name"] = df["Name"].replace(rename)
+        args.names = list(dict.fromkeys(rename.get(n, n) for n in args.names)) if args.names else args.names
 
     # Check if the DataFrame is empty
     if df.empty:

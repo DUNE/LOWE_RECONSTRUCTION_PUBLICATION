@@ -182,7 +182,7 @@
       "APA": "APA",
       "Gamma": "Ext. Gamma",
       "Neutron": "Ext. Neutron",
-      "8B": "$\u2078B$",
+      "8B": "$⁸B$",
       "HEP": "$hep$"
     },
     "background_source": {
@@ -202,7 +202,7 @@
       "neutron": "Neutron",
       "radiological": "Radiological",
       "hep": "$hep$",
-      "8B": "$\u2078B$"
+      "8B": "$⁸B$"
     },
     "appearance_terms": {
       "P(nu_mu->nu_e)": "$P(\\nu_\\mu\\to\\nu_e)$",
@@ -322,12 +322,16 @@
     },
     "smearing_slice_sample_labels": {
       "marley_final": "CC Electron",
+      "marley_60k_final": "CC Electron",
       "gamma_final": "External Gamma",
       "neutron_final": "Neutron Capture"
     },
     "smearing_reference_labels": {
       "Leading": "Highest-Charge Cluster",
       "EventSum": "All Primary Clusters",
+      "Primary": "Primary",
+      "PrimaryAdjacent": "Primary + Adjacent",
+      "Cheated": "Cheated",
       "Matched": "Single-Particle Cluster",
       "Cluster": "Every Primary Cluster"
     },
@@ -355,6 +359,7 @@
       "Solar": "CC Neutrino",
       "marley": "CC Neutrino",
       "marley_final": "CC Neutrino",
+      "marley_60k_final": "CC Neutrino",
       "gamma": "Gamma",
       "gamma_final": "Gamma",
       "neutron": "Neutron",
@@ -366,6 +371,7 @@
       "Solar": "C0",
       "marley": "C0",
       "marley_final": "C0",
+      "marley_60k_final": "C0",
       "gamma": "C2",
       "gamma_final": "C2",
       "neutron": "C4",
@@ -390,13 +396,13 @@
     "solar_dict": {
       "pp": "pp",
       "pep": "pep",
-      "be7": "\u2077Be",
-      "b7": "\u2077Be",
-      "b8": "$\u2078B$",
+      "be7": "⁷Be",
+      "b7": "⁷Be",
+      "b8": "$⁸B$",
       "hep": "$hep$",
-      "n13": "\u00b9\u00b3N",
-      "o15": "\u00b9\u2075O",
-      "f17": "\u00b9\u2077F"
+      "n13": "¹³N",
+      "o15": "¹⁵O",
+      "f17": "¹⁷F"
     },
     "solar_color": {
       "pp": "C0",
@@ -592,6 +598,7 @@
     "hep_energy_limit_columns": {
       "Significance": "As quoted ($\\sigma$)",
       "SignificanceTail": "Tails extrapolated ($\\sigma$)",
+      "SignificanceNoTail": "Without tail extrapolation ($\\sigma$)",
       "HepEffectiveMCLastBin": "Effective $hep$ MC events (last bin)"
     },
     "adjcl_selection_limits": {

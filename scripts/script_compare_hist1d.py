@@ -43,6 +43,7 @@ add_common_args(
         "percentile",
         "labelx",
         "labely",
+        "labelz",
         "logx",
         "logy",
         "rangex",
@@ -175,6 +176,14 @@ parser.add_argument(
     type=str,
     default=None,
     help="Optional mapping dictionary name from plot_params mappings used to rename --iterable values in the legend",
+)
+
+parser.add_argument(
+    "--iterable_order",
+    nargs="+",
+    type=str,
+    default=None,
+    help="Draw and legend order of the --iterable values (listed values first, in this order; the others keep the data order)",
 )
 
 parser.add_argument(
@@ -326,6 +335,10 @@ def main():
         iterable_values = (
             df_config[args.iterable].unique() if args.iterable is not None else [None]
         )
+        if args.iterable is not None and args.iterable_order:
+            iterable_values = [v for v in args.iterable_order if v in list(iterable_values)] + [
+                v for v in iterable_values if v not in args.iterable_order
+            ]
         two_line_mode = len(iterable_values) == 2
         for (idx, variable), (jdx, iterable) in product(
             enumerate(variables),
@@ -499,7 +512,7 @@ def main():
             if idx == ncols - 1 and not getattr(args, "no_legend", False):
                 apply_legend_style(
                     ax_current,
-                    title=args.iterable,
+                    title=getattr(args, "labelz", None) or args.iterable,
                     capitalize_labels=getattr(args, "capitalize_legend", False),
                 )
 

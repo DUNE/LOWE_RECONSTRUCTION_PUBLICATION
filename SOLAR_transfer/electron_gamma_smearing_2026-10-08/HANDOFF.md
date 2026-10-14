@@ -165,6 +165,14 @@ dropped.
 - Extension: FNAL `justin/vd_ext_1011.sh` with `gun_1008/solar_ana_multi.jobscript` (5 files per job, same fcl and tarball).
   Workflows 21827-21831 cover files 10000-59999. Output: `ana/..._nominal_ext`. Test 21825 (`..._ext_test`) must NOT be merged.
 - Cost: about 27 CPU-min per event (heavy radiological light). Expect about a week.
+- 2026-10-12 fast SolarNuAna takeover:
+  - FNAL build: WhichGeneratorType without the per-hit map copy, the same fix as PIC (~30x faster).
+  - Tarball: `justin/larsoft_v10_08_01_fast.tar.gz`; the old one is backed up as `.bak-20261012`.
+  - Workflows 21827-21831 are PAUSED. Their 10,506 processed or held files are in `justin/vd_ext_1012/skip_dids.txt`.
+  - `justin/vd_ext_1012.sh full` submitted 21854-21858: the same MQL ranges, with `gun_1008/solar_ana_multi_skip.jobscript`, MAX_FILES=20, into the same `..._nominal_ext` output directory.
+  - Test 21852 (`..._ext_fasttest`) must NOT be merged. Its output equals the old test except Flag; it took ~11-16 min per 5-file job.
+  - Once the paused workflows drain, check for held files that ended unprocessed. A MetaCat dataset create was refused (permission error), so use a second skip-list pass instead.
+
 - Downstream, once finished: SOLAR `SOLAR_transfer/final_2026-09-29/vdtop_ext_20261011.sh [transfer|merge|process|calib|all]`.
   - It archives the 10k sample as `marley_final_10k` and merges files 0-59999 chunked from NFS.
   - It runs process_sample plus the vertex/pds/tpc stages, then `final_run2.sh -l rerun_vdtop60k -f calib -c vd_..._nominal`.
@@ -202,3 +210,64 @@ dropped.
   marley/gamma slices, neutron/radiological full, 06 at 10 and 6 MeV), synced, figures/tables regenerated, macros updated
   (gamma slice VD Top: 14 % above 10.5 MeV, overshoot 71 % wrong flash / 29 % no flash). VD Bottom Shielded slices and
   neutron/radiological chains still old default (wait for thesis-2c's VD Shielded studies).
+- 2026-10-12 evening: 21836/21837 finished (HD 200 good files + 1 empty, VD 400). Merged on FNAL gun_merged_v3, 10k events each,
+  copied to SOLAR pnfs as SolarNuAna_electrongun_slice10MeV.root; processed + 04 chain (SOLAR-sb _runs/gun_slice_20261012).
+  fig:SMEARING_CHAIN_SLICE bottom row now uses it (smearing_scripts.txt 1b); fomSmearPureElectron* updated; TODO removed.
+- 2026-10-12 23:00, split agreed with thesis-cf:
+  - thesis-cf owns the VD Top PIC backgrounds (2096825 gamma, 2096826 neutron). They will go in as gamma_final / neutron_final for vd_..._nominal only; the old shared files are archived and VD Shielded is untouched.
+  - thesis-cf also owns the single VD Top calibration, analysis and studies rerun with all new samples.
+  - Do NOT run merge/process/calib of vdtop_ext_20261011.sh or final_run2 -l rerun_vdtop60k. Only the 'transfer' step is allowed.
+  - Signal extension: fast workflows 21854-21858 (thesis-5b polls them). After thesis-cf reports final outputs, refresh the ch.6/7 and app. E/F VD Top figures, tables and macros (reco exports: vertex 01-04, tpc/01, 01b, tpc/03 --no-sb-classifier, smearing).
+
+## marley_official removal + appendix renames (2026-10-13)
+- Appendix files now match their TOC letters: d=PDS, e=reco (was f), f=sensitivity (+f_a), g=studies.
+- S/B ROC / threshold scan / AUC: new SOLAR-sb script src/physics/calibration/03d_signal_background_roc.py, uncommitted.
+  It reads the 03b held-out scores; rerun it after every 03b. Exports were fetched by hand: the registry does not
+  route these kinds and SOLAR-sb stores them nested.
+- Switched to marley_final: SelectedEnergy limits table + fig:ADJCL_SELECTION, offset-classifier figures (7.4),
+  adjacent-count tables (renamed marley_final_*), cheated electron calibration (7.2.1 left, now reco_scripts),
+  HD Central gamma energy (7.3 right).
+- Signal-only final production: FNAL signal_only_1013.sh, justIN 21865 (HD 1x2x6) and 21866 (VD 1x8x14_3view_30deg).
+  Runs files 0-999 of the official signal-only datasets with the fast tarball and the adjflash fcls.
+  - Output: ana/solar_ana_marley_adjflash_final_{dune10kt_1x2x6,dunevd10kt_1x8x14_3view_30deg}.
+  - TODO when done:
+    - merge to data/{hd/hd_1x2x6,vd/vd_1x8x14_3view_30deg}/SolarNuAna_marley_final.root and process_sample;
+    - run calibration 01,02,03,04,05 (no 03b: no backgrounds), tpc/01,03 (+no-sb), preselection, pds and vertex scripts;
+    - switch the signal-only commands (reco/thesis scripts + thesis versions of the lowe figures) to marley_final;
+    - update the e_appendix dataset text (signal-only = marley_final).
+  - Remaining marley_official assets: ch.4 (neutrino_cc_*), ch.6 (preselection, cluster distributions, wire planes,
+    light map, tpc efficiency scans, 6.4.1 HD/VD comparison), 7.2.1 (ideal fit, HD/VD comparisons),
+    7.3 (signal-only gamma energy), 7.4.1 (signal-only comparison).
+- 2026-10-13 05:30: signal-only finals done. 21865 HD (319 files, 315k events) and 21866 VD (339 files, 332k events),
+  merged as SolarNuAna_marley_final.root in hd_1x2x6 / vd_1x8x14_3view_30deg.
+  - SOLAR-sb _runs/signal_only_final_20261013 ran the calibration, detector exports and truth scripts.
+  - Every thesis marley_official asset was switched, except the 6.4.1 light-map fits: final samples have no OpFlash
+    branches (REVIEW in text).
+  - Text corrections:
+    - VD flash-finding 3 m macros: ~70 % / ~60 %.
+    - 7.2.1: the 11 % is p2, not p0.
+    - 7.2.1: background no longer "factor two".
+    - 7.4.1: HD signal slightly better than VD.
+  - Plot commands: reco_scripts.txt has thesis copies of the lowe-paper signal-only figures; the paper's own
+    lowe_scripts.txt is untouched.
+- 2026-10-13 06:00: VD Top extension check.
+  - 21854-21858 finished, and 'transfer' put 2850 files (162,454 events) in final_raw/vd_nominal_marley_final_ext.
+  - The original 10k files held 39,151 events (~3.9 per file), so ~33k events were missing.
+  - Cause: of the 10,506 DIDs in vd_ext_1012/skip_dids.txt, only 2,553 had actually been processed by the paused
+    21827-21831; the other 7,953 were skipped and never run.
+  - Recovery: FNAL vd_ext_1013.sh with gun_1008/solar_ana_multi_include.jobscript (processes only
+    vd_ext_1013/include_dids.txt), justIN 21870-21874, same output dir _ext.
+  - When done: rerun 'transfer' (it re-tars the whole _ext dir) and check ~196k events in total for files 10000-59999.
+    Then tell thesis-cf the transfer is complete; merge/calib is theirs.
+- Duplicate guard (agreed with thesis-cf):
+  - All 160 files still allocated to the paused 21827-21831 are in the include list (FNAL vd_ext_1013/overlap_allocated_include.txt).
+  - Cutoff is 2026-10-13T04:14:47Z (vd_ext_1013/cutoff_utc.txt). At that time the old workflows had 11/27/184/149/148 outputs under _ext/fnal/218{27..31}.
+  - At the final transfer, EXCLUDE any hist file under fnal/21827-21831 newer than the cutoff. thesis-cf also de-duplicates (Flag, Event, SignalParticleE) at merge.
+- 2026-10-13 14:30: interim VD Top for ch.6/7/app. E.
+  - Sample: marley_60k_final, 13,933 files merged (10k orig + 3,933 ext), 1.49 GB; pipeline at SOLAR_transfer/vdtop_interim_20261013.
+  - Plot and table commands point VD Top at marley_60k_final through per-config --names pairs. Tables use the new
+    script_aggregate_table.py --rename_names marley_60k_final=marley_final.
+  - plot_params mappings were extended. Backup of the pre-edit command files: scratchpad scripts_backup_pre60k.
+  - Thesis includes for the VD-only figures point to *_marley_60k_final_*; the macros were updated (interim comments)
+    and there is a REVIEW in 7_1_section.tex.
+  - When thesis-cf's final VD Top rerun lands, revert the commands and includes to marley_final and regenerate.

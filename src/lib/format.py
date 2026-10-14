@@ -241,6 +241,11 @@ def _format_value_with_paren_error(base_format, value, error):
     decimals = _resolve_decimal_places(error)
     if decimals is None:
         return format(value, base_format)
+    if value != 0 and np.isfinite(value) and abs(error) < 1e-6 * abs(value):
+        # An error far below the value's own precision (e.g. a parameter left
+        # unconstrained by a degenerate fit, whose covariance collapses to ~0)
+        # would print a dozen spurious decimals; show the plain value instead.
+        return format(value, base_format)
 
     match = re.match(r"^\.?\d*([a-zA-Z%])$", base_format)
     type_char = match.group(1) if match else "f"
