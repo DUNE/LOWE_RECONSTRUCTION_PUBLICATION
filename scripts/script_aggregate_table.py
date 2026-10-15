@@ -514,6 +514,12 @@ parser.add_argument(
     "even when the data has a matching *Error column to draw one from",
 )
 parser.add_argument(
+    "--missing",
+    type=str,
+    default=None,
+    help="Text for table cells without any data (e.g. '---' for a surface a configuration does not have); default: NaN",
+)
+parser.add_argument(
     "--error_column",
     type=str,
     default=None,
@@ -1040,6 +1046,8 @@ def main():
 
     # Drop rows with all NaN values
     df_table = df_table.dropna(how="all")
+    if args.missing is not None:
+        df_table = df_table.fillna(args.missing)
 
     # Blocks follow --configs; rows inside a block follow --row_order
     # (--x_thresholds rows keep their numeric order inside each block)

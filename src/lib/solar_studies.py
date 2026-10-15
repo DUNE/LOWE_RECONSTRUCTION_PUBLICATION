@@ -361,18 +361,21 @@ MARLEY = FlatFamily(
     selections=(Selection(("hd_1x2x6",), ("marley_official",)),),
 )
 
-# Background spectra: one global summary plus per-config files (no sample name).
+# Background spectra: one global summary plus per-config files (no sample name). background_surface_rates: workspace rate per
+# generation surface and origin, events kT^-1 yr^-1 per 100 keV (02_background_spectra.py, SOLAR-sb bb46c00, 2026-10-15).
 BACKGROUND = FlatFamily(
     "Background",
     "background",
-    files={"background": ("background_spectra_summary", "Background")},
+    files={"background": ("background_spectra_summary", "Background", "background_surface_rates")},
     selections=(
         Selection(CONFIGS, ("",), ("background_spectra_summary",)),
         Selection(("hd_1x2x6_centralAPA",), ("",), ("Background",)),
+        Selection(CONFIGS, ("gamma", "neutron"), ("background_surface_rates",)),
     ),
     layouts={
         "background_spectra_summary": ("{kind}.pkl", "{config}/spectra/{config}_{kind}.pkl"),
         "Background": ("{config}/{config}_{kind}.pkl",),
+        "background_surface_rates": ("{config}/spectra/{config}_{name}_{kind}.pkl",),
     },
 )
 
