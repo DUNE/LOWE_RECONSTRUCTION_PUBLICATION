@@ -391,12 +391,16 @@ ANALYSIS_DATA = FlatFamily(
     "analysisdata",
     # ElectronEnergy: calibrated electron energy of every cluster, no classifier (reconstructed panels of fig:reweighting_truth).
     # ElectronEnergy_Sensitivity_AnalysisDataSurface: the same split by generation-surface group (03_analysis.py --surface_split,
-    # SOLAR-sb 014b93b), Selection TPC (all clusters) / Reference (cut 1/4/20) / Analysis (Sensitivity best cut), 2026-10-15.
-    files={"solar/weighted": ("SolarEnergy_Sensitivity_AnalysisData", "ElectronEnergy_Sensitivity_AnalysisData", "ElectronEnergy_Sensitivity_AnalysisDataSurface")},
+    # SOLAR-sb 014b93b..d773e4b), Selection TPC (all clusters) / Fiducial / Reference (cut 1/4/20) / Analysis (best cut), one file per
+    # analysis (fiducial volume and best cut of that analysis), 2026-10-15.
+    files={"solar/weighted": ("SolarEnergy_Sensitivity_AnalysisData", "ElectronEnergy_Sensitivity_AnalysisData", "ElectronEnergy_Sensitivity_AnalysisDataSurface",
+                               "ElectronEnergy_DayNight_AnalysisDataSurface", "ElectronEnergy_HEP_AnalysisDataSurface")},
     selections=(Selection(CONFIGS, ("gamma", "neutron")),),
     layouts={"SolarEnergy_Sensitivity_AnalysisData": ("{config}/{name}/truncated/{config}_{name}_{kind}.pkl",),
              "ElectronEnergy_Sensitivity_AnalysisData": ("{config}/{name}/truncated/{config}_{name}_{kind}.pkl",),
-             "ElectronEnergy_Sensitivity_AnalysisDataSurface": ("{config}/{name}/truncated/{config}_{name}_{kind}.pkl",)},
+             "ElectronEnergy_Sensitivity_AnalysisDataSurface": ("{config}/{name}/truncated/{config}_{name}_{kind}.pkl",),
+             "ElectronEnergy_DayNight_AnalysisDataSurface": ("{config}/{name}/truncated/{config}_{name}_{kind}.pkl",),
+             "ElectronEnergy_HEP_AnalysisDataSurface": ("{config}/{name}/truncated/{config}_{name}_{kind}.pkl",)},
 )
 
 FLAT_FAMILIES = (RECONSTRUCTION, CALIBRATION, WORKFLOW, MARLEY, BACKGROUND, EVENT, ANALYSIS_DATA)
