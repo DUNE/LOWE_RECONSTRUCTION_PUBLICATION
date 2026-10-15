@@ -397,13 +397,20 @@ ANALYSIS_DATA = FlatFamily(
     # SOLAR-sb 014b93b..d773e4b), Selection TPC (all clusters) / Fiducial / Reference (cut 1/4/20) / Analysis (best cut), one file per
     # analysis (fiducial volume and best cut of that analysis), 2026-10-15.
     files={"solar/weighted": ("SolarEnergy_Sensitivity_AnalysisData", "ElectronEnergy_Sensitivity_AnalysisData", "ElectronEnergy_Sensitivity_AnalysisDataSurface",
-                               "ElectronEnergy_DayNight_AnalysisDataSurface", "ElectronEnergy_HEP_AnalysisDataSurface")},
-    selections=(Selection(CONFIGS, ("gamma", "neutron")),),
+                               "ElectronEnergy_DayNight_AnalysisDataSurface", "ElectronEnergy_HEP_AnalysisDataSurface",
+                               # SolarEnergy_*: every sample (signal components, radiological) per stage Truth / TPC / Fiducial / Analysis
+                               # with a Role column, for the 8.5 summary tables (SOLAR-sb e644d7d).
+                               "SolarEnergy_DayNight_AnalysisDataSurface", "SolarEnergy_HEP_AnalysisDataSurface", "SolarEnergy_Sensitivity_AnalysisDataSurface")},
+    selections=(Selection(CONFIGS, ("gamma", "neutron")),
+                Selection(CONFIGS, ("marley", "radiological"), ("SolarEnergy_DayNight_AnalysisDataSurface", "SolarEnergy_HEP_AnalysisDataSurface", "SolarEnergy_Sensitivity_AnalysisDataSurface")),),
     layouts={"SolarEnergy_Sensitivity_AnalysisData": ("{config}/{name}/truncated/{config}_{name}_{kind}.pkl",),
              "ElectronEnergy_Sensitivity_AnalysisData": ("{config}/{name}/truncated/{config}_{name}_{kind}.pkl",),
              "ElectronEnergy_Sensitivity_AnalysisDataSurface": ("{config}/{name}/truncated/{config}_{name}_{kind}.pkl",),
              "ElectronEnergy_DayNight_AnalysisDataSurface": ("{config}/{name}/truncated/{config}_{name}_{kind}.pkl",),
-             "ElectronEnergy_HEP_AnalysisDataSurface": ("{config}/{name}/truncated/{config}_{name}_{kind}.pkl",)},
+             "ElectronEnergy_HEP_AnalysisDataSurface": ("{config}/{name}/truncated/{config}_{name}_{kind}.pkl",),
+             "SolarEnergy_DayNight_AnalysisDataSurface": ("{config}/{name}/truncated/{config}_{name}_{kind}.pkl",),
+             "SolarEnergy_HEP_AnalysisDataSurface": ("{config}/{name}/truncated/{config}_{name}_{kind}.pkl",),
+             "SolarEnergy_Sensitivity_AnalysisDataSurface": ("{config}/{name}/truncated/{config}_{name}_{kind}.pkl",)},
 )
 
 FLAT_FAMILIES = (RECONSTRUCTION, CALIBRATION, WORKFLOW, MARLEY, BACKGROUND, EVENT, ANALYSIS_DATA)
