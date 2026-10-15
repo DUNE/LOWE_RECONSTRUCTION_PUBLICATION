@@ -513,6 +513,13 @@ parser.add_argument(
     help="Show only the aggregated value, without a propagated error/uncertainty, "
     "even when the data has a matching *Error column to draw one from",
 )
+parser.add_argument(
+    "--count_column",
+    type=str,
+    default=None,
+    help="Column summed over the same groups as --y and shown in parentheses after each value "
+    "(e.g. MCCounts, the simulated clusters behind a weighted rate); cells with a zero count show '--'",
+)
 
 parser.add_argument(
     "--multiply",
@@ -734,6 +741,8 @@ def main():
         cols.append(f"{args.x}Error")
     band_columns = [*(args.error_band or []), *([args.band_fallback] if args.band_fallback else [])]
     cols.extend(band_columns)
+    if args.count_column:
+        cols.append(args.count_column)
 
     if args.drop_config:
         row_index = [args.row_name] if args.row_name else []
@@ -864,6 +873,14 @@ def main():
             lambda row: format_value(row, args=args), axis=1
         )
         df_table.columns = df_table.columns.droplevel(1)
+
+    if args.count_column:
+        counts = df_config.groupby(row_index + group_by_extra + [args.variable_name])[args.count_column].sum()
+        counts = counts.reindex(df_table.index).fillna(0).astype(int)
+        number = (lambda n: f"\\num{{{n}}}") if args.siunitx else str
+        df_table[args.y] = [
+            f"{value} ({number(n)})" if n > 0 else "--" for value, n in zip(df_table[args.y], counts)
+        ]
 
     if group_values:
         df_table = df_table.reset_index()
