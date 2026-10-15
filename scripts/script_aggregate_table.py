@@ -514,6 +514,12 @@ parser.add_argument(
     "even when the data has a matching *Error column to draw one from",
 )
 parser.add_argument(
+    "--error_column",
+    type=str,
+    default=None,
+    help="Column holding the uncertainty of --y when it is not named '<y>Error' (e.g. Error); it is used as '<y>Error'",
+)
+parser.add_argument(
     "--count_column",
     type=str,
     default=None,
@@ -625,6 +631,8 @@ def main():
         args.variable_name = "Particle" if args.name_columns else "Variable"
 
     df = import_data(args)
+    if args.error_column and args.error_column in df.columns:
+        df[f"{args.y}Error"] = df[args.error_column]
     if args.rename_names:
         rename = dict(pair.split("=", 1) for pair in args.rename_names)
         if "Name" in df.columns:
