@@ -497,6 +497,12 @@ STUDIES: tuple = (
     Study("membrane_veto_off", "membrane_veto", (REFERENCE_FOLDER,), ALL_ANALYSES, configs=VD_CONFIGS),
     # legacy fitter (FitMethod=legacy; do not overlay with pull-fit contours)
     Study("legacy_fit", "legacy_fit", (REFERENCE_FOLDER,), ("Sensitivity",)),
+    # analysis without the signal/background classifier and the neutron-capture veto (SOLAR-sb fe89c10, full chain re-optimised)
+    Study("sb_off", "sboff", (REFERENCE_FOLDER,), ALL_ANALYSES),
+    # radiological component of the Sensitivity background template smoothed (SOLAR-sb ecaea7e, full chain re-optimised)
+    Study("rad_smooth", "radsmooth", (REFERENCE_FOLDER,), ("Sensitivity",)),
+    # HEP without the external-tail extrapolation (SOLAR-sb 1a6f732, full chain re-optimised)
+    Study("hep_notail", "hepnotail", (REFERENCE_FOLDER,), ("HEP",)),
 )
 
 STUDY_BY_LABEL = {s.label: s for s in STUDIES}
