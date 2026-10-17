@@ -340,6 +340,23 @@ parser.add_argument(
 )
 
 parser.add_argument(
+    "--vertical_column_map",
+    type=str,
+    default=None,
+    help=(
+        "JSON mapping panel (--variable_column value) -> data column. In each panel, a vertical line is drawn for "
+        "every iterable at the value(s) of that column in its rows, in the iterable's colour, e.g. the selected cut "
+        "of each configuration: '{\"X\":\"SelectedX\",\"Y\":\"SelectedY\",\"Z\":\"SelectedZ\"}'."
+    ),
+)
+parser.add_argument(
+    "--vertical_column_style",
+    type=str,
+    default="--",
+    help="Linestyle of the --vertical_column_map lines (default '--').",
+)
+
+parser.add_argument(
     "--overlay_names",
     action="store_true",
     default=False,
@@ -1590,6 +1607,13 @@ def main():
                     reverse=getattr(args, "iterable_reverse", False),
                 )
             )
+
+            _vmap = json.loads(args.vertical_column_map) if getattr(args, "vertical_column_map", None) else {}
+            _vcol = _vmap.get(str(variable))
+            if _vcol and _vcol in subset.columns:
+                for _v in pd.to_numeric(subset[_vcol], errors="coerce").dropna().unique():
+                    ax_current.axvline(float(_v), color=iterable_color, linestyle=args.vertical_column_style,
+                                       linewidth=1.2, alpha=0.85, zorder=1)
 
             if args.plot_type is not None:
                 rprint(
