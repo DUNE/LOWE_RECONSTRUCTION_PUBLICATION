@@ -91,6 +91,16 @@
 #                            Plots: python run_plot_scripts.py -s waveform
 #                            Regenerate on the SOLAR side: python src/tools/export_waveform_repo.py
 #
+#   --fiducial               Fetch only the fiducial-stage export of SOLAR-sb (src/tools/export_fiducial_repo.py:
+#                            margin profiles of the fiducial figure of merit per profile set, the BestFiducials
+#                            records of the default and labelled studies, simulated background counts per volume;
+#                            README.md, meta.json) from output/data/solar/fiducial/export/ into input/data/solar/,
+#                            keeping the fiducial_profiles{suffix}/<config>/<name>/ layout of the plot commands.
+#                            Without --remote it reads the SOLAR-sb tree (DEFAULT_FIDUCIAL_REMOTE).
+#                            Content filters do not apply; --dry-run and --yes are honoured.
+#                            Plots: python run_plot_scripts.py -s fidprofile
+#                            Regenerate on the SOLAR side: python src/tools/export_fiducial_repo.py [--produce]
+#
 #   --smearing               Fetch only the primary-cluster energy smearing chain (SOLAR's
 #                            output/data/TPC/smearing/, registered there as TPC_SMEARING_CHAIN) into
 #                            input/data/TPC/smearing/, keeping the <config>/<name>/<sample>/ layout
@@ -157,6 +167,7 @@
 #   ./sync_solar_data.sh --study-status              # only the latest study-status report
 #   ./sync_solar_data.sh --waveform                  # only the PDS waveform export
 #   ./sync_solar_data.sh --smearing                  # only the TPC energy smearing chain
+#   ./sync_solar_data.sh --fiducial                  # only the fiducial-stage export (SOLAR-sb)
 
 set -euo pipefail
 
@@ -179,6 +190,9 @@ TRUTH_POSITION_SUBDIR="solar/truth_position/export_repo"   # under output/data/ 
 WAVEFORM=false
 WAVEFORM_SUBDIR="PDS/waveform/export"                       # under output/data/ on the remote
 SMEARING=false
+FIDUCIAL=false
+FIDUCIAL_SUBDIR="solar/fiducial/export"                     # under output/data/ on the remote
+DEFAULT_FIDUCIAL_REMOTE="gae_out:/pc/choozdsk01/users/manthey/SOLAR-sb"
 SMEARING_SUBDIR="TPC/smearing"                              # under output/data/ on the remote
 STUDY_STATUS=false
 BEST_CUTS=false
@@ -203,6 +217,7 @@ while [[ $# -gt 0 ]]; do
         --best-cuts)       BEST_CUTS=true;                   shift   ;;
         --waveform)        WAVEFORM=true;                    shift   ;;
         --smearing)        SMEARING=true;                    shift   ;;
+        --fiducial)        FIDUCIAL=true;                    shift   ;;
         --study-status)    STUDY_STATUS=true;                shift   ;;
         -y|--yes)          AUTO_YES=true;                shift   ;;
         --ssh-password-file) SSH_PASSWORD_FILE="$2";     shift 2 ;;
@@ -222,6 +237,7 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
+$FIDUCIAL && [[ "$REMOTE" == "$DEFAULT_REMOTE" ]] && REMOTE="$DEFAULT_FIDUCIAL_REMOTE"
 REMOTE="${REMOTE%/}"
 REMOTE_HOST="${REMOTE%%:*}"
 REMOTE_ROOT="${REMOTE#*:}"
@@ -312,6 +328,37 @@ if $TRUTH_POSITION; then
         echo "    (dry-run — nothing written)"
     else
         echo "==> $(find "$TP_DIR" -maxdepth 1 -name '*.pkl' | wc -l) pickle(s) in $TP_DIR (meta.json: $(sed -n 's/.*"generated": "\(.*\)",/\1/p' "$TP_DIR/meta.json" 2>/dev/null))"
+    fi
+    exit 0
+fi
+
+# --- Fiducial-stage export (--fiducial): profiles per set, records and MC counts, no registry ---
+if $FIDUCIAL; then
+    FD_DIR="$DATA_DIR/solar"
+    if (( ${#FILTER_ARGS[@]} > 0 )); then
+        echo "WARNING: content filters (${FILTER_ARGS[*]}) do not apply to --fiducial; ignored." >&2
+    fi
+    echo "==> Syncing the fiducial-stage export"
+    echo "    Remote : ${REMOTE_HOST}:${REMOTE_DATA}/${FIDUCIAL_SUBDIR}/"
+    echo "    Local  : $FD_DIR (fiducial_profiles*/, fiducial/)"
+    FD_ARGS=(-az --itemize-changes --out-format='%n' "${RSYNC_E[@]}"
+             --include='fiducial_profiles*/' --include='fiducial_profiles*/**' --exclude='*.pkl' --exclude='README.md' --exclude='meta.json'
+             "${REMOTE_HOST}:${REMOTE_DATA}/${FIDUCIAL_SUBDIR}/" "$FD_DIR/")
+    FD_META=(-az --itemize-changes --out-format='%n' "${RSYNC_E[@]}"
+             --include='*.pkl' --include='README.md' --include='meta.json' --exclude='*'
+             "${REMOTE_HOST}:${REMOTE_DATA}/${FIDUCIAL_SUBDIR}/" "$FD_DIR/fiducial/")
+    $DRY_RUN && FD_ARGS=(-n "${FD_ARGS[@]}") && FD_META=(-n "${FD_META[@]}")
+    mkdir -p "$FD_DIR/fiducial"
+    if ! $DRY_RUN && ! $AUTO_YES; then
+        read -r -p "Proceed with download? [y/N] " _confirm
+        [[ "$_confirm" =~ ^[Yy]$ ]] || { echo "Aborted."; exit 2; }
+    fi
+    _rsync_tolerant "${FD_ARGS[@]}" | sed 's/^/    /'
+    _rsync_tolerant "${FD_META[@]}" | sed 's/^/    /'
+    if $DRY_RUN; then
+        echo "    (dry-run — nothing written)"
+    else
+        echo "==> $(find "$FD_DIR"/fiducial_profiles* -name '*.pkl' | wc -l) profile pickle(s), $(find "$FD_DIR/fiducial" -maxdepth 1 -name '*.pkl' | wc -l) table pickle(s) (meta.json: $(sed -n 's/.*"generated": "\(.*\)",/\1/p' "$FD_DIR/fiducial/meta.json" 2>/dev/null))"
     fi
     exit 0
 fi
