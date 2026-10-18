@@ -6,6 +6,7 @@
     "solar": ["/home/smanthey/Code/THESIS/figures/solar/"],
     "phaseI": ["/home/smanthey/Documents/solar_neutrinos_phaseI_paper/figures/", "/home/smanthey/Code/THESIS/figures/phaseI/"],
     "study": ["/home/smanthey/Code/THESIS/figures/study/"],
+    "fidprofile": ["/home/smanthey/Code/THESIS/figures/solar/"],
     "truth_position": ["/home/smanthey/Code/LOWE_RECONSTRUCTION_PUBLICATION/output/plots/truth_position/", "/home/smanthey/Code/THESIS/figures/study/fiducial/"],
     "pde": ["/home/smanthey/Documents/pde_xa_vd_paper/images/"],
     "waveform": ["/home/smanthey/Code/LOWE_RECONSTRUCTION_PUBLICATION/output/plots/waveform/", "/home/smanthey/Code/THESIS/figures/reco/waveform/"],
