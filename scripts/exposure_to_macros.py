@@ -37,7 +37,7 @@ import pandas as pd
 
 # Thesis repository (outputs go to its results/ and tables/); override with THESIS_DIR.
 ROOT = Path(os.environ.get("THESIS_DIR", Path.home() / "Code" / "THESIS"))
-DEFAULT_DATA = Path("/home/smanthey/Code/LOWE_RECONSTRUCTION_PUBLICATION/input/data")
+DEFAULT_DATA = Path("/home/smanthey/Code/LOWE_RECONSTRUCTION_PUBLICATION/input/data/studies/truncated/default")  # layout of sync_solar_data.sh
 CFG = {"HDc": "hd_1x2x6_centralAPA", "HDl": "hd_1x2x6_lateralAPA",
        "VDn": "vd_1x8x14_3view_30deg_nominal", "VDs": "vd_1x8x14_3view_30deg_shielded"}
 ANA = {"DN": ("DayNight", "Asimov"), "HEP": ("HEP", "ProfileLikelihood")}
