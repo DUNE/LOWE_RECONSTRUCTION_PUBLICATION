@@ -18,8 +18,9 @@ from lib.exports import make_name_from_args, save_figure_to_paths
 from lib.format import make_title_from_args, make_config_label_from_args, make_config_color_and_style_from_args
 from lib.imports import import_data, prepare_import
 from lib.plot import apply_legend_style, apply_legend_style_clear_of_data, apply_legend_pair_clear_of_data, plot_data, create_common_subplots, create_common_two_panel_figure, apply_note_to_figure, add_centered_suptitle, draw_vertical_lines, draw_horizontal_lines, place_point_label
-from common_args import add_common_args, load_computation_settings, map_iterable_label, map_iterable_color, resolve_plot_kwargs, resolve_axis_label
+from common_args import add_common_args, load_computation_settings, map_iterable_label, map_iterable_color, resolve_plot_kwargs, resolve_axis_label, blank_outside_window
 
+import copy
 import matplotlib.lines as mlines
 import matplotlib.patches as mpatches
 from scipy.special import erf
@@ -124,6 +125,28 @@ parser.add_argument(
     type=str,
     default=None,
     help="Default lower-panel behavior when --operation is not specified: operation name or dataframe column (overrides config default)",
+)
+
+parser.add_argument(
+    "--blank_lower_outside",
+    nargs=2,
+    type=float,
+    default=None,
+    metavar=("XMIN", "XMAX"),
+    help=(
+        "Draw the --lower_series_data values only in bins whose x (bin centre) lies inside [XMIN, XMAX], e.g. the "
+        "analysis energy window; the other bins are drawn at zero. The upper panel is unchanged."
+    ),
+)
+
+parser.add_argument(
+    "--lower_series_min_y",
+    type=float,
+    default=None,
+    help=(
+        "Draw the --lower_series_data values only in bins where the same series' upper-panel --y value "
+        "(e.g. the weighted signal counts) is above this value; the other bins are drawn at zero."
+    ),
 )
 
 parser.add_argument(
@@ -271,8 +294,8 @@ parser.add_argument(
     type=str,
     default=None,
     help=(
-        "Restrict the --reference_group/--other_group bottom-panel line to "
-        "just this one --comparable value (e.g. Smoothed), instead of "
+        "Restrict the --reference_group/--other_group bottom-panel line, or the "
+        "--lower_series_data series, to just this one --comparable value (e.g. Smoothed), instead of "
         "drawing one line per --comparable value like the top panel does. "
         "The top panel is unaffected."
     ),
@@ -1080,6 +1103,10 @@ def main():
             bottom_column = args.lower_series_data
     
     df = import_data(args)
+    df = blank_outside_window(df, args.x, getattr(args, "blank_outside", None))
+    if getattr(args, "lower_series_data", None):
+        df = blank_outside_window(df, args.x, args.blank_lower_outside,
+                                  columns=[args.lower_series_data, f"{args.lower_series_data}Error"])
 
     _donor = getattr(args, "lower_series_donor", None)
     if _donor and getattr(args, "lower_series_data", None) and args.iterable in df.columns:
@@ -1330,7 +1357,10 @@ def main():
                     comparable_entry[2].append(line_color)
                     top_errors_by_comparable.setdefault(comparable_val, []).append(y_v_err)
 
-                    if bottom_column is not None and bottom_column in subset_comparable.columns:
+                    _bottom_only = getattr(args, "bottom_comparable_value", None)
+                    if bottom_column is not None and bottom_column in subset_comparable.columns and (
+                        _bottom_only is None or str(comparable_val) == _bottom_only
+                    ):
                         local_sub = subset_comparable[subset_comparable[bottom_column].notna()]
                         if not local_sub.empty:
                             x_b, y_b, y_b_err = _extract_bottom_column_arrays(
@@ -1343,6 +1373,12 @@ def main():
                                     b_label = _resolve_bottom_series_label(
                                         local_sub, bottom_column, label
                                     )
+                                    _min_y = getattr(args, "lower_series_min_y", None)
+                                    if _min_y is not None and np.shape(y_v) == np.shape(y_b):
+                                        _keep = np.asarray(y_v, dtype=float) > _min_y
+                                        y_b = np.where(_keep, y_b, 0.0)
+                                        if y_b_err is not None:
+                                            y_b_err = np.where(_keep, y_b_err, 0.0)
                                     bottom_by_comparable.setdefault(comparable_val, []).append(
                                         (b_label, y_b, line_color, y_b_err)
                                     )
@@ -1914,6 +1950,17 @@ def main():
             capitalize_labels=getattr(args, "capitalize_legend", False),
         )
         has_comparable_legend = comparable_col is not None and comparable_values_arr.size > 0
+        if has_comparable_legend and not getattr(args, "comparable_fill_strength", False):
+            # The comparable legend explains the line styles: draw the iterable
+            # (colour) entries solid, whichever comparable value was drawn first.
+            _handles, _labels = ax_top.get_legend_handles_labels()
+            _solid = []
+            for _handle in _handles:
+                _proxy = copy.copy(_handle)
+                if hasattr(_proxy, "set_linestyle"):
+                    _proxy.set_linestyle("-")
+                _solid.append(_proxy)
+            primary_legend_kwargs.update(handles=_solid, labels=_labels)
         draw_primary = draw_selection in ("both", "iterable")
         draw_comparable = draw_selection in ("both", "comparable") and has_comparable_legend
         comparable_legend_kwargs = None

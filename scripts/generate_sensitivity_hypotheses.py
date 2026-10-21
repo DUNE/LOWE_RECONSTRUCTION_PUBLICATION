@@ -58,6 +58,14 @@ def main():
     signal_solar = np.asarray(templates.loc["Signal", "Counts"], dtype=float)
     background = np.asarray(templates.loc["Background", "Counts"], dtype=float)
     signal_reactor = np.asarray(pd.read_pickle(args.reactor), dtype=float)
+    # With the Sensitivity score categories (SOLAR SENSITIVITY_SCORE_CATEGORIES) the raw template stacks one block of nadir
+    # rows per category; the exported solar/background maps are summed over the categories, so the reactor one is too.
+    n_rows = signal_solar.shape[0]
+    if signal_reactor.shape != signal_solar.shape and signal_reactor.shape[1:] == signal_solar.shape[1:] \
+            and signal_reactor.shape[0] % n_rows == 0:
+        n_cat = signal_reactor.shape[0] // n_rows
+        print(f"Reactor template: summing {n_cat} score categories of {n_rows} nadir rows")
+        signal_reactor = signal_reactor.reshape(n_cat, n_rows, -1).sum(axis=0)
     if signal_reactor.shape != signal_solar.shape:
         raise SystemExit(f"Reactor template shape {signal_reactor.shape} != solar {signal_solar.shape}")
 

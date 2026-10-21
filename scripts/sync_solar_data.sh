@@ -137,6 +137,8 @@
 #                            marley, background, event, analysisdata) selects that family only
 #   --analysis VALUE         daynight, hep or sensitivity (any spelling)
 #   --energy VALUE           Cutflow energy label (SolarEnergy, SelectedEnergy, ...)
+#   --kind VALUE             Flat-family file kind (TPC_Cluster_Efficiency_Drift_Scan, ...);
+#                            an include filter fetches flat families only
 #   --exclude-<dim> VALUE    Exclude instead of include, for every dimension above
 #
 #   Include filters are OR-ed within a dimension; all dimensions must pass (AND).
@@ -222,7 +224,7 @@ while [[ $# -gt 0 ]]; do
         -y|--yes)          AUTO_YES=true;                shift   ;;
         --ssh-password-file) SSH_PASSWORD_FILE="$2";     shift 2 ;;
         --config|--exclude-config|--name|--exclude-name|--folder|--exclude-folder|\
-        --study|--exclude-study|--analysis|--exclude-analysis|--energy|--exclude-energy)
+        --study|--exclude-study|--analysis|--exclude-analysis|--energy|--exclude-energy|--kind|--exclude-kind)
             FILTER_ARGS+=("$1" "$2");                    shift 2 ;;
         --pnfs|--theme)
             echo "WARNING: $1 is no longer supported (index.json discovery removed); ignored." >&2

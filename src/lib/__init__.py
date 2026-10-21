@@ -124,6 +124,9 @@ _FIGURE_LAYOUT = _PLOT_SETTINGS.get("figure_layout", {})
 figure_base_width = _FIGURE_LAYOUT.get("base_width", 8)
 figure_panel_width = _FIGURE_LAYOUT.get("panel_width", 5)
 figure_height = _FIGURE_LAYOUT.get("height", 6)
+# Font scale per number of panel columns: a figure with more columns is shrunk more
+# to fit the text width, so its text is enlarged to match the other figures.
+figure_panel_font_scale = {int(k): float(v) for k, v in _FIGURE_LAYOUT.get("panel_font_scale", {}).items()}
 figure_margins_inches = _FIGURE_LAYOUT.get(
     "margins_inches",
     {

@@ -108,7 +108,7 @@ KINDS = {
 STUDY_FAMILIES = ("Counts", "Exposure", "Contours", "10Y_Contours", "Cutflow", "Weighted")
 
 CUTFLOW_DEFAULT_ENERGY = "SolarEnergy"
-CUTFLOW_SUFFIX_LABELS = ("fiduc_truth",)  # studies with their own cutflow file, tagged by a filename suffix
+CUTFLOW_SUFFIX_LABELS = ("fiduc_truth", "mcfilter", "mcfilter_noflag")  # studies with their own cutflow file, tagged by a filename suffix
 
 # ---------------------------------------------------------------------------
 # Flat families: SOLAR trees without folder/label/analysis levels
@@ -165,6 +165,8 @@ class FlatFamily:
                 for kind in kinds:
                     if sel.kinds is not None and kind not in sel.kinds:
                         continue
+                    if not flt.kind_ok(kind):
+                        continue
                     for layout in self.layouts_of(kind):
                         for config in (configs if "{config}" in layout else [""]):
                             for name in (names if "{name}" in layout else [""]):
@@ -175,6 +177,8 @@ class FlatFamily:
 
     def selected(self, flt: "Filters", config: str, name: str, kind: str) -> bool:
         if config and not flt.config_ok(config):
+            return False
+        if not flt.kind_ok(kind):
             return False
         for sel in self.selections:
             if sel.kinds is not None and kind not in sel.kinds:
@@ -225,11 +229,13 @@ RECONSTRUCTION = FlatFamily(
         "vertex/reconstruction": ("Vertex_Reconstruction_Efficiency", "Vertex_3D_Quantile_Thresholds"),
         "vertex/fiducial": ("Fiducial_Efficiency", "Fiducial_Purity"),
         "vertex/smearing": ("Cumulative_Vertex_Error", "Vertex_Smearing"),  # Vertex_Smearing ~8 MB
+        "vertex/maps": ("Vertex_Efficiency_Maps",),  # 05_maps.py (SOLAR-sb, 2026-10-21, lowe paper review)
         "TPC/resolution/neutrino": (
             "Neutrino_Energy_Resolution", "MainK_Resolution_GaussianFit",
             "Neutrino_Energy_Resolution_NoSBClassifier",
         ),
         "TPC/resolution/electron": ("Electron_Energy_Resolution",),
+        "TPC/resolution/sources": ("Smearing_Sources", "Gamma_Tagging"),  # 08_smearing_sources.py (SOLAR-sb, 2026-10-21)
         "TPC/adjcluster": ("Adjacent_Cluster_Counts", "Adjacent_Cluster_Counts_Slim", "Adjacent_Cluster_Distributions"),  # Counts up to ~11 MB
         "PDS/matchedopflash": (
             "OpFlash_Efficiency",
@@ -240,7 +246,7 @@ RECONSTRUCTION = FlatFamily(
         "PDS/flash": ("OpFlash_Counts_Slim", "MatchedOpFlash_Summary", "Flash_Vertex_Distances"),  # 05/06 flash scripts (2026-09 flash samples)
         "PDS/ophit": ("OpHit_LightYield_Drift_Scan", "OpHit_LightYield_Region_Scan"),  # 08_ophit_light_yield.py (ophit productions, OpHits saved)
         "preselection/efficiency": ("Preselection_Efficiency",),
-        "preselection/clustering": ("Clustering_Efficiency_Energy", "Clustering_Efficiency_NHit"),
+        "preselection/clustering": ("Clustering_Efficiency_Energy", "Clustering_Efficiency_NHit", "Clustering_Efficiency_Drift"),
     },
     selections=(
         Selection(CONFIGS, (SIGNAL_NAME,), RECO_REGENERATED, complete=True),  # thesis: every regenerated kind
@@ -260,6 +266,11 @@ RECONSTRUCTION = FlatFamily(
         # (refit 2026-10-03 on SOLAR after the SelectedEnergy mask fix in lib/cluster.py).
         Selection(CONFIGS, ("marley_final",), tuple(k for k in RECO_REGENERATED if k != "Preselection_Efficiency")),
         Selection(CONFIGS, ("marley_final",), ("Neutrino_Energy_Resolution_NoSBClassifier",)),
+        # lowe paper review (2026-10-21): smearing sources, gamma tagging, vertex maps and the clustering drift scan
+        Selection(CONFIGS, ("marley_final",), ("Smearing_Sources", "Gamma_Tagging", "Vertex_Efficiency_Maps", "Clustering_Efficiency_Drift")),
+        Selection(LEGACY_CONFIGS, ("marley_final",), ("Clustering_Efficiency_Energy", "Clustering_Efficiency_Drift")),
+        Selection(("hd_1x2x6_centralAPA",), (SIGNAL_NAME,), ("Clustering_Efficiency_Drift",)),  # nominal point of the clustering scans
+        Selection(("hd_1x2x6_centralAPA", "vd_1x8x14_3view_30deg_nominal"), ("electrongun_flat",), ("Electron_Energy_Resolution",)),  # free electrons, 2-30 MeV
         # lowe paper (marley_official): only the kinds its commands read
         Selection(("hd_1x2x6_centralAPA", "vd_1x8x14_3view_30deg_nominal"), ("marley_official",), (
             "Vertex_Resolution", "Purity_Match_Resolution", "Fiducial_Purity", "Vertex_Smearing", "Adjacent_Cluster_Counts",
@@ -283,7 +294,7 @@ RECONSTRUCTION = FlatFamily(
         # clustering-window and flash-matching criterion scans
         Selection(("hd_1x2x6_centralAPA",),
                   tuple(f"marley_adjchannel{n}" for n in (1, 5, 7, 9)) + tuple(f"marley_adjtime{n}" for n in (5, 10, 15, 20, 30)),
-                  ("Clustering_Efficiency_Energy",)),
+                  ("Clustering_Efficiency_Energy", "Clustering_Efficiency_Drift")),
         Selection(("hd_1x2x6_centralAPA", "vd_1x8x14_3view_30deg_shielded"),
                   ("marley_exponent0", "marley_exponent1", "marley_exponent2", "marley_maximum"),
                   ("TPC_Cluster_Efficiency_Plane_Scan",)),
@@ -449,6 +460,7 @@ class Study:
     configs: tuple = CONFIGS
     cutflow_energy: Optional[str] = None  # study-specific cutflow energy label (shared by the group)
     exclude: tuple = ()  # (analysis, config) pairs retired on the remote; never expected, never synced
+    cutflow_only: bool = False  # cut-flow display variant: no analysis results of its own
 
     def analysis_configs(self, analysis: str) -> tuple:
         return tuple(c for c in self.configs if (analysis, c) not in self.exclude)
@@ -499,10 +511,15 @@ STUDIES: tuple = (
     Study("legacy_fit", "legacy_fit", (REFERENCE_FOLDER,), ("Sensitivity",)),
     # analysis without the signal/background classifier and the neutron-capture veto (SOLAR-sb fe89c10, full chain re-optimised)
     Study("sb_off", "sboff", (REFERENCE_FOLDER,), ALL_ANALYSES),
-    # radiological component of the Sensitivity background template smoothed (SOLAR-sb ecaea7e, full chain re-optimised)
-    Study("rad_smooth", "radsmooth", (REFERENCE_FOLDER,), ("Sensitivity",)),
+    # The radiological studies (rad_smooth, rad_unified, rad_unified_smooth, ...) are retired (DEAD_LABELS): since SOLAR-sb
+    # 2026-10-20 the default is the radiological MC floor 3 with the regular smoothing in every stage (rerun 40).
     # HEP without the external-tail extrapolation (SOLAR-sb 1a6f732, full chain re-optimised)
     Study("hep_notail", "hepnotail", (REFERENCE_FOLDER,), ("HEP",)),
+    # Day-Night cut-flow display variants of the default analysis (SOLAR-sb cutflow_plot.py --output_label, 2026-10-19):
+    # bins with fewer than 2 MC clusters zeroed at every stage; plus the clusters without the de-excitation offset
+    # (S/B background-like or neutron-capture veto) removed from every stage
+    Study("mcfilter", "cutflow_variant", (REFERENCE_FOLDER,), ("DayNight",), cutflow_energy=CUTFLOW_DEFAULT_ENERGY, cutflow_only=True),
+    Study("mcfilter_noflag", "cutflow_variant", (REFERENCE_FOLDER,), ("DayNight",), cutflow_energy=CUTFLOW_DEFAULT_ENERGY, cutflow_only=True),
 )
 
 STUDY_BY_LABEL = {s.label: s for s in STUDIES}
@@ -522,6 +539,15 @@ DEAD_LABELS = frozenset(
         "unc_sig8",
         "charge_Q200",
         "bkg_gamma",
+        # radiological treatment studies, superseded by the 2026-10-20 default (SOLAR-sb lib/study.py radsmooth)
+        "rad_smooth",
+        "rad_smooth_end",
+        "rad_floor3",
+        "rad_floor3_smooth",
+        "rad_floor3_smooth_end",
+        "rad_unified",
+        "rad_unified_smooth",
+        "rad_default_check",
     }
 )
 
@@ -561,6 +587,8 @@ class Filters:
     exclude_analyses: list = field(default_factory=list)
     energies: list = field(default_factory=list)
     exclude_energies: list = field(default_factory=list)
+    kinds: list = field(default_factory=list)
+    exclude_kinds: list = field(default_factory=list)
 
     @staticmethod
     def _norm_analysis(value: str) -> str:
@@ -595,6 +623,10 @@ class Filters:
     def energy_ok(self, energy: Optional[str]) -> bool:
         return self._ok(energy, self.energies, self.exclude_energies)
 
+    def kind_ok(self, kind: Optional[str]) -> bool:
+        """Flat-family file kind (e.g. TPC_Cluster_Efficiency_Drift_Scan)."""
+        return self._ok(kind, self.kinds, self.exclude_kinds)
+
     def flat_ok(self, fam: "FlatFamily") -> bool:
         """Flat families have no folder/analysis/energy/label: any include filter
         on those dimensions drops them, unless --study names the family."""
@@ -605,7 +637,9 @@ class Filters:
         return not (self.folders or self.analyses or self.energies)
 
     def flat_only(self) -> bool:
-        """--study names only flat families: skip the analysis/cutflow/nhits rules."""
+        """--study names only flat families, or --kind is given: skip the analysis/cutflow/nhits rules."""
+        if self.kinds:
+            return True
         return bool(self.studies) and all(s.lower() in FLAT_BY_STUDY for s in self.studies)
 
     def study_group_ok(self, study: Study) -> bool:
@@ -634,11 +668,13 @@ class Filters:
             exclude_analyses=args.exclude_analysis or [],
             energies=args.energy or [],
             exclude_energies=args.exclude_energy or [],
+            kinds=args.kind or [],
+            exclude_kinds=args.exclude_kind or [],
         )
 
 
 def add_filter_args(parser: argparse.ArgumentParser) -> None:
-    for dim in ("config", "name", "folder", "study", "analysis", "energy"):
+    for dim in ("config", "name", "folder", "study", "analysis", "energy", "kind"):
         parser.add_argument(f"--{dim}", action="append", default=None)
         parser.add_argument(f"--exclude-{dim}", dest=f"exclude_{dim}", action="append", default=None)
 
@@ -825,6 +861,8 @@ def passes_filters(rf: RemoteFile, flt: Filters) -> bool:
         fam = FLAT_BY_FAMILY[rf.family]
         return flt.flat_ok(fam) and fam.selected(flt, rf.config, rf.name, rf.kind)
     study = rf.study
+    if flt.kinds:
+        return False
     return (
         flt.config_ok(rf.config)
         and flt.name_ok(rf.name)
@@ -845,8 +883,16 @@ def expected_files(flt: Optional[Filters] = None) -> list:
     flt = flt or Filters()
     out = []
 
+    if flt.kinds:
+        # --kind selects flat-family files only
+        for fam in FLAT_FAMILIES:
+            if flt.flat_ok(fam):
+                for subdir, config, name, kind, rel in fam.combos(flt, complete_only=True):
+                    out.append(RemoteFile(rel, fam.family, "flat", config, name, None, DEFAULT_LABEL, None, kind, subdir=subdir))
+        return out
+
     for study in STUDIES:
-        if not flt.study_group_ok(study):
+        if study.cutflow_only or not flt.study_group_ok(study):
             continue
         for folder in study.folders:
             if not flt.folder_ok(folder):
@@ -943,7 +989,7 @@ def rsync_rules(flt: Optional[Filters] = None) -> list:
         return rules
 
     for study in STUDIES:
-        if not flt.study_group_ok(study):
+        if study.cutflow_only or not flt.study_group_ok(study):
             continue
         for folder in study.folders:
             if not flt.folder_ok(folder):

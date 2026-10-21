@@ -17,6 +17,7 @@ from lib.exports import make_name_from_args, save_figure_to_paths
 from lib.format import make_title_from_args, make_subtitle_from_args, _title_case_words
 from lib.imports import import_data, prepare_import
 from lib.functions import resolution
+import copy
 import matplotlib
 import matplotlib.ticker
 import matplotlib.lines as mlines
@@ -30,13 +31,14 @@ from lib.plot import (
     apply_legend_pair_clear_of_data,
     plot_data,
     create_common_subplots,
+    enable_legend_frame,
     apply_note_to_figure,
     add_centered_suptitle,
     draw_vertical_lines,
     draw_horizontal_lines,
     place_point_label,
 )
-from common_args import add_common_args, map_iterable_label, map_iterable_color, resolve_axis_label
+from common_args import add_common_args, map_iterable_label, map_iterable_color, resolve_axis_label, blank_outside_window
 
 
 # Import with args parser
@@ -240,6 +242,23 @@ parser.add_argument(
     action="store_true",
     help="Draw --plot_type step outlines without the baseline edges at the first and last bin "
     "(for binned ratios such as efficiencies, where a drop to zero would read as data).",
+)
+
+parser.add_argument(
+    "--single_legend",
+    action="store_true",
+    help="Draw the legend also when there is a single iterable value (e.g. to match sibling panels).",
+)
+
+parser.add_argument(
+    "--legend_frame",
+    nargs="?",
+    type=float,
+    const=0.8,
+    default=None,
+    metavar="ALPHA",
+    help="Draw the legends on a translucent white box (opacity ALPHA, default 0.8), "
+    "for legends that sit over filled areas.",
 )
 
 parser.add_argument(
@@ -532,6 +551,8 @@ parser.add_argument(
 )
 
 args = parser.parse_args()
+if args.legend_frame is not None:
+    enable_legend_frame(args.legend_frame)
 
 _MISSING_ITERABLE_MAPPING_WARNING_SHOWN = False
 
@@ -812,6 +833,16 @@ def _apply_iterable_legend(
             return mpatches.Patch(facecolor=(*rgb, 0.45), edgecolor=rgb, linewidth=2)
 
         handles = [_swatch(h) for h in handles]
+    elif comparable_style_map and handles:
+        # The comparable legend explains the line styles: draw the iterable
+        # (colour) entries solid, whichever comparable value was drawn first.
+        def _solid(handle):
+            proxy = copy.copy(handle)
+            if hasattr(proxy, "set_linestyle"):
+                proxy.set_linestyle("-")
+            return proxy
+
+        handles = [_solid(h) for h in handles]
     primary_legend_kwargs = dict(
         title=iterable_title,
         handles=handles,
@@ -913,6 +944,7 @@ def _apply_iterable_legend(
 def main():
     # For each configuration provided combine the data files and plot the results
     df = import_data(args)
+    df = blank_outside_window(df, args.x, getattr(args, "blank_outside", None))
 
     # Parse variable label map if provided
     variable_label_map = None
@@ -2010,7 +2042,7 @@ def main():
 
             # A single iterable draws no legend, unless --draw_legend comparable asks
             # for the comparable (line-style) legend alone.
-            if iterable_values.size > 1 or (
+            if iterable_values.size > 1 or getattr(args, "single_legend", False) or (
                 getattr(args, "draw_legend", "both") == "comparable" and secondary_style_map
             ):
                 # Panels that carry a legend: the primary legend on
@@ -2052,8 +2084,7 @@ def main():
                             getattr(args, "capitalize_legend", False),
                             comparable_alpha_map=secondary_alpha_map,
                             selection=_panel_selection,
-                            loc="upper left",
-                            bbox_to_anchor=(0, 1),
+                            **({"loc": args.legend_loc} if getattr(args, "legend_loc", None) else {"loc": "upper left", "bbox_to_anchor": (0, 1)}),
                         )
                     else:
                         main_handles, main_labels = ax_current.get_legend_handles_labels()

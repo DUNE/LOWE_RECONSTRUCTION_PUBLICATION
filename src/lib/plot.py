@@ -18,7 +18,21 @@ from . import (
     figure_height,
     figure_margins_inches,
     figure_two_panel_hspace,
+    figure_panel_font_scale,
 )
+
+_BASE_FONT_SIZE = float(plt.rcParams["font.size"])
+
+
+def panel_font_scale(ncols=1):
+    """Text scale of a figure with ``ncols`` panel columns (plot_settings.figure_layout.panel_font_scale)."""
+    return figure_panel_font_scale.get(max(1, int(ncols)), 1.0)
+
+
+def apply_panel_font_scale(ncols=1):
+    """Set the base font size for the next figure; every relative font size
+    (x-large, xx-large, ...) and the tick labels follow it."""
+    plt.rcParams["font.size"] = _BASE_FONT_SIZE * panel_font_scale(ncols)
 
 
 PLOT_STYLE_OPTIONS = {
@@ -54,10 +68,14 @@ def apply_common_figure_margins(fig, hspace=None):
     
     figwidth = fig.get_figwidth()
     figheight = fig.get_figheight()
+    # Enlarged text (apply_panel_font_scale) needs proportionally wider margins.
+    text_scale = float(plt.rcParams["font.size"]) / _BASE_FONT_SIZE
     
     # Convert absolute-inch margins to normalized coordinates (0-1 scale)
     margins_normalized = {}
     for key, value in figure_margins_inches.items():
+        if key in ("left", "right", "bottom", "top"):
+            value = value * text_scale
         if key == "left":
             margins_normalized[key] = value / figwidth
         elif key == "right":
@@ -80,6 +98,7 @@ def apply_common_figure_margins(fig, hspace=None):
 
 
 def create_common_subplots(nrows=1, ncols=1, **kwargs) -> tuple[Any, Any]:
+    apply_panel_font_scale(ncols)
     fig, ax = plt.subplots(
         nrows=nrows,
         ncols=ncols,
@@ -92,6 +111,7 @@ def create_common_subplots(nrows=1, ncols=1, **kwargs) -> tuple[Any, Any]:
 
 
 def create_common_two_panel_figure(ncols=1, height_ratios=(3, 1), hspace=None) -> tuple[Any, Any]:
+    apply_panel_font_scale(ncols)
     fig = plt.figure(figsize=get_common_figsize(ncols=ncols))
     resolved_hspace = figure_two_panel_hspace if hspace is None else hspace
     grid = fig.add_gridspec(
@@ -237,6 +257,28 @@ def _humanize_legend_title(title):
     return " ".join(words)
 
 
+# Legend titles that only name the dimension whose entries are listed: the entries
+# (HD Central, ..., Gamma, Neutron, ...) are the same in every plot and explain
+# themselves, so these titles are dropped (thesis style guide, generated plot labels).
+REDUNDANT_LEGEND_TITLES = {
+    "config", "configs", "configuration", "configurations",
+    "component", "components",
+    "sample", "samples", "name",
+}
+
+
+def is_redundant_legend_title(title):
+    return isinstance(title, str) and title.strip().lower() in REDUNDANT_LEGEND_TITLES
+
+
+_LEGEND_FRAME = {}
+
+
+def enable_legend_frame(alpha=0.8):
+    """Draw every following legend on a translucent white box (--legend_frame)."""
+    _LEGEND_FRAME.update(frameon=True, facecolor="white", edgecolor="none", framealpha=alpha)
+
+
 def apply_legend_style(
     ax,
     title=None,
@@ -252,10 +294,13 @@ def apply_legend_style(
     if "title_fontsize" not in style:
         style["title_fontsize"] = legendtitlefontsize
 
-    if title is not None:
+    if title is not None and not is_redundant_legend_title(title):
         style["title"] = _humanize_legend_title(title)
+    style.update(_LEGEND_FRAME)
 
     style.update(overrides)
+    if is_redundant_legend_title(style.get("title")):
+        style.pop("title")
 
     if handles is None and labels is None:
         handles, labels = ax.get_legend_handles_labels()

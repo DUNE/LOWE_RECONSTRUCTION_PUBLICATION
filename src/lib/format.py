@@ -322,6 +322,9 @@ def _format_with_error(
     scientific = _wants_scientific(mean, args)
     decimals = significant_figures if significant_figures is not None else 1
 
+    if error == 0 and args is not None and getattr(args, "zero_error_plain", False):
+        return _significant(mean, 3)
+
     if pd.isna(error) or np.isinf(error) or error == 0 or error > 100 * abs(mean):
         if scientific:
             return f"{mean:.{decimals}e} ± {np.nan}"

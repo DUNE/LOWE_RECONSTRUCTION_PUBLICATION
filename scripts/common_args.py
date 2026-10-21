@@ -774,6 +774,17 @@ def add_common_args(parser, arg_names, overrides=None):
             help="Legend location for all panels (matplotlib loc, e.g. 'lower left'); default from plot_params",
         )
 
+    if "--blank_outside" not in parser._option_string_actions:
+        parser.add_argument(
+            "--blank_outside",
+            nargs=2,
+            type=float,
+            default=None,
+            metavar=("XMIN", "XMAX"),
+            help="Blank every per-bin array value whose x (bin centre) lies outside [XMIN, XMAX] "
+                 "(e.g. the analysis energy window), so bins the analysis does not use are not drawn (set to 0)",
+        )
+
     if "--legend_ncol" not in parser._option_string_actions:
         parser.add_argument(
             "--legend_ncol",
@@ -782,6 +793,38 @@ def add_common_args(parser, arg_names, overrides=None):
             default=None,
             help="Number of legend columns for all legends (e.g. 2 to halve the height of a long legend)",
         )
+
+
+def blank_outside_window(df, x_column, window, columns=None):
+    """Set to 0 every entry of the per-bin array columns of df (same length as the x array of the row)
+    whose x value lies outside window = (xmin, xmax). Scalar columns and the x column itself are unchanged;
+    columns restricts the blanking to those columns (default: every per-bin column)."""
+    if window is None or df is None or df.empty or x_column not in df.columns:
+        return df
+    import numpy as np
+    xmin, xmax = float(window[0]), float(window[1])
+    df = df.copy()
+    for col in df.columns:
+        if col == x_column or (columns is not None and col not in columns):
+            continue
+        values = df[col].tolist()
+        changed = False
+        for i, (x, v) in enumerate(zip(df[x_column].tolist(), values)):
+            if not isinstance(x, (list, tuple, np.ndarray)) or not isinstance(v, (list, tuple, np.ndarray)):
+                continue
+            x = np.asarray(x, dtype=float)
+            v = np.asarray(v)
+            if v.ndim != 1 or len(v) != len(x) or not np.issubdtype(v.dtype, np.number):
+                continue
+            out = (x < xmin) | (x > xmax)
+            if out.any():
+                v = v.astype(float).copy()
+                v[out] = 0.0
+                values[i] = v
+                changed = True
+        if changed:
+            df[col] = values
+    return df
 
 
 class _LegendLocAction(argparse.Action):

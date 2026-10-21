@@ -28,7 +28,10 @@
         "wspace": 0.25,
         "hspace": 0.15
       },
-      "two_panel_hspace": 0.15
+      "two_panel_hspace": 0.15,
+      "panel_font_scale": {
+        "3": 1.3333
+      }
     },
     "legend_style": {
       "fontsize": "x-large",
@@ -122,9 +125,9 @@
       "neutron": "C4",
       "proton": "C8",
       "alpha": "C5",
-      "radiological": "C7",
-      "marley": "C1",
-      "marley_official": "C1",
+      "radiological": "C3",
+      "marley": "C0",
+      "marley_official": "C0",
       "neutrino": "C0",
       "marley_exponent0": "C0",
       "marley_exponent1": "C1",
@@ -381,8 +384,8 @@
     },
     "sb_sample_color": {
       "CC Neutrino": "C0",
-      "Gamma": "C1",
-      "Neutron": "C2",
+      "Gamma": "C2",
+      "Neutron": "C4",
       "Radiological": "C3"
     },
     "cutflow_stage_dict": {
@@ -602,8 +605,9 @@
       "HepEffectiveMCLastBin": "Effective $hep$ MC events (last bin)"
     },
     "adjcl_selection_limits": {
-      "LimitCharge": "Charge",
-      "LimitR": "Distance"
+      "LimitCharge": "Charge limit",
+      "LimitR": "Distance limit",
+      "SelectionScore": "$\\sum Q_S/\\sqrt{\\sum Q_B}$"
     },
     "thesis_labels": {
       "HD Central": "\\cfgHDCentral",
