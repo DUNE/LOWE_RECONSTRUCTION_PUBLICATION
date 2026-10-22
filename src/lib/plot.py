@@ -1759,6 +1759,14 @@ def place_vertical_label(ax, x_value, label_text, fontsize=None, pad_fraction=0.
     inner_min = float(yticks_visible.min()) if len(yticks_visible) > 0 else ylim[0]
     inner_max = float(yticks_visible.max()) if len(yticks_visible) > 0 else ylim[1]
     y_text = float(np.clip(y_text, inner_min + margin, inner_max - margin))
+    # Log y axis: the gap search above works in linear units, which on a log axis puts the label at the bottom or outside the
+    # axes; choose the largest gap between the occupied heights in log10 instead, kept off the frame by 5 % of the decades.
+    if ax.get_yscale() == "log" and ylim[0] > 0:
+        lo, hi = np.log10(ylim[0]), np.log10(ylim[1])
+        edges = [lo] + sorted(float(np.log10(y)) for y in clean_points if y > 0) + [hi]
+        _gap, g0, g1 = max((edges[k + 1] - edges[k], edges[k], edges[k + 1]) for k in range(len(edges) - 1))
+        m = 0.05 * (hi - lo)
+        y_text = float(10 ** np.clip((g0 + g1) / 2.0, lo + m, hi - m))
 
     # Horizontal offset: place label on side with more space (left/right)
     x_mid = (xlim[0] + xlim[1]) / 2.0
