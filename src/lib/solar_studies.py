@@ -108,7 +108,7 @@ KINDS = {
 STUDY_FAMILIES = ("Counts", "Exposure", "Contours", "10Y_Contours", "Cutflow", "Weighted")
 
 CUTFLOW_DEFAULT_ENERGY = "SolarEnergy"
-CUTFLOW_SUFFIX_LABELS = ("fiduc_truth", "mcfilter", "mcfilter_noflag")  # studies with their own cutflow file, tagged by a filename suffix
+CUTFLOW_SUFFIX_LABELS = ("fiduc_truth", "mcfilter", "mcfilter_noflag", "energystages")  # studies with their own cutflow file, tagged by a filename suffix
 
 # ---------------------------------------------------------------------------
 # Flat families: SOLAR trees without folder/label/analysis levels
@@ -520,6 +520,9 @@ STUDIES: tuple = (
     # (S/B background-like or neutron-capture veto) removed from every stage
     Study("mcfilter", "cutflow_variant", (REFERENCE_FOLDER,), ("DayNight",), cutflow_energy=CUTFLOW_DEFAULT_ENERGY, cutflow_only=True),
     Study("mcfilter_noflag", "cutflow_variant", (REFERENCE_FOLDER,), ("DayNight",), cutflow_energy=CUTFLOW_DEFAULT_ENERGY, cutflow_only=True),
+    # Energy-estimator flow of thesis ch. 7 (SOLAR-sb cutflow_plot.py --energy_stages --output_label energystages, 2026-10-22):
+    # TPC-PDS-matched clusters in ElectronEnergy, SolarEnergy with the offset, and SolarEnergy after the vetoes
+    Study("energystages", "cutflow_variant", (REFERENCE_FOLDER,), ("DayNight",), cutflow_energy=CUTFLOW_DEFAULT_ENERGY, cutflow_only=True),
 )
 
 STUDY_BY_LABEL = {s.label: s for s in STUDIES}
