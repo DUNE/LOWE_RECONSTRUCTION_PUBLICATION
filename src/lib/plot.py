@@ -1163,7 +1163,8 @@ def _label_avoid_box(text_obj, ax, fontsize):
     return (bx0, bx1, by0, by1)
 
 
-def draw_vertical_lines(ax, values, labels=None, styles=None, colors=None, fontsize=None):
+def draw_vertical_lines(ax, values, labels=None, styles=None, colors=None, fontsize=None, label_y=None):
+    # label_y (axes fraction) pins the labels at that height instead of the automatic gap search
     """Draw one or more vertical reference lines on *ax*.
 
     Each positional list (``labels``, ``styles``, ``colors``) is matched to
@@ -1188,7 +1189,7 @@ def draw_vertical_lines(ax, values, labels=None, styles=None, colors=None, fonts
             ax.set_xlim(min(xlim[0], v), max(xlim[1], v))
         ax.axvline(v, color=color, linestyle=style, linewidth=1, zorder=5)
         if label:
-            text_obj = place_vertical_label(ax, v, label, fontsize=fontsize, avoid=avoid_boxes)
+            text_obj = place_vertical_label(ax, v, label, fontsize=fontsize, avoid=avoid_boxes, y_axes=label_y)
             if text_obj is not None:
                 box = _label_avoid_box(text_obj, ax, fontsize)
                 if box is not None:
@@ -1603,7 +1604,7 @@ def set_axis_tick_labels(ax, axis, values, labels, fontsize=None, height=0.09, s
     _expand_margins_for_artists(ax.figure, drawn_artists)
 
 
-def place_vertical_label(ax, x_value, label_text, fontsize=None, pad_fraction=0.02, avoid=None):
+def place_vertical_label(ax, x_value, label_text, fontsize=None, pad_fraction=0.02, avoid=None, y_axes=None):
     """Place a label next to a vertical line at `x_value` in the least-populated vertical gap.
 
     The function inspects existing plotted data (lines, scatter collections, bars)
@@ -1767,6 +1768,10 @@ def place_vertical_label(ax, x_value, label_text, fontsize=None, pad_fraction=0.
         _gap, g0, g1 = max((edges[k + 1] - edges[k], edges[k], edges[k + 1]) for k in range(len(edges) - 1))
         m = 0.05 * (hi - lo)
         y_text = float(10 ** np.clip((g0 + g1) / 2.0, lo + m, hi - m))
+    # Fixed height (axes fraction, e.g. 0.93 for the top of the panel) instead of the gap search
+    if y_axes is not None:
+        y_text = float(ax.transData.inverted().transform(ax.transAxes.transform((0.0, float(y_axes))))[1])
+        avoid = None
 
     # Horizontal offset: place label on side with more space (left/right)
     x_mid = (xlim[0] + xlim[1]) / 2.0

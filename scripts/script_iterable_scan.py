@@ -276,6 +276,14 @@ parser.add_argument(
 )
 
 parser.add_argument(
+    "--vertical_label_y",
+    type=float,
+    default=None,
+    help="Height of the --vertical_label text as a fraction of the axes (e.g. 0.93: top of the panel); default: the "
+         "emptiest gap along the line.",
+)
+
+parser.add_argument(
     "--comparable_legend_loc",
     type=str,
     default=None,
@@ -2139,6 +2147,7 @@ def main():
                 styles=_vertical_styles,
                 colors=_vertical_colors,
                 fontsize=linelabelfontsize,
+                label_y=getattr(args, "vertical_label_y", None),
             )
 
             point_values = parse_point_pairs(getattr(args, "point", None))
