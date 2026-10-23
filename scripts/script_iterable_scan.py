@@ -276,6 +276,29 @@ parser.add_argument(
 )
 
 parser.add_argument(
+    "--vertical_linewidth",
+    type=float,
+    default=1.0,
+    help="Line width of the --vertical lines (default 1).",
+)
+
+parser.add_argument(
+    "--vertical_label_fontsize",
+    type=str,
+    default=None,
+    help="Font size of the --vertical_label text (matplotlib size, e.g. x-large); default: plot_params linelabelfontsize.",
+)
+
+parser.add_argument(
+    "--stage_style",
+    type=str,
+    default=None,
+    help="Named fill-opacity / line-width set for the --comparable stages from plot_params.json plot_settings.stage_styles "
+         "(e.g. cutflow2 for two-stage cut-flow-style figures, cutflow3 for the selection cut flows); explicit "
+         "--fill_alpha / --comparable_linewidths take precedence.",
+)
+
+parser.add_argument(
     "--vertical_label_y",
     type=float,
     default=None,
@@ -559,6 +582,16 @@ parser.add_argument(
 )
 
 args = parser.parse_args()
+
+if args.stage_style:
+    import lib as _lib
+    _stage_styles = _lib._PLOT_PARAMS_CONFIG.get("plot_settings", {}).get("stage_styles", {})
+    if args.stage_style not in _stage_styles:
+        parser.error(f"--stage_style {args.stage_style}: not in plot_params.json plot_settings.stage_styles {sorted(k for k in _stage_styles if not k.startswith('_'))}")
+    if args.fill_alpha is None:
+        args.fill_alpha = list(_stage_styles[args.stage_style]["fill_alpha"])
+    if args.comparable_linewidths is None:
+        args.comparable_linewidths = list(_stage_styles[args.stage_style]["linewidths"])
 if args.legend_frame is not None:
     enable_legend_frame(args.legend_frame)
 
@@ -2146,8 +2179,9 @@ def main():
                 labels=_vertical_labels,
                 styles=_vertical_styles,
                 colors=_vertical_colors,
-                fontsize=linelabelfontsize,
+                fontsize=getattr(args, "vertical_label_fontsize", None) or linelabelfontsize,
                 label_y=getattr(args, "vertical_label_y", None),
+                linewidth=getattr(args, "vertical_linewidth", 1.0),
             )
 
             point_values = parse_point_pairs(getattr(args, "point", None))

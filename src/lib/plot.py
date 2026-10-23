@@ -1163,7 +1163,7 @@ def _label_avoid_box(text_obj, ax, fontsize):
     return (bx0, bx1, by0, by1)
 
 
-def draw_vertical_lines(ax, values, labels=None, styles=None, colors=None, fontsize=None, label_y=None):
+def draw_vertical_lines(ax, values, labels=None, styles=None, colors=None, fontsize=None, label_y=None, linewidth=1):
     # label_y (axes fraction) pins the labels at that height instead of the automatic gap search
     """Draw one or more vertical reference lines on *ax*.
 
@@ -1187,7 +1187,7 @@ def draw_vertical_lines(ax, values, labels=None, styles=None, colors=None, fonts
         xlim = ax.get_xlim()
         if v < xlim[0] or v > xlim[1]:
             ax.set_xlim(min(xlim[0], v), max(xlim[1], v))
-        ax.axvline(v, color=color, linestyle=style, linewidth=1, zorder=5)
+        ax.axvline(v, color=color, linestyle=style, linewidth=linewidth, zorder=5)
         if label:
             text_obj = place_vertical_label(ax, v, label, fontsize=fontsize, avoid=avoid_boxes, y_axes=label_y)
             if text_obj is not None:

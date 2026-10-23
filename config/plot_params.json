@@ -48,6 +48,31 @@
         "edgecolor": "gray",
         "linewidth": 0.5
       }
+    },
+    "stage_styles": {
+      "_doc": "Fill opacity and line width per stage of the cut-flow-style figures (script_iterable_scan.py --stage_style NAME, --comparable_fill_strength); stages in the order they are drawn. cutflow3: the three-stage selection cut flows (figs 8.10, 8.16, 8.21). cutflow2: two-stage figures (fig. 7.12), user 2026-10-23: both stages readable, neither line nearly invisible nor dominant, light shading.",
+      "cutflow3": {
+        "fill_alpha": [
+          0.01,
+          0.2,
+          0.5
+        ],
+        "linewidths": [
+          0.5,
+          1,
+          3
+        ]
+      },
+      "cutflow2": {
+        "fill_alpha": [
+          0.05,
+          0.3
+        ],
+        "linewidths": [
+          1.2,
+          2.2
+        ]
+      }
     }
   },
   "mappings": {
