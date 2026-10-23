@@ -188,6 +188,17 @@ parser.add_argument(
 )
 
 parser.add_argument(
+    "--column_group_drop",
+    nargs="+",
+    type=str,
+    default=None,
+    metavar="GROUP=VARIABLE",
+    help="Columns to leave out of one --column_group group only, given by the raw "
+    "group and --variable_name values, e.g. 'cut+window+fiducial=End caps' "
+    "(default: every group shows every variable)",
+)
+
+parser.add_argument(
     "--row_order",
     nargs="+",
     type=str,
@@ -496,6 +507,25 @@ parser.add_argument(
 )
 
 parser.add_argument(
+    "--derived_variable",
+    nargs="+",
+    default=None,
+    metavar="NEW=SOURCE/DIVISOR",
+    help="Add a column NEW with the values of the --variable_name column SOURCE divided by DIVISOR "
+    "(e.g. Ratio=All/2380 for a rate relative to the solar CC rate); list NEW in --variables.",
+)
+
+parser.add_argument(
+    "--adjcl_selection_score",
+    default=None,
+    metavar="COLUMN",
+    help="AdjCl_Selection exports: add COLUMN with the score the SOLAR limit search "
+    "maximises (03_discrimination, sb mode), the charge-weighted S/sqrt(B) of the selected "
+    "adjacent clusters: sum Q_S / sqrt(sum Q_B) over clusters with AdjClR < LimitR or "
+    "AdjClCharge > LimitCharge (Signal rows = S, the others = B), per config and name.",
+)
+
+parser.add_argument(
     "--melt",
     nargs="+",
     default=None,
@@ -572,6 +602,13 @@ parser.add_argument(
     "small values instead of masking them - useful together with "
     "--scientific_threshold_low.",
 )
+parser.add_argument(
+    "--zero_error_plain",
+    action="store_true",
+    help="Print values whose uncertainty is exactly zero (e.g. a binomial "
+    "fraction of 0 or 1) as the bare value instead of 'value ± nan' "
+    "(default: off).",
+)
 
 
 args = parser.parse_args()
@@ -628,6 +665,26 @@ def _trim_environment_lines(text, no_table, no_tabular):
     return "".join(kept)
 
 
+def _add_adjcl_selection_score(df, column):
+    """Charge-weighted S/sqrt(B) of the selected adjacent clusters, per (Config, Name)."""
+    df = df.copy()
+    df[column] = np.nan
+    for _, group in df.groupby([c for c in ("Config", "Name") if c in df.columns], sort=False):
+        charge = {}
+        for signal in (True, False):
+            rows = group[group["Signal"] == signal]
+            if rows.empty:
+                break
+            row = rows.iloc[0]
+            r = np.asarray(row["AdjClR"], dtype=float).ravel()
+            q = np.asarray(row["AdjClCharge"], dtype=float).ravel()
+            selected = (r < row["LimitR"]) | (q > row["LimitCharge"])
+            charge[signal] = float(np.sum(q[selected]))
+        if len(charge) == 2 and charge[False] > 0:
+            df.loc[group.index, column] = charge[True] / np.sqrt(charge[False])
+    return df
+
+
 def main():
     """
     Main function to process simulation configurations, load data files,
@@ -649,6 +706,9 @@ def main():
     if df.empty:
         print("No data to plot. Exiting.")
         return
+
+    if args.adjcl_selection_score:
+        df = _add_adjcl_selection_score(df, args.adjcl_selection_score)
 
     if args.melt:
         # Keep only scalar identifier columns, then one row per melted column.
@@ -806,6 +866,21 @@ def main():
                 df_config.loc[mask, f"{args.y}Error"] = df_config.loc[mask, f"{args.y}Error"] * float(factor)
             for band_column in args.error_band or []:
                 df_config.loc[mask, band_column] = df_config.loc[mask, band_column] * float(factor)
+
+    if args.derived_variable:
+        # NEW=SOURCE/DIVISOR: extra column with the SOURCE values divided by a constant
+        variable_column = args.variable_name if args.variable_name in df_config.columns else "Variable"
+        extra = []
+        for item in args.derived_variable:
+            new_name, ratio = item.split("=", 1)
+            source, divisor = ratio.rsplit("/", 1)
+            part = df_config[df_config[variable_column].astype(str) == source].copy()
+            part[variable_column] = new_name
+            part[args.y] = part[args.y] / float(divisor)
+            if f"{args.y}Error" in part.columns:
+                part[f"{args.y}Error"] = part[f"{args.y}Error"] / float(divisor)
+            extra.append(part)
+        df_config = pd.concat([df_config, *extra], ignore_index=True)
 
     if args.multiply is not None:
         df_config[args.y] = df_config[args.y] * args.multiply
@@ -1076,6 +1151,9 @@ def main():
     df_table = df_table.reset_index()
 
     if group_values:
+        if args.column_group_drop:
+            drop = {tuple(item.split("=", 1)) for item in args.column_group_drop}
+            df_table = df_table[[c for c in df_table.columns if (c[1], c[2]) not in drop]]
         # Two-level header: drop the constant value level and translate the group titles
         titles = dict(zip(group_values, args.column_group_titles or group_values))
         var_titles = dict(zip(args.variables, args.variable_titles or args.variables))

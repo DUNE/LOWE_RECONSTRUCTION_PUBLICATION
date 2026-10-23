@@ -152,6 +152,15 @@ parser.add_argument(
 )
 
 parser.add_argument(
+    "--mirror_edge",
+    action="store_true",
+    default=False,
+    help="With --mirror: reflect every bin around the upper edge of the last bin "
+    "(for scans whose last bin ends at the mirror point) instead of around the "
+    "centre of the last bin",
+)
+
+parser.add_argument(
     "--project",
     nargs="+",
     type=str,
@@ -942,7 +951,13 @@ def main():
             if args.operation is not None and combined_x_edges is None and np.array_equal(x, combined_x):
                 combined_x_edges = x_edges
 
-            if config == args.mirror:
+            if config == args.mirror and args.mirror_edge:
+                # Mirror around the upper edge of the last bin: all bins reflected.
+                mirror_point = x[-1] + x_bin / 2
+                x = np.concatenate((x, 2 * mirror_point - x[::-1]))
+                x_edges = np.linspace(x[0] - x_bin / 2, x[-1] + x_bin / 2, len(x) + 1)
+                y = np.concatenate((y, y[::-1]))
+            elif config == args.mirror:
                 # Mirror around the last bin without duplicating it at the join.
                 # Skip x[-1] and y[-1] so the boundary bin appears once and the
                 # reflected spectrum starts from y[-2] at (x[-1] + x_bin).

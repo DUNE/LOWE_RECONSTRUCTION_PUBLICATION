@@ -35,7 +35,7 @@ from rich import print as rprint
 
 from lib import *
 from lib.exports import save_figure_to_paths, save_table_to_paths
-from lib.plot import apply_legend_style, create_common_subplots, add_centered_suptitle
+from lib.plot import apply_legend_style, create_common_subplots, add_centered_suptitle, is_redundant_legend_title
 
 DATA_DIR = Path(__file__).resolve().parents[1] / "input" / "data" / "TPC" / "smearing"
 DEFAULT_PLOT_DIR = str(Path(__file__).resolve().parents[1] / "output" / "plots" / "smearing")
@@ -171,6 +171,8 @@ def _figure_legend(fig, axes, title, ncol=4):
     fig.set_size_inches(width, height + extra)
     fig.subplots_adjust(bottom=(fig.subplotpars.bottom * height + extra) / (height + extra),
                         top=1 - (1 - fig.subplotpars.top) * height / (height + extra))
+    if is_redundant_legend_title(title):
+        title = None
     fig.legend(handles, labels, loc="lower center", ncol=ncol, frameon=False,
                fontsize=legendfontsize, title=title, title_fontsize=legendtitlefontsize)
 
@@ -264,7 +266,7 @@ def plot_absolute_cutflow(config):
     for ax in axes[-1]:
         ax.set_xlabel("Reconstructed Energy (MeV)", fontsize=xsublabelfontsize)
     for ax in axes[:, 0]:
-        ax.set_ylabel("Counts (events / MeV / 20 yr)", fontsize=ysublabelfontsize)
+        ax.set_ylabel("Counts (MeV$^{-1}$, 20 yr)", fontsize=ysublabelfontsize)
     fig.subplots_adjust(hspace=0.3)
     _figure_legend(fig, axes.flat, "Stage")
     _save(fig, f"smearing_chain_{config.lower()}_cutflow")

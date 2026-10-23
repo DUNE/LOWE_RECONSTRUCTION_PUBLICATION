@@ -113,6 +113,14 @@ parser.add_argument(
 
 
 
+parser.add_argument(
+    "--compact",
+    action="store_true",
+    default=False,
+    help="Multi-panel compact layout: one shared colour scale and colorbar for all panels, "
+    "y-axis title only on the first panel",
+)
+
 args = parser.parse_args()
 
 
@@ -223,6 +231,7 @@ def main():
             filter_dataframe(df_config, args)[args.iterable].unique() if args.iterable is not None else [None]
         )
         subset_by_idx = {}
+        compact_mappables = []
         for (idx, variable), (jdx, iterable) in product(
             enumerate(variables),
             enumerate(iterables) if args.iterable is not None else enumerate([None]),
@@ -317,9 +326,12 @@ def main():
                     if args.logz:
                         # Leave bins below the log-scale floor blank instead of painting them with the lowest colour
                         mappable.set_cmap(mappable.get_cmap().with_extremes(under="none"))
-                cbar = fig.colorbar(mappable, ax=ax_current)
                 z_label = resolve_axis_label(args.labelz, args.z, subset)
-                cbar.set_label(z_label)
+                if args.compact and ncols > 1:
+                    compact_mappables.append(mappable)
+                else:
+                    cbar = fig.colorbar(mappable, ax=ax_current)
+                    cbar.set_label(z_label)
             else:
                 hist2d_kwargs = {"range": (x_range, y_range)}
                 if is_integer_valued(x) and is_integer_valued(y):
@@ -351,7 +363,10 @@ def main():
                     hist2d[3].set_clim(0, hist2d[3].get_array().max())
                 if args.rangez is not None:
                     hist2d[3].set_clim(*args.rangez)
-                cbar = fig.colorbar(hist2d[3], ax=ax_current)
+                if args.compact and ncols > 1:
+                    compact_mappables.append(hist2d[3])
+                else:
+                    cbar = fig.colorbar(hist2d[3], ax=ax_current)
 
             if args.diagonal:
                 ax_current.plot(
@@ -362,6 +377,22 @@ def main():
                 )
                 ax_current.set_xlim(ranges[0])
                 ax_current.set_ylim(ranges[0])
+        if args.compact and ncols > 1 and compact_mappables:
+            # One colour scale for all panels: the common range of the panel images
+            lows, highs = [], []
+            for m in compact_mappables:
+                lo, hi = m.get_clim()
+                lows.append(lo); highs.append(hi)
+            low = min(v for v in lows if v is not None)
+            high = max(v for v in highs if v is not None)
+            if args.rangez is None:
+                for m in compact_mappables:
+                    m.set_clim(low, high)
+            # leave room right of the panels for the shared colorbar and its label
+            fig.subplots_adjust(right=fig.subplotpars.right - 0.035)
+            cbar = fig.colorbar(compact_mappables[-1], ax=list(np.ravel(ax)), fraction=0.025, pad=0.015)
+            if z is not None:
+                cbar.set_label(z_label)
         if z is None:
             if args.norm is not None:
                 norm_labels = {
@@ -403,7 +434,9 @@ def main():
             if _xlabel == "Time":
                 _xlabel = r"Time ($\mu$s)"
             ax_current.set_xlabel(_xlabel)
-            ax_current.set_ylabel(resolve_axis_label(args.labely, args.y, label_subset)) if idx == 0 else None
+            _panel = idx if args.variables is not None else jdx
+            if not (args.compact and _panel > 0):
+                ax_current.set_ylabel(resolve_axis_label(args.labely, args.y, label_subset)) if idx == 0 else None
             if args.matchx:
                 ax_current.set_xlim(ranges[0])
             if args.matchy:

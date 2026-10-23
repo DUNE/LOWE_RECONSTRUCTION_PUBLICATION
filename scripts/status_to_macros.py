@@ -150,6 +150,8 @@ def main():
         "%   Rel<Qty> relative change against the Truncated default of the same",
         "%            configuration and analysis (not defined for that default itself)",
         "%   Num      number only (no unit) for DN/HEP;  Score/Sep  Sens score 0.5*(SR+RS) and sqrt(score)",
+        "%   Z / ZNum  Sens significance of the reactor point, sqrt(SR) (solar Asimov data fitted at the reactor point),",
+        "%            with / without the sigma unit; Rel<Qty>Z / Diff<Qty>Z its change against the default",
         "%   Rel<Qty>Score / Diff<Qty>Score  relative / absolute change of the Sens score against the default",
         "%   Cuts     NHits/OpHits/AdjCl (also CutNHits, CutOpHits, CutAdjCl);  Fid  FiducialX/Y/Z in cm",
         "%   resCombDN/resCombHEP: quadrature sum of the four Truncated defaults;",
@@ -183,7 +185,15 @@ def main():
                 score = 0.5 * (float(v[0]) + float(v[1]))
                 d(b, f"{name}Score", rf"\num{{{r2(score)}}}")
                 d(b, f"{name}Sep", rf"\SI{{{r2(math.sqrt(score))}}}{{\sigma}}")
+                z = math.sqrt(max(float(v[0]), 0.0))
+                d(b, f"{name}Z", rf"\ensuremath{{\num{{{r2(z)}}}\,\sigma}}")
+                d(b, f"{name}ZNum", rf"\num{{{r2(z)}}}")
                 if ref_v and not is_ref:
+                    ref_z = math.sqrt(max(float(ref_v[0]), 0.0))
+                    p = rel_pct(str(z), str(ref_z))
+                    if p:
+                        d(b, f"Rel{name}Z", p)
+                    d(b, f"Diff{name}Z", diff_num(str(r2(z)), str(r2(ref_z))))
                     for suf, i in (("SR", 0), ("RS", 1)):
                         p = rel_pct(v[i], ref_v[i])
                         if p:
@@ -228,6 +238,9 @@ def main():
         name = words(yr).capitalize()
         d("resCombSens", f"{name}Score", rf"\num{{{r2(score)}}}")
         d("resCombSens", f"{name}Sep", rf"\SI{{{r2(math.sqrt(score))}}}{{\sigma}}")
+        z = math.sqrt(sum(max(float(r["vals"][yr][0]), 0.0) for r in refs))
+        d("resCombSens", f"{name}Z", rf"\ensuremath{{\num{{{r2(z)}}}\,\sigma}}")
+        d("resCombSens", f"{name}ZNum", rf"\num{{{r2(z)}}}")
     # Phase II projection of the oscillation contours: Phase I (all four configurations) for 30 years plus two
     # HD-like or VD-like Phase II modules for 20 years; the Delta chi^2 scales linearly with exposure, so each
     # technology adds 2 modules x 2 x its 10-year Score (as in the thesis contour figures).
@@ -237,6 +250,9 @@ def main():
                         for c in codes)
         d(f"resCombSensPhaseTwo{tech}", "Score", rf"\num{{{r2(score30 + added)}}}")
         d(f"resCombSensPhaseTwo{tech}", "Sep", rf"\SI{{{r2(math.sqrt(score30 + added))}}}{{\sigma}}")
+        sr30 = sum(float(r["vals"][30][0]) for r in refs)
+        sr_added = 4 * sum(float(ref_of[(c, "Sensitivity")]["vals"][10][0]) for c in codes)
+        d(f"resCombSensPhaseTwo{tech}", "Z", rf"\ensuremath{{\num{{{r2(math.sqrt(max(sr30 + sr_added, 0.0)))}}}\,\sigma}}")
     # The same combination for every Truncated study run in all four configurations.
     studies = {r["study"] for r in rows if r["folder"] == REF_FOLDER and r["ana"] == "Sensitivity"} - {REF_STUDY}
     for study in sorted(studies):
@@ -248,6 +264,8 @@ def main():
             name = words(yr).capitalize()
             d("resCombSens" + study_token(study), f"{name}Score", rf"\num{{{r2(score)}}}")
             d("resCombSens" + study_token(study), f"{name}Sep", rf"\SI{{{r2(math.sqrt(score))}}}{{\sigma}}")
+            z = math.sqrt(sum(max(float(r["vals"][yr][0]), 0.0) for r in per_cfg))
+            d("resCombSens" + study_token(study), f"{name}Z", rf"\ensuremath{{\num{{{r2(z)}}}\,\sigma}}")
 
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text("\n".join(out) + "\n", encoding="utf-8")

@@ -258,6 +258,13 @@ parser.add_argument(
     help="Color for each --panel_horizontal line, one per --panels entry (default 'gray').",
 )
 
+parser.add_argument(
+    "--no_legend",
+    action="store_true",
+    default=False,
+    help="Draw no legend (e.g. on the panels of a multi-figure layout whose legend is shown elsewhere)",
+)
+
 args = parser.parse_args()
 
 
@@ -695,11 +702,12 @@ def run_compact_mode(df, configs, names, default_operation_config):
             ax_current.semilogy()
 
         legend_title = args.labelz if args.labelz is not None else args.iterable
-        apply_legend_style(
-            ax_current,
-            title=legend_title,
-            capitalize_labels=getattr(args, "capitalize_legend", False),
-        )
+        if not args.no_legend:
+            apply_legend_style(
+                ax_current,
+                title=legend_title,
+                capitalize_labels=getattr(args, "capitalize_legend", False),
+            )
 
         draw_horizontal_lines(
             ax_current,
@@ -1100,7 +1108,7 @@ def main():
             if args.logx:
                 ax_current.semilogx()
 
-            if idx == ncols - 1:
+            if idx == ncols - 1 and not args.no_legend:
                 legend_title = args.labelz if args.labelz is not None else args.iterable
                 apply_legend_style(
                     ax_current,

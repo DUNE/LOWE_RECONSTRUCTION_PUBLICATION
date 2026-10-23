@@ -90,6 +90,13 @@ parser.add_argument(
 )
 
 parser.add_argument(
+    "--size_legend_loc",
+    type=str,
+    default="best",
+    help="Location of the --sizeby legend on the right panel (default: best)",
+)
+
+parser.add_argument(
     "--sizeby_scale",
     type=float,
     default=4.0,
@@ -560,7 +567,7 @@ def main():
                         scale=args.sizeby_scale, loc=size_legend_locs[gdx % len(size_legend_locs)],
                     )
             elif size_vmin is not None and not pd.isna(size_vmin) and not pd.isna(size_vmax) and size_vmin != size_vmax:
-                _add_size_legend(ax_right, size_legend_label, size_vmin, size_vmax, args.marker_size, scale=args.sizeby_scale)
+                _add_size_legend(ax_right, size_legend_label, size_vmin, size_vmax, args.marker_size, scale=args.sizeby_scale, loc=args.size_legend_loc)
 
         if use_markerby:
             _add_marker_legend(ax_left, markerby, marker_map)

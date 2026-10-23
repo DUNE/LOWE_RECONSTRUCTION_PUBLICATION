@@ -1,6 +1,6 @@
 {
-  "generated": "2026-09-25T23:02:14",
-  "git_head": "f9539fa",
+  "generated": "2026-10-16T22:04:59",
+  "git_head": "142691b",
   "script": "src/physics/signal/truth_position_study.py --stage export",
   "folder": "Truncated",
   "energy_variable": "SolarEnergy",
@@ -28,7 +28,7 @@
     "VD background truth X can lie outside the active box; RecoX is confined to it."
   ],
   "schema": "LOWE_RECONSTRUCTION_PUBLICATION macros",
-  "source": "/pc/choozdsk01/users/manthey/SOLAR/output/data/solar/truth_position/export_v2",
+  "source": "/pc/choozdsk01/users/manthey/SOLAR-sb/output/data/solar/truth_position/export_v2",
   "min_mc_for_fom": 5,
   "purity_threshold": 0.5,
   "kinds": {
@@ -343,25 +343,25 @@
   },
   "checks": {
     "WallCdf_HD_central_truth_20cm": {
-      "gamma": 0.46242100480426956,
-      "marley": 0.09789657183928245,
-      "neutron": 0.07644839946508049
+      "gamma": 0.5466710255488713,
+      "marley": 0.09843201268890373,
+      "neutron": 0.4148851605866268
     },
     "Significance_HD_lateral_DayNight": {
-      "default": 1.1696496823698177,
-      "fiduc_truth": 1.4809760392897906,
+      "default": 1.3934163029239512,
+      "fiduc_truth": 4.113596957029061,
       "fiduc_truth_refvol": 1.3139837870270716
     },
     "PassFractions_DayNight_HD_central_neutron_disagree": {
       "PassFraction": [
-        0.011412586832033063,
-        0.9951464226656278,
-        0.006589046836037574,
-        0.006589046836037574
+        0.19120819742513726,
+        0.08976628997174045,
+        0.044796124398060425,
+        0.044796124398060425
       ],
-      "NMC": 12
+      "NMC": 4715
     },
-    "BestFoM_DayNight_HD_central_reco_XandY": 369.3366448990237
+    "BestFoM_DayNight_HD_central_reco_XandY": 13.445102244037503
   },
   "notes_repo": [
     "Analysis-independent kinds are repeated for all three analysis labels.",

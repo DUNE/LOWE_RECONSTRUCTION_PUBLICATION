@@ -1051,6 +1051,41 @@ def _format_unit(unit):
     return unit
 
 
+# Thesis unit style (user, 2026-10-22): exponent form as in the siunitx text, kt and yr, fixed order
+# length / time / mass / energy; spectra integrated over an exposure read "MeV^-1, 20 yr".
+_UNIT_STYLE = {
+    r"\mathrm{events \cdot kT^{-1} \cdot yr^{-1}}": r"kt$^{-1}$ yr$^{-1}$",
+    "events/(kT·yr)": r"kt$^{-1}$ yr$^{-1}$",
+    r"\mathrm{counts \cdot MeV^{-1} \cdot s^{-1} \cdot cm^{-2}}": r"cm$^{-2}$ s$^{-1}$ MeV$^{-1}$",
+    r"\mathrm{counts \cdot MeV^{-1} \cdot kT^{-1} \cdot yr^{-1}}": r"kt$^{-1}$ yr$^{-1}$ MeV$^{-1}$",
+    r"\mathrm{events \cdot (kT \cdot yr \cdot MeV)^{-1}}": r"kt$^{-1}$ yr$^{-1}$ MeV$^{-1}$",
+    r"\nu \cdot (kT \cdot yr)^{-1} \cdot \mathrm{bin}^{-1}": r"kt$^{-1}$ yr$^{-1}$ bin$^{-1}$",
+    r"counts \cdot MeV^{-1}": r"MeV$^{-1}$",
+    "nu / cm^2 / s / MeV": r"cm$^{-2}$ s$^{-1}$ MeV$^{-1}$",
+    "events / MeV / kt-year": r"kt$^{-1}$ yr$^{-1}$ MeV$^{-1}$",
+}
+
+
+def thesis_unit_style(unit):
+    """Rewrite a data *Unit string in the thesis unit style (exponent form, kt, yr)."""
+    u = str(unit).strip()
+    if u in _UNIT_STYLE:
+        return _UNIT_STYLE[u]
+    m = re.fullmatch(r"events\s*/\s*MeV\s*/\s*([\d.]+)\s*(?:yr|year|years)", u)
+    if m:
+        return rf"MeV$^{{-1}}$, {m.group(1)} yr"
+    m = re.fullmatch(r"events\s*/\s*([\d.]+)\s*(?:yr|year|years)", u)
+    if m:
+        return f"{m.group(1)} yr"
+    m = re.fullmatch(r"events\s*/\s*([\d.]+)\s*kt-year", u)
+    if m:
+        return f"{m.group(1)} kt yr"
+    m = re.fullmatch(r"([\d.]+)\s*(?:year|years)", u)
+    if m:
+        return f"{m.group(1)} yr"
+    return u
+
+
 def resolve_axis_label(explicit_label, col_name, df=None):
     """Return axis label with unit from a *Unit column appended when available.
 
@@ -1076,7 +1111,8 @@ def resolve_axis_label(explicit_label, col_name, df=None):
             if not units.empty:
                 unit = str(units.iloc[0]).strip()
                 if unit:
-                    formatted = _format_unit(unit)
+                    styled = thesis_unit_style(unit)
+                    formatted = styled if styled != unit else _format_unit(unit)
                     already_present = (
                         f"({formatted})" in base
                         or f"({unit})" in base
