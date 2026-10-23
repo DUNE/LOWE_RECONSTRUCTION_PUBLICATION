@@ -114,7 +114,7 @@ def build_macros(F):
     M = Macros()
 
     M.lines.append(r"\newcommand{\ftScope}{raw \texttt{SignalParticleWeight} (no oscillation weighting, MC-support gate or smoothing), "
-                   r"\SIrange{10}{20}{\mega\electronvolt}, Truncated background folder, default best cut of each analysis\xspace}")
+                   r"\SIrange{10}{20}{\mega\electronvolt}, default background model, default best cut of each analysis\xspace}")
     M.comment("BackgroundSplit: total background at the analysis cut (raw weights, no MC-support gate)")
     for _, r in F["BackgroundSplit"].iterrows():
         p = f"ftBS{r.cfg}{r.ana}{SEL[r.Selection]}"

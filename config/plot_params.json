@@ -331,8 +331,8 @@
     },
     "smearing_step_groups": {
       "PileUp": "Charge + pile-up",
-      "Calibration": "Electron energy",
-      "Map": "Neutrino energy"
+      "Calibration": "Electron",
+      "Map": "Neutrino"
     },
     "smearing_gun_labels": {
       "electrongun_10MeV": "Electron",

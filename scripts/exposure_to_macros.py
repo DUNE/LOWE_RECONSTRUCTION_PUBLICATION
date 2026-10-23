@@ -17,7 +17,8 @@ calendar years. The Phase I combination is the quadrature sum of the four config
 
 Phase II projection (same as the figures, --project_offset 5 --project_scale 0.5): two further modules
 of the projected configuration start after PHASE_II_START years, so its significance becomes
-sqrt(Z(t)^2 + Z(2 (t - PHASE_II_START))^2).
+sqrt(Z(t)^2 + Z(2 (t - PHASE_II_START))^2). A per-configuration Phase II value at calendar time t therefore
+corresponds to t + 2 (t - PHASE_II_START) detector-years (50 at t = 20) and is written in calendar years.
 
 Macro names: \\expo<Cfg><Ana><Qty>, letters only.
   Cfg  HDc HDl VDn VDs, HDModule (HD Central + HD Lateral), Comb (all four, in DUNE-years)
@@ -119,8 +120,9 @@ def main():
         if body is not None:
             out.append(rf"\newcommand{{\{name}}}{{{body}\xspace}}")
 
-    def block(prefix, z, tmax=30.0):
-        unit = "duneyear" if prefix.startswith("expoComb") else "detyear"
+    def block(prefix, z, tmax=30.0, unit=None):
+        if unit is None:
+            unit = "duneyear" if prefix.startswith("expoComb") else "detyear"
         for t, word in ((10, "Ten"), (20, "Twenty"), (30, "Thirty")):
             if t <= tmax:
                 d(f"{prefix}At{word}", fmt_sigma(at(z, t)))
@@ -140,7 +142,8 @@ def main():
         d(f"expoHDl{a}AtHDcFiveSigma", fmt_sigma(at(Z[("HDl", a)], crossing(Z[("HDc", a)], 5) or 30)))
         for tech, cfgs in PHASE_II.items():
             for c in cfgs:
-                block(f"expo{c}{a}PhaseTwo", phase_two(Z[(c, a)]), tmax=PHASE_II_VALID)
+                # one configuration plus its Phase II copies: calendar years, not detector-years
+                block(f"expo{c}{a}PhaseTwo", phase_two(Z[(c, a)]), tmax=PHASE_II_VALID, unit="year")
             combo = np.sqrt(sum((phase_two(Z[(c, a)]) if c in cfgs else Z[(c, a)]) ** 2 for c in CFG))
             block(f"expoComb{tech}PhaseTwo{a}", combo, tmax=PHASE_II_VALID)
 
