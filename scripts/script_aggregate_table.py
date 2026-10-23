@@ -1162,7 +1162,11 @@ def main():
             elif previous is not None:
                 lines.append("\\addlinespace")
             previous = block
-            cells = [first, label_mapping.get(str(row.iloc[2]), str(row.iloc[2]))] + [str(v) for v in row.iloc[n_lead:]]
+            # cells the column reindexing left empty (e.g. a stage with no simulated event) print the placeholder
+            empty = args.missing if args.missing is not None else "---"
+            cells = [first, label_mapping.get(str(row.iloc[2]), str(row.iloc[2]))] + [
+                empty if not isinstance(v, str) and pd.isna(v) else str(v) for v in row.iloc[n_lead:]
+            ]
             lines.append(" & ".join(cells) + " \\\\")
         lines += ["\\bottomrule", "\\end{tabular}"]
         return "\n".join(lines) + "\n"
