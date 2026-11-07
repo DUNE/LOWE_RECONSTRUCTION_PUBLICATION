@@ -13,7 +13,7 @@ status is 1 if there is any.
 Run:
     python scripts/ch9_check_status.py \\
         --data-dir input/data/studies \\
-        --status-table input/status/study_status_20260921_v15.md
+        --status-table input/status/study_status.md
 """
 
 import argparse
@@ -29,7 +29,7 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_DATA_DIR = REPO_ROOT / "input" / "data" / "studies"
-DEFAULT_STATUS_TABLE = REPO_ROOT / "input" / "status" / "study_status_20260921_v15.md"
+DEFAULT_STATUS_TABLE = REPO_ROOT / "input" / "status" / "study_status.md"
 
 CHAPTER9_STUDIES = {
     "default", "bkg_gamma_cluster", "bkg_gamma_total", "energy_spk", "energy_maink",

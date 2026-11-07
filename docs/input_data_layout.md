@@ -19,10 +19,10 @@ works inside each folder.
 | Folder | SOLAR source | Sync selector | Contents |
 |---|---|---|---|
 | `studies/{folder}/{label}/` | `analysis/`, `solar/cutflow/`, `solar/nhits/` | `--study <label or group>` | Day-Night / HEP / Sensitivity results, cutflows, fiducial nhits distributions (truncated/default). Analysis-agnostic files (Oscillogram, Signal1D_*) sit one level deeper in `daynight/`, `hep/`, `sensitivity/`. |
-| `vertex/{resolution,reconstruction,fiducial,smearing}/` | same | `--study reconstruction` | vertex resolution, efficiency, fiducialisation, smearing |
-| `TPC/{adjcluster,resolution/neutrino,resolution/electron}/` | same | `--study reconstruction` | adjacent clusters, neutrino/electron energy resolution |
-| `PDS/{matchedopflash,adjopflash,opflash}/` | same | `--study reconstruction` | flash matching, adjacent flashes, light maps |
-| `preselection/{clustering,efficiency}/` | same | `--study reconstruction` | clustering and preselection efficiency |
+| `vertex/{resolution,reconstruction,fiducial,smearing,maps}/` | same | `--study reconstruction` | vertex resolution, efficiency, fiducialisation, smearing, efficiency maps |
+| `TPC/{adjcluster,resolution/neutrino,resolution/electron,resolution/sources}/` | same | `--study reconstruction` | adjacent clusters, neutrino/electron energy resolution, smearing sources and gamma tagging |
+| `PDS/{matchedopflash,adjopflash,opflash,flash,ophit}/` | same | `--study reconstruction` | flash matching, adjacent flashes, light maps, flash counts and flash-vertex distances, OpHit light yield |
+| `preselection/{clustering,efficiency,production}/` | same | `--study reconstruction` | clustering and preselection efficiency, production distributions and limits (not regenerated) |
 | `workflow/{calibration,correction}/` | same | `--study calibration` | energy calibration, charge/lifetime corrections |
 | `workflow/{reconstruction,discrimination,wire_comparison}/` | same | `--study workflow` | energy reconstruction, cluster discrimination, wire planes |
 | `marley/stacked/` | same | `--study marley` | MARLEY generator-level distributions |
@@ -31,6 +31,8 @@ works inside each folder.
 | `solar/weighted/` | same | `--study analysisdata` | per-component `SolarEnergy_Sensitivity_AnalysisData` |
 | `truth_position/` | `solar/truth_position/export_repo/` | `--truth-position` | truth-position export (synced as a unit) |
 | `PDS/waveform/` | `PDS/waveform/export/` | `--waveform` | PDS waveform characterisation, HD vs VD (synced as a unit; plots: `waveform_scripts.txt`) |
+| `solar/fiducial/`, `solar/fiducial_profiles*/` | `solar/fiducial/export/` (SOLAR-sb) | `--fiducial` | fiducial-stage export: margin profiles per profile set, BestFiducials records, simulated background counts per volume (plots: `fidprofile_scripts.txt`) |
+| `best-sigma-json/{config}/` | `config/{config}/best-sigma-json/` (not under `output/data/`) | `--best-cuts` | selected-cut json files of the analyses, read by `--panel_vertical_file` |
 | `TPC/smearing/{config}/{name}/{sample}/` | `TPC/smearing/` (`TPC_SMEARING_CHAIN`) | `--smearing` | primary-cluster energy smearing chain, TrueEnergy to SolarEnergy (synced as a unit, SOLAR layout kept; see below) |
 
 Which sample names and configs a flat family syncs is set by its selections,
@@ -75,6 +77,7 @@ Plots and tables: `scripts/smearing_chain.py` (`run_plot_scripts.py -s smearing`
 | `ophit/` | OpHit / main-OpFlash signal histograms | hand-made |
 | `weighted_nominal/` | old per-component `Weighted_Nominal` distributions (used by the `all` list only) | hand-made |
 | `snowglobes/` | SNOwGLoBES interaction spectra | `scripts/generate_snowglobes_solar_interactions.py` |
+| `sensitivity/templates/{config}/` | Sensitivity reactor/solar templates of one cut, copied by hand from SOLAR PNFS (`SENSITIVITY/{config}/marley_final/truncated/SolarEnergy`) | read by `scripts/generate_sensitivity_hypotheses.py` (see `input/plots/thesis_scripts.txt`) |
 
 ## archive/
 

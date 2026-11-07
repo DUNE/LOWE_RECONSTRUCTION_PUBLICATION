@@ -320,15 +320,6 @@
       "Offset": "C6",
       "Map": "C7"
     },
-    "smearing_stage_dict": {
-      "True energy": "True energy",
-      "Pile-up": "Charge + pile-up",
-      "Lifetime correction": "Lifetime correction",
-      "NHits gain": "Hit-dependent conversion",
-      "Hit-dependent conversion": "Hit-dependent conversion",
-      "Electron calibration": "Electron calibration",
-      "SolarEnergy": "SolarEnergy"
-    },
     "smearing_step_groups": {
       "PileUp": "Charge + pile-up",
       "Calibration": "Electron",
@@ -350,7 +341,6 @@
     },
     "smearing_slice_sample_labels": {
       "marley_final": "CC Electron",
-      "marley_60k_final": "CC Electron",
       "gamma_final": "External Gamma",
       "neutron_final": "Neutron Capture"
     },
@@ -387,7 +377,6 @@
       "Solar": "CC Neutrino",
       "marley": "CC Neutrino",
       "marley_final": "CC Neutrino",
-      "marley_60k_final": "CC Neutrino",
       "gamma": "Gamma",
       "gamma_final": "Gamma",
       "neutron": "Neutron",
@@ -399,7 +388,6 @@
       "Solar": "C0",
       "marley": "C0",
       "marley_final": "C0",
-      "marley_60k_final": "C0",
       "gamma": "C2",
       "gamma_final": "C2",
       "neutron": "C4",
@@ -442,9 +430,6 @@
       "n13": "C5",
       "o15": "C6",
       "f17": "C7"
-    },
-    "cs_dict": {
-      "marley": "Marley"
     },
     "sn_dict": {
       "nue": "$\\nu_e$",
@@ -589,10 +574,6 @@
       "xs_numu_nutau_e": "ES: $\\nu_{\\mu ,\\nu_\\tau}$ e",
       "xs_nc_nue_Ar40": "NC: $\\nu_x$ Ar40"
     },
-    "contour_exposure_dict": {
-      "Sensitivity_Contours": "30 yr",
-      "Sensitivity_10Y_Contours": "10 yr"
-    },
     "solar_component_color": {
       "Solar": "C0",
       "Solar Day": "C1",
@@ -650,11 +631,6 @@
       "Lateral": "\\cfgHDLateral",
       "Top": "\\cfgVDTop",
       "Bottom Shielded": "\\cfgVDShielded"
-    },
-    "pds_plane_titles": {
-      "P0 cathode/APA": "Cathode",
-      "P1 membrane": "Membrane 1",
-      "P2 membrane": "Membrane 2"
     },
     "pds_waveform_label": {
       "hd": "HD",
