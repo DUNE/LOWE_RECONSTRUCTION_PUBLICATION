@@ -26,8 +26,8 @@ and new appendix F figures. Plan file: `~/.claude/plans/we-need-to-understand-pa
   inputs were read without `-n -1`.
 
 The HD v1 outputs had 10 unique events. The VD v1 workflows were stopped (finish-workflow). The v1 merged files
-were moved to `/exp/dune/data/users/smanthey/gun_merged_v1_invalid`. The jobscript is fixed (v1 kept as
-`gun_chain.jobscript.v1_broken`): it now sets `generator.Seed`, wraps every stage in a fcl with an
+were moved to `/exp/dune/data/users/smanthey/gun_merged_v1_invalid`. The jobscript is fixed (the v1 copy
+`gun_chain.jobscript.v1_broken` was removed; it is in the git history): it now sets `generator.Seed`, wraps every stage in a fcl with an
 autoIncrement NuRandomService whose base seed depends on the workflow, job counter and stage, and passes `-n -1`.
 Verified locally: 12/12 events through every stage, and different workflow IDs give different events.
 
