@@ -1,0 +1,3 @@
+# Energy smearing chain tables (LaTeX + CSV): gamma share above the endpoint per stage (full and 10 MeV slice), counterfactuals,
+# flash-matching categories and lifetime-correction ratios, Charge-step response.  Run:  python run_table_scripts.py -s smearing
+scripts/smearing_chain.py --tables

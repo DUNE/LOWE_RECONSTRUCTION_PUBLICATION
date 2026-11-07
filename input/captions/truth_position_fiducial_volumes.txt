@@ -1,0 +1,1 @@
+Best fiducial volume (FiducialX/Y/Z, cm) per analysis for the default (reco) and fiduc\_truth variants. Weights are raw SignalParticleWeight only: no oscillation, no MC-support gate, no smoothing. These tables diagnose position information; they are not replacement significances. Window 10--20 MeV, Truncated folder, default best cut of each analysis.

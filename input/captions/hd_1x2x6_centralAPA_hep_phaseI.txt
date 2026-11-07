@@ -1,0 +1,1 @@
+Total expected event counts for  the HD Central geometry in the 15 to 20 MeV range at each stage of the $\phi(hep)$ selections for each detector dataset. Numbers are scaled to a 20-year exposure for each dataset.
