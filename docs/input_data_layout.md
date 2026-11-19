@@ -71,7 +71,7 @@ Plots and tables: `scripts/smearing_chain.py` (`run_plot_scripts.py -s smearing`
 | Folder | Contents | Produced by |
 |---|---|---|
 | `pde/` | X-ARAPUCA / PDE paper inputs (`DUNE_XA_*`, `DUNE_SiPM*_AngularPDE`, megacell, XA spectra) | hand-made; `scripts/generate_angular_pde_fits.py` writes the AngularPDE fits here |
-| `theory/` | solar and SN spectra, cross sections, Bethe-Bloch, appearance terms, day-night asymmetry | hand-made; `scripts/generate_appearance_terms.py` writes here, `generate_snowglobes_solar_interactions.py` reads the solar spectrum here; `xs_comparison.pkl` is `snufish export-xsec` (SNUfish main 85dff63, as in the LOWE paper; the former SNOwGLoBES file is kept as `xs_comparison_snowglobes.pkl`) |
+| `theory/` | solar and SN spectra, cross sections, Bethe-Bloch, appearance terms, day-night asymmetry | hand-made; `scripts/generate_appearance_terms.py` writes here, `generate_snowglobes_solar_interactions.py` reads the solar spectrum here; `xs_comparison.pkl` is `snufish export-xsec` (SNUfish main 079f3db, ν̄e CC of Van Dessel et al. 2019, as in the LOWE paper; the former SNOwGLoBES file is kept as `xs_comparison_snowglobes.pkl`) |
 | `pandora/` | Pandora reconstruction comparisons (`Pandora*`, `*_marley_pandora_*`) | hand-made |
 | `lowe/` | LowE waveform/template examples, cluster-merging BDT, efficiency summaries | hand-made |
 | `ophit/` | OpHit / main-OpFlash signal histograms | hand-made |
