@@ -144,23 +144,20 @@ def derive(data):
 
 
 # paper macro -> (derived key, decimals) for --check
+# Not checked: the hep flux precision (the paper quotes the thesis Fisher-information value, not 1/Z) and the
+# window-integrated S/B and per-year counts, which the paper dropped on 2026-11-19 (still written as \pap macros).
 CHECK = {
     "fomDayNightThreeSigmaYears": ("DNCombThreeSigmaYr", 1),
     "fomDayNightThreeSigmaYearsHDCentralOnly": ("DNHDcThreeSigmaYr", 1),
+    "fomDayNightFiveSigmaYears": ("DNCombFiveSigmaYr", 1),
     "fomDayNightLateralVDTimeSavingYears": ("DNTimeSavingYr", 1),
     "fomDayNightTwentyYearSigma": ("DNCombAtTwenty", 1),
     "fomHepThreeSigmaYears": ("HEPCombThreeSigmaYr", 1),
     "fomHepFiveSigmaYears": ("HEPCombFiveSigmaYr", 1),
     "fomHepLateralVDTimeSavingYears": ("HEPTimeSavingYr", 1),
     "fomHepTwentyYearSigma": ("HEPCombAtTwenty", 1),
-    "fomHepFluxTenYearPrecisionPercent": ("HEPFluxPrecisionTenPercent", 0),
     "fomSensPhaseIReactorSeparation": ("SensReactorSepThirty", 1),
     "fomSensPhaseIReactorSeparationTenYear": ("SensReactorSepTen", 1),
-    "fomHDCentralSBRDayNightSelection": ("DNHDcSB", 2),
-    "fomHDCentralSBRHepSelection": ("HEPHDcSB", 2),
-    "fomHepBEightPerYear": ("HEPHDcEightBPerYear", 0),
-    "fomHepSignalPerYear": ("HEPHDcSignalPerYear", 0),
-    "fomHepBackgroundPerYear": ("HEPHDcBackgroundPerYear", 0),
 }
 
 
