@@ -71,12 +71,12 @@ Plots and tables: `scripts/smearing_chain.py` (`run_plot_scripts.py -s smearing`
 | Folder | Contents | Produced by |
 |---|---|---|
 | `pde/` | X-ARAPUCA / PDE paper inputs (`DUNE_XA_*`, `DUNE_SiPM*_AngularPDE`, megacell, XA spectra) | hand-made; `scripts/generate_angular_pde_fits.py` writes the AngularPDE fits here |
-| `theory/` | solar and SN spectra, cross sections, Bethe-Bloch, appearance terms, day-night asymmetry | hand-made; `scripts/generate_appearance_terms.py` writes here, `generate_snowglobes_solar_interactions.py` reads the solar spectrum here |
+| `theory/` | solar and SN spectra, cross sections, Bethe-Bloch, appearance terms, day-night asymmetry | hand-made; `scripts/generate_appearance_terms.py` writes here, `generate_snowglobes_solar_interactions.py` reads the solar spectrum here; `xs_comparison.pkl` is `snufish export-xsec` (SNUfish main 85dff63, as in the LOWE paper; the former SNOwGLoBES file is kept as `xs_comparison_snowglobes.pkl`) |
 | `pandora/` | Pandora reconstruction comparisons (`Pandora*`, `*_marley_pandora_*`) | hand-made |
 | `lowe/` | LowE waveform/template examples, cluster-merging BDT, efficiency summaries | hand-made |
 | `ophit/` | OpHit / main-OpFlash signal histograms | hand-made |
 | `weighted_nominal/` | old per-component `Weighted_Nominal` distributions (used by the `all` list only) | hand-made |
-| `snowglobes/` | SNOwGLoBES interaction spectra | `scripts/generate_snowglobes_solar_interactions.py` |
+| `snowglobes/` | SNOwGLoBES interaction spectra (superseded for the thesis rate table by `scripts/snufish_solar_rates_table.py`, which needs no input here) | `scripts/generate_snowglobes_solar_interactions.py` |
 | `sensitivity/templates/{config}/` | Sensitivity reactor/solar templates of one cut, copied by hand from SOLAR PNFS (`SENSITIVITY/{config}/marley_final/truncated/SolarEnergy`) | read by `scripts/generate_sensitivity_hypotheses.py` (see `input/plots/thesis_scripts.txt`) |
 
 ## archive/
