@@ -86,3 +86,15 @@ tmp*/
 # SSH password file for non-interactive sync_solar_data.sh auth (defaults to
 # ~/.solar_sync_pass, outside the repo — this is a defensive backstop only)
 .solar_sync_pass
+
+# SOLAR exports synced by scripts/sync_solar_data.sh (json/csv sidecars, READMEs written by the export tools)
+input/data/PDS/
+input/data/TPC/
+input/data/solar/
+input/data/workflow/
+input/data/best-sigma-json/
+input/data/truth_position/scan_curves_fid.json
+**/*.f0profile
+
+# Generated table data
+output/tables/**/*.csv

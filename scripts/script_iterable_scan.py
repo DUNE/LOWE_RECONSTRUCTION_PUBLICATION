@@ -2209,6 +2209,19 @@ def main():
 
         plot_title = make_title_from_args(args)
 
+        # Single-row plots keep the default subplot margins; a tall y-axis title (e.g. a
+        # \sqrt{\sum} formula) can then extend past the left figure edge and be cut off on save.
+        _ylabel_clipped = False
+        if nrows == 1:
+            try:
+                fig.canvas.draw()
+                _renderer = fig.canvas.get_renderer()
+                _ylabel_clipped = any(
+                    _ax.get_tightbbox(_renderer).x0 < 0 for _ax in fig.get_axes() if _ax.get_visible()
+                )
+            except Exception:
+                pass
+
         if nrows > 1:
             # For multi-row grids let tight_layout compute hspace (inter-row
             # spacing) and the top margin so that panel titles, x-axis labels
@@ -2219,7 +2232,7 @@ def main():
                 fig.tight_layout(rect=_tl_rect)
             except Exception:
                 pass
-        elif _has_rotated_xlabels or _has_categorical_ylabels:
+        elif _has_rotated_xlabels or _has_categorical_ylabels or _ylabel_clipped:
             # For single-row plots with rotated x labels or long barh category
             # labels, grow the figure downward/leftward to accommodate them
             # without compressing the axes area.
@@ -2246,7 +2259,7 @@ def main():
                     new_top = 1.0 - top_margin_in / new_h
                     fig.subplots_adjust(bottom=new_top - axes_h_in / new_h, top=new_top)
 
-            if _has_categorical_ylabels:
+            if _has_categorical_ylabels or _ylabel_clipped:
                 extra_in_w = max(0.0, (tl_left - _left) * old_w) + 0.1
                 if extra_in_w > 0.1:
                     new_w = old_w + extra_in_w
