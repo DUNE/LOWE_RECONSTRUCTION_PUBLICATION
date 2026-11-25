@@ -30,12 +30,12 @@ into THESIS through `config/output_paths.json` (`-o` is appended to every comman
 
 | List | Commands | Written to (THESIS) |
 |---|---:|---|
-| plots `thesis` | 26 | `figures/exclusive/` |
+| plots `thesis` | 22 | `figures/exclusive/` |
 | plots `lowe` | 4 | `figures/lowe/` |
 | plots `reco` | 90 | `figures/reco/` |
 | plots `waveform` | 9 | `figures/reco/waveform/` |
 | plots `smearing`, `smearing_response` | 10, 3 | `figures/reco/smearing/` |
-| plots `solar` | 76 | `figures/solar/` |
+| plots `solar` | 80 | `figures/solar/` |
 | plots `study` | 37 | `figures/study/<sub-folder>/` |
 | plots `truth_position` | 4 | `figures/study/fiducial/` |
 | tables `thesis` | 30 | `tables/` |
