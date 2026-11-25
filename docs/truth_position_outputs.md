@@ -1,6 +1,6 @@
 # Truth-position study: generated files
 
-Where everything comes from and goes, for agents working with the LOWE_RECONSTRUCTION_PUBLICATION ("plot repo") outputs of the truth-position study. Nothing here recomputes physics; the numbers are the SOLAR export's.
+Where everything comes from and goes, for agents working with the THESIS_PLOTS ("plot repo") outputs of the truth-position study. Nothing here recomputes physics; the numbers are the SOLAR export's.
 
 ## Pipeline
 | step | command | result |

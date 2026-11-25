@@ -53,7 +53,7 @@ def main():
     for t in THRESHOLDS:
         cells = [number(values[c, axis, t]) for axis, channels in CHANNELS.items() for c in channels]
         rows.append(f"$>$\\qty{{{t:g}}}{{\\mega\\electronvolt}} & " + " & ".join(cells) + " & --- \\\\\n")
-    header = (f"% Written by LOWE_RECONSTRUCTION_PUBLICATION scripts/snufish_solar_rates_table.py with SNUfish "
+    header = (f"% Written by THESIS_PLOTS scripts/snufish_solar_rates_table.py with SNUfish "
               f"{paper.__version__} ({paper.commit()}): do not edit.\n"
               f"% Annual rates per kt-yr of liquid argon, the settings of SNUfish scripts/dune_phase1_rates.py "
               f"(the solar Phase I paper), CC model {paper.CC_MODEL}.\n")
