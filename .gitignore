@@ -46,36 +46,14 @@ input/data/*/*.pkl
 input/data/**/*.pkl
 # SOLAR sync: remote mirror kept by scripts/sync_solar_data.sh (studies/ tree is covered above)
 input/data/.solar_mirror/
-input/captions/*.txt
 
-# Imported script_lists expect the one named example_scripts.txt
-input/plots/*.txt
-input/tables/*.txt
-!input/plots/example_scripts.txt
-
-# Generated plots (keep directory structure)
-output/plots/**/*.pdf
-output/plots/**/*.svg
-output/plots/**/*.eps
-output/plots/**/*.jpg
-output/plots/**/*.png
-output/chapter9/**/*.png
-output/chapter9/**/*.pdf
-
-# Generated tables (keep directory structure)
-output/tables/*.csv
-output/tables/*.tsv
-output/tables/*.xlsx
-output/tables/*.html
-output/tables/*.tex
-output/tables/*/*.tex
+# Generated plots and tables (the thesis lists write into THESIS through config/output_paths.json)
+output/
 
 # Generated test reports
 styles/
 tests/output/
 
-# Generated presentations
-output/presentations/*.pdf
 
 # Generated study-status reports (timestamped snapshots from ch9_check_status.py)
 input/status/
@@ -96,5 +74,3 @@ input/data/best-sigma-json/
 input/data/truth_position/scan_curves_fid.json
 **/*.f0profile
 
-# Generated table data
-output/tables/**/*.csv

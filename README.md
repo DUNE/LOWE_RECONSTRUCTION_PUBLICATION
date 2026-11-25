@@ -1,221 +1,95 @@
-# Plot And Table Macro Repository
+# THESIS_PLOTS
 
-Reusable repository structure for generating publication-quality plots and summary tables from serialized analysis outputs.
+Figures, generated tables and derived LaTeX macros of the PhD thesis of S. Manthey Corchado
+(DUNE low-energy reconstruction and solar neutrinos), built from the SOLAR analysis outputs.
+The thesis source is the THESIS repository (`~/Code/THESIS`).
 
-## Overview
+This repository was the shared plotting repository `LOWE_RECONSTRUCTION_PUBLICATION` until
+2026-11-25. The publications now have repositories of their own:
 
-This repository is organized around a simple workflow:
+| Publication | Plotting repository |
+|---|---|
+| Low-energy reconstruction paper and technote | [DUNE/lowe_reco_paper_plots](https://github.com/DUNE/lowe_reco_paper_plots) (`paper` and `technote` lists) |
+| Solar Phase I paper and technote | [mantheys/solar_neutrinos_phaseI_paper_plots](https://github.com/mantheys/solar_neutrinos_phaseI_paper_plots) (`paper` and `technote` lists, `scripts/paper_phaseI_numbers.py`) |
+| VD X-ARAPUCA PDE paper | VD_XA_PUBLICATION |
 
-- put input datasets in [`input/data/`](input/data/)
-- put plot command lists in [`input/plots/`](input/plots/)
-- put table command lists in [`input/tables/`](input/tables/)
-- keep executable macros in [`scripts/`](scripts/)
-- keep shared library code in [`src/lib/`](src/lib/)
-- collect generated artifacts in [`output/`](output/)
+The state of the submitted thesis (v1.0, 2026-10-23) is the tag `thesis-v1.0` (commands, captions and status files
+in `thesis-v1.0-inputs`); the command lists used for the other publications before the split are in the history.
 
-## Repository Layout
-
-```text
-.
-├── input/
-│   ├── data/
-│   ├── plots/
-│   └── tables/
-├── output/
-│   ├── plots/
-│   ├── presentations/
-│   └── tables/
-├── scripts/
-├── src/lib/
-├── run_plot_scripts.py
-├── run_table_scripts.py
-└── setup.sh
-```
-
-## Quick Start
-
-Set up the environment:
+## Setup
 
 ```bash
-source setup.sh
+source setup.sh        # .venv, dune_plot_style, test suite
 ```
 
-This creates or reuses `.venv`, installs dependencies, makes `dunestyle` available, and runs the test suite.
+## Command lists
 
-## Execution Model
+Each list `input/{plots,tables}/<list>_scripts.txt` holds one macro call per line, only for files the thesis
+includes. `python run_plot_scripts.py -s <list>` and `python run_table_scripts.py -s <list>` run a list and write
+into THESIS through `config/output_paths.json` (`-o` is appended to every command without one).
 
-There are two ways to run work in this repository.
+| List | Commands | Written to (THESIS) |
+|---|---:|---|
+| plots `thesis` | 26 | `figures/exclusive/` |
+| plots `lowe` | 4 | `figures/lowe/` |
+| plots `reco` | 90 | `figures/reco/` |
+| plots `waveform` | 9 | `figures/reco/waveform/` |
+| plots `smearing`, `smearing_response` | 10, 3 | `figures/reco/smearing/` |
+| plots `solar` | 76 | `figures/solar/` |
+| plots `study` | 37 | `figures/study/<sub-folder>/` |
+| plots `truth_position` | 4 | `figures/study/fiducial/` |
+| tables `thesis` | 30 | `tables/` |
+| tables `study`, `smearing` | 1, 1 | `tables/study/`, `tables/smearing/` |
 
-Run a single macro directly:
+Output file names are built by the macros from their arguments, so a changed option changes the name: check that
+every `\includegraphics` and `\input` of the thesis still resolves after a rerun. The event display of `reco`
+(line 3) reads the archived sample; the thesis file is an older render of the same command (see the comment in
+the list).
 
-```bash
-python3 scripts/script_compare_configuration.py --help
-python3 scripts/script_aggregate_table.py --help
-```
+The other THESIS figures and tables (literature, schematics, laboratory, X-ARAPUCA, hand-written tables) are not
+produced here.
 
-Run a batch of commands from a text file:
+## Inputs
 
-```bash
-python3 run_plot_scripts.py -s my_plots
-python3 run_table_scripts.py -s my_tables
-```
+`scripts/sync_solar_data.sh` copies the SOLAR outputs into `input/data/` (git ignored; layout in
+[`docs/input_data_layout.md`](docs/input_data_layout.md), provenance in
+[`docs/study_data_provenance.md`](docs/study_data_provenance.md)). The study registry is `src/lib/solar_studies.py`;
+`truncated/default` is the reference result set and a bare `--datafile` falls back to it.
 
-The `-s` value selects `<name>_scripts.txt` from:
+## Derived numbers
 
-- [`input/plots/`](input/plots/) for plot batches
-- [`input/tables/`](input/tables/) for table batches
+The `*_to_macros.py` scripts and `fiduc_truth_data.py` write into THESIS (`THESIS_DIR`, default `~/Code/THESIS`);
+the other two print their numbers or write to `output/tables/` for copying (see each script's usage):
 
-For example:
+| Script | Output |
+|---|---|
+| `scripts/status_to_macros.py` | `results/macros.tex` from the SOLAR study-status table |
+| `scripts/exposure_to_macros.py` | exposure-curve macros (needs numpy >= 2: use `.venv/bin/python`) |
+| `scripts/waveform_to_macros.py` | PDS waveform macros and parameter table |
+| `scripts/fiduc_truth_data.py` | truth-position macros and table fragments |
+| `scripts/hep_flux_precision.py` | hep flux precision |
+| `scripts/snufish_solar_rates_table.py` | solar interaction rates in LAr (SNUfish) |
 
-- `python3 run_plot_scripts.py -s my_plots` reads `input/plots/my_plots_scripts.txt`
-- `python3 run_table_scripts.py -s my_tables` reads `input/tables/my_tables_scripts.txt`
+Input builders: `scripts/generate_*.py` (plotting pickles for the appearance terms, sensitivity hypotheses,
+signal/background curves and solar interaction spectra), `scripts/smearing_chain.py`. Checks:
+`scripts/ch9_check_status.py` (pickles against the status table), `scripts/truth_position_check.py`.
 
-## Tutorial Workflow
+## Macros
 
-### 1. Add Input Data
+| Macro | Use |
+|---|---|
+| `script_iterable_scan.py` | one or more series against a scanned variable |
+| `script_compare_configuration.py` | configurations or samples on common axes |
+| `script_compare_line_operation.py` | curves with a ratio or difference panel |
+| `script_compare_hist1d.py`, `script_compare_hist2d.py` | 1D and 2D histograms |
+| `script_compare_reduction.py` | box plots and summary scatters |
+| `script_compare_contour.py` | oscillation-parameter contours |
+| `script_compare_pareto.py` | purity against completeness |
+| `script_line_fit.py` | fits with residual panels |
+| `script_event_display.py` | event displays |
+| `script_aggregate_table.py` | LaTeX tables |
 
-Store your serialized input files in [`input/data/`](input/data/). The plotting and table macros look there by default when `--datafile` is provided.
-
-SOLAR study results are pulled by `scripts/sync_solar_data.sh` (driven by the study registry in [`src/lib/solar_studies.py`](src/lib/solar_studies.py)) into named folders, never flat into `input/data/` (full layout in [`docs/input_data_layout.md`](docs/input_data_layout.md)): every `(folder, label)` pair goes under `input/data/studies/{folder}/{label}/` (`folder` is the background model `truncated|nominal|reduced`, `label` the study, e.g. `charge_Q100`; `truncated/default` is the reference, and a bare `--datafile` falls back to it), and the flat families (reconstruction, calibration, ...) under `input/data/{subdir}/` (`--path {subdir}`). Loaders resolve three spellings against that tree: `--path studies --datafile DayNight_Exposure_charge_Q100` (label as a datafile suffix), `--path studies/truncated/charge_Q100 --datafile DayNight_Exposure`, and `--path studies/nominal --datafile DayNight_Exposure` (the `default` label of that folder). Every loaded frame carries `Study`, `_Folder` and `_Label` columns; Sensitivity frames that mix different `NHits/OpHits/AdjCl` working points trigger a warning (and a `[cuts differ]` legend marker in `script_compare_contour.py`). `input/plots/results_scripts.txt` (`./scripts/update_plots.sh -s results`) holds the plot commands for the Counts, Exposure, Contours, Cutflow and Weighted_Distributions_Fiducial families.
-
-### 2. Pick A Macro Type
-
-The repository includes several reusable macro patterns:
-
-- [`script_iterable_scan.py`](scripts/script_iterable_scan.py): scans one iterable and overlays multiple series
-- [`script_compare_configuration.py`](scripts/script_compare_configuration.py): compares configurations or names on common axes
-- [`script_compare_hist1d.py`](scripts/script_compare_hist1d.py): builds 1D histograms
-- [`script_compare_hist2d.py`](scripts/script_compare_hist2d.py): builds 2D histograms and density maps
-- [`script_compare_reduction.py`](scripts/script_compare_reduction.py): reduces distributions into boxplots or summary scatters
-- [`script_line_fit.py`](scripts/script_line_fit.py): draws fit curves and residual panels
-- [`script_aggregate_table.py`](scripts/script_aggregate_table.py): creates summary tables from grouped values
-
-### 3. Run A Single Command
-
-Examples:
-
-```bash
-python3 scripts/script_compare_hist1d.py --datafile Example_Distribution -x Values -i Category
-python3 scripts/script_compare_hist2d.py --datafile Example_Calibration -x TrueEnergy -y RecoEnergy --diagonal
-python3 scripts/script_compare_configuration.py --datafile Example_Efficiency -y Efficiency -x Values -v X Y Z
-python3 scripts/script_line_fit.py --datafile Example_Fit -x Values -y Density --errory --chi2
-python3 scripts/script_aggregate_table.py --datafile Example_Table -y Efficiency --variables X Y Z -t Coordinate
-```
-
-For [`script_compare_configuration.py`](scripts/script_compare_configuration.py), you can group multiple input lines into combined lines with:
-
-- `--combine <criterion>` where criterion is `Geometry`, `Config`, or `Name`
-- `--combine_operation <mode>` where mode is `mean`, `sum`, or `squared_sum`
-
-Example (combine two config families into summary lines):
-
-```bash
-python3 scripts/script_compare_configuration.py --datafile Example_Efficiency --configs config_a config_b -y Efficiency -x Coordinate -v X --combine Geometry --combine_operation sum
-```
-
-Generated artifacts are written by default to:
-
-- [`output/plots/`](output/plots/)
-- [`output/tables/`](output/tables/)
-
-### 4. Create A Plot Batch
-
-Create a plain-text file in [`input/plots/`](input/plots/) named like:
-
-```text
-my_plots_scripts.txt
-```
-
-Add one command per line, for example:
-
-```text
-scripts/script_compare_hist1d.py --datafile Example_Distribution -x Values -i Category
-scripts/script_compare_hist2d.py --datafile Example_Calibration -x TrueEnergy -y RecoEnergy --diagonal
-scripts/script_compare_configuration.py --datafile Example_Efficiency -y Efficiency -x Values -v X Y Z
-scripts/script_line_fit.py --datafile Example_Fit -x Values -y Density --errory --chi2
-```
-
-Run it with:
-
-```bash
-python3 run_plot_scripts.py -s my_plots
-```
-
-### 5. Create A Table Batch
-
-Create a plain-text file in [`input/tables/`](input/tables/) named like:
-
-```text
-my_tables_scripts.txt
-```
-
-Add one table command per line, for example:
-
-```text
-scripts/script_aggregate_table.py --datafile Example_Table -y Efficiency --variables X Y Z -t Coordinate
-scripts/script_aggregate_table.py --datafile Example_Table -y RMS --variables MethodA MethodB -t Algorithm
-```
-
-Run it with:
-
-```bash
-python3 run_table_scripts.py -s my_tables
-```
-
-## Truth-position study (thesis section on position information)
-
-Figures and tables from the SOLAR `truth_position` export (`export_repo/`: 80 pickles `{config}_all_{Kind}.pkl`, `README.md`, `meta.json`), built with the existing macros only.
-
-```bash
-./scripts/sync_solar_data.sh --truth-position          # fetch the export into input/data/truth_position/ (gitignored *.pkl)
-python scripts/truth_position_check.py                 # reference numbers, four-face sums and file structure must reproduce
-python run_plot_scripts.py -s truth_position           # input/plots/truth_position_scripts.txt  -> output/plots/truth_position/ (PNG)
-python run_table_scripts.py -s truth_position          # input/tables/truth_position_scripts.txt -> output/tables/ (.tex)
-```
-
-The plot list calls `script_iterable_scan.py` and `script_compare_hist1d.py`; the table list calls `script_aggregate_table.py`.
-Table captions and the caveats (raw weights only, definition of the truth pipeline, radiological MC counts, truth X outside the VD box,
-off-scale medians, HD central statistics) are in `input/captions/truth_position_*.txt`. The colours of the species and faces are the
-mappings `truth_species_color` and `truth_face_color` in `config/plot_params.json`. A description of every generated file for other
-agents is in [`docs/truth_position_outputs.md`](docs/truth_position_outputs.md).
-
-## Optional External Output Paths
-
-Named command lists can be mapped to external output directories through [`config/output_paths.json`](config/output_paths.json).
-
-This is useful when a specific batch should write directly to another repository, note, or presentation folder.
-
-Example structure:
-
-```json
-{
-  "plots": {
-    "reco": "/absolute/path/to/figures/"
-  },
-  "tables": {
-    "summary": "/absolute/path/to/tables/"
-  }
-}
-```
-
-Behavior:
-
-- `python3 run_plot_scripts.py -s reco` will automatically append `-o /absolute/path/to/figures/` to commands in `input/plots/reco_scripts.txt` unless the command already defines `-o` or `--output`
-- `python3 run_table_scripts.py -s summary` works the same way for `input/tables/summary_scripts.txt`
-
-## Notes
-
-- The macros are intended to be run from the repository root.
-- Shared utilities live in [`src/lib/`](src/lib/), while runnable macros stay in [`scripts/`](scripts/).
-- Plot and table command lists are ordinary text files, so adapting the repository to a new analysis mostly means changing `input/data/` and the command lists.
-
-## External References
-
-To avoid duplicating upstream documentation, refer directly to:
-
-- Matplotlib documentation: https://matplotlib.org/stable/
-- NumPy documentation: https://numpy.org/doc/stable/
-- pandas documentation: https://pandas.pydata.org/docs/
+Shared code is in `src/lib/`; run everything from the repository root. Tests: `python -m pytest -c tests/pytest.ini`.
 
 ## License
 
